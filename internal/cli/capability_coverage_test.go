@@ -191,7 +191,7 @@ func TestCapabilityCoverageDanglingRefusalFails(t *testing.T) {
 // (TestNoKindDeclaresCapabilityUntilCreateGatingLands, now deleted) had.
 func TestCapabilityCoverageRealWiring(t *testing.T) {
 	t.Parallel()
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	registered := map[string]registeredCommand{}
 	for _, c := range wr.reg.Commands() {

@@ -145,7 +145,7 @@ func argValues(args []runtime.ArgSpec) []string {
 func TestEveryLeafRefusesAnExtraPositionalArgument(t *testing.T) {
 	restoreRawArgv(t)
 	rec := extraArgsEnv(t)
-	wr, err := buildWiredRegistry("v-test", config.ReadOnlyOverride)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	m := wr.reg.Schema("v-test", config.MinRancherVersion)
 	byName := map[string]runtime.SchemaCommand{}
@@ -504,7 +504,7 @@ func TestEveryLeafCompletesNothingPastItsArguments(t *testing.T) {
 	cfg.SetPath(config.FilePath(os.Getenv(config.EnvConfigDir)))
 	require.NoError(t, cfg.Write())
 
-	wr, err := buildWiredRegistry("v-test", config.ReadOnlyOverride)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	byName := map[string]runtime.SchemaCommand{}
 	for _, c := range wr.reg.Schema("v-test", config.MinRancherVersion).Commands {
@@ -512,7 +512,7 @@ func TestEveryLeafCompletesNothingPastItsArguments(t *testing.T) {
 	}
 	// A second set of commands for the bool value lines: each leaf runs
 	// once per set.
-	wrBool, err := buildWiredRegistry("v-test", config.ReadOnlyOverride)
+	wrBool, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	leaves, _ := commandPaths(wr.root("v-test"), nil)
 	require.Len(t, leaves, len(byName))
@@ -587,7 +587,7 @@ func TestSchemaSecondWordCompletesThroughTheBuiltRoot(t *testing.T) {
 func TestSchemaKindCompletesKindsOnly(t *testing.T) {
 	restoreRawArgv(t)
 	extraArgsEnv(t)
-	wr, err := buildWiredRegistry("v-test", config.ReadOnlyOverride)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	m := wr.reg.Schema("v-test", config.MinRancherVersion)
 	var want []string
@@ -611,7 +611,7 @@ func TestSchemaKindCompletesKindsOnly(t *testing.T) {
 		return strings.Fields(out.String())
 	}
 
-	schema := runtime.NewSchemaCommand(wr.reg, "v-test", config.MinRancherVersion, nil).(runtime.ReadCommand)
+	schema := runtime.NewSchemaCommand(wr.reg, "v-test", config.MinRancherVersion).(runtime.ReadCommand)
 	for _, spelling := range []string{"--kind", "--kind=true"} {
 		got := complete("schema", spelling)
 		assert.Equal(t, want, got, "rancher schema %s <TAB>", spelling)

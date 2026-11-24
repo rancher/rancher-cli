@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
-	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -333,7 +332,7 @@ func stdinDocRows() []stdinDocRow {
 // and the source scan of the readers covers it.
 func TestEveryStdinDocumentFlagHasAByteOrderMarkRow(t *testing.T) {
 	t.Parallel()
-	wr, err := buildWiredRegistry("v-test", config.ReadOnlyOverride)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	var descriptors []runtime.Descriptor
 	for _, c := range wr.reg.Commands() {

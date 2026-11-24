@@ -14,7 +14,7 @@ import (
 // against a node server, with the gates as typed.
 func runNodeCommand(t *testing.T, s *nodeServer, command string, in fieldCoverageInput, apply, yes, dryRun bool) (int, *clierr.Error) {
 	t.Helper()
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	entries := map[string]entry{}
 	for _, e := range buildEntries() {

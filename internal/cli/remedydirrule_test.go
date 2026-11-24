@@ -144,7 +144,7 @@ func directoryCommands(t *testing.T, wr wiredRegistry) []runtime.Descriptor {
 // configStatusHint(want(d)): the directory it names, "" for none.
 func everyCommandHint(t *testing.T, prefix []string, want func(runtime.Descriptor) string) {
 	t.Helper()
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	opened := refuseToOpenDirectory(t)
 	cmds := directoryCommands(t, wr)
@@ -391,7 +391,7 @@ func TestABareCommandThatSetsRemedyConfigDirNamesItsDirectory(t *testing.T) {
 func TestErrorsBeforeTheDirectoryIsResolvedStayPlain(t *testing.T) {
 	directoryRuleEnv(t)
 	dir := filepath.Join(t.TempDir(), "cfg")
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	opened := refuseToOpenDirectory(t)
 	for _, line := range [][]string{

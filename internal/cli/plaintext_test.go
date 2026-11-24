@@ -27,7 +27,7 @@ var plainTextCommands = map[string]string{
 // list that sets it fails, and so does a listed command that does not.
 func TestPlainTextIsSetOnlyOnTheListedCommands(t *testing.T) {
 	t.Parallel()
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	var set []string
 	for _, c := range wr.reg.Commands() {
@@ -49,7 +49,7 @@ func TestPlainTextIsSetOnlyOnTheListedCommands(t *testing.T) {
 // above reads holds more than 150 commands, so an empty one cannot pass.
 func TestPlainTextListCoversTheWholeRegistry(t *testing.T) {
 	t.Parallel()
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	assert.Greater(t, len(wr.reg.Commands()), 150)
 }
@@ -138,7 +138,7 @@ func markedResult(d runtime.Descriptor) runtime.Result {
 // format, or with those gates unset, is not seen either.
 func TestOnlyTheListedCommandsPrintAMarkedCommandPlain(t *testing.T) {
 	t.Parallel()
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	commands := wr.reg.Commands()
 	require.Greater(t, len(commands), 150)

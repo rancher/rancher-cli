@@ -423,19 +423,6 @@ func TestIsDefaultDir(t *testing.T) {
 	})
 }
 
-func TestReadOnlyOverrideStash(t *testing.T) {
-	t.Cleanup(func() { SetReadOnlyOverride(false, nil) })
-
-	active, sources := ReadOnlyOverride()
-	assert.False(t, active, "default stash state is inactive")
-	assert.Empty(t, sources)
-
-	SetReadOnlyOverride(true, []string{"config readOnly", "--read-only"})
-	active, sources = ReadOnlyOverride()
-	assert.True(t, active)
-	assert.Equal(t, []string{"config readOnly", "--read-only"}, sources)
-}
-
 // effectiveTestConfig is a one-server config with the current-server pointer set.
 func effectiveTestConfig(name, url string) *Config {
 	return &Config{

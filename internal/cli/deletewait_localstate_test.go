@@ -222,7 +222,7 @@ func runLocalStateDelete(t *testing.T, srv *lsServer, bearer, command string, in
 	require.NoError(t, cfg.Write())
 	before := lsTree(t, dir)
 
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	var e *entry
 	for _, candidate := range buildEntries() {

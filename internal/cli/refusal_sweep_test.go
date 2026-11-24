@@ -284,7 +284,7 @@ func TestEveryNetworkCommandReportsARefusal(t *testing.T) {
 		manifest := filepath.Join(wd, "m.yaml")
 		require.NoError(t, os.WriteFile(manifest, []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: x\n  namespace: default\n"), 0o600))
 
-		wr, err := buildWiredRegistry("v-test", config.ReadOnlyOverride)
+		wr, err := buildWiredRegistry("v-test")
 		require.NoError(t, err)
 		m := wr.reg.Schema("v-test", config.MinRancherVersion)
 		names := map[string]bool{}

@@ -194,7 +194,7 @@ var entryArgumentCommands = []string{
 // or takes an entry as an argument is a row or has no server access, and
 // every row names a registered command.
 func TestTheServerMapCoversItsClass(t *testing.T) {
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	var ds []runtime.Descriptor
 	for _, c := range wr.reg.Commands() {

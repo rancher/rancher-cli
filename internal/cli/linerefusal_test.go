@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
-	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -19,7 +18,7 @@ func TestEveryLeafCarriesItsDescriptor(t *testing.T) {
 	t.Parallel()
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
-	wired, err := buildWiredRegistry("v-test", config.ReadOnlyOverride)
+	wired, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	registered := len(wired.fixed)
 	for _, leaves := range wired.groups {

@@ -430,7 +430,7 @@ func TestExecPluginRunsNeverUpload(t *testing.T) {
 // cannot exclude nothing.
 func TestExperimentNoticeExclusionsNameRegisteredCommands(t *testing.T) {
 	t.Parallel()
-	wr, err := buildWiredRegistry("v-test", config.ReadOnlyOverride)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	registered := map[string]bool{}
 	for _, c := range wr.reg.Commands() {
@@ -530,7 +530,7 @@ func TestExperimentWarningReachesEveryCommand(t *testing.T) {
 	t.Setenv("VISUAL", "rancher-test-no-such-editor")
 	setExperiment(t, "telemetryupload=https://h.example,bogus", true)
 	line := warningPrefix + "unknown experiment bogus ignored"
-	wr, err := buildWiredRegistry("dev", config.ReadOnlyOverride)
+	wr, err := buildWiredRegistry("dev")
 	require.NoError(t, err)
 	var names []string
 	for _, c := range wr.reg.Commands() {

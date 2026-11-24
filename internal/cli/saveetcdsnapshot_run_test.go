@@ -263,7 +263,7 @@ func TestUpgradeRefusalHintIsACommandOfTheSchema(t *testing.T) {
 	for i := range words {
 		words[i] = strings.Trim(words[i], "'")
 	}
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	var command runtime.Command
 	for _, c := range wr.reg.Commands() {

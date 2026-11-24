@@ -549,7 +549,7 @@ func TestGetColumnCountAllowlistHasNoStaleEntry(t *testing.T) {
 // hides a path with a wildcard segment runs with lists of one item and of
 // two.
 func TestGetOutputHidesWhatThePreviewHides(t *testing.T) {
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	entries := map[string]entry{}
 	for _, e := range buildEntries() {

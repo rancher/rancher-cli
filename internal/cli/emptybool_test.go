@@ -68,7 +68,7 @@ func TestEveryLeafRefusesAnEmptyBoolValue(t *testing.T) {
 	restoreRawArgv(t)
 	rec := extraArgsEnv(t)
 	dirs := emptyDirs(t)
-	wr, err := buildWiredRegistry("v-test", config.ReadOnlyOverride)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	m := wr.reg.Schema("v-test", config.MinRancherVersion)
 	byName := map[string]runtime.SchemaCommand{}

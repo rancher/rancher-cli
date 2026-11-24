@@ -319,7 +319,7 @@ func TestSchemaTOCMarksEveryPrimeCommand(t *testing.T) {
 // leaf underneath it does - the manifest is the source of truth, so this
 // walks it rather than hardcoding a full command list.
 func TestBuildRootFlagsPrimeCommandsInMetadata(t *testing.T) {
-	wr, err := buildWiredRegistry("golden", config.ReadOnlyOverride)
+	wr, err := buildWiredRegistry("golden")
 	require.NoError(t, err)
 	manifest := wr.reg.Schema("golden", config.MinRancherVersion)
 	primeByName := map[string]bool{}
@@ -369,7 +369,7 @@ func TestBuildRootFlagsPrimeCommandsInMetadata(t *testing.T) {
 // walks the real manifest rather than a curated list, so a future command
 // or group is covered automatically.
 func TestPrimeMarkerConformance(t *testing.T) {
-	wr, err := buildWiredRegistry("golden", config.ReadOnlyOverride)
+	wr, err := buildWiredRegistry("golden")
 	require.NoError(t, err)
 	manifest := wr.reg.Schema("golden", config.MinRancherVersion)
 	primeByName := map[string]bool{}
@@ -464,7 +464,7 @@ func runSchemaText(t *testing.T) string {
 // first occurrence on a row, so a Usage that carried its own copy would
 // render two tokens and color the wrong one. The manifest is the source.
 func TestNoUsageCarriesPrimeMarker(t *testing.T) {
-	wr, err := buildWiredRegistry("golden", config.ReadOnlyOverride)
+	wr, err := buildWiredRegistry("golden")
 	require.NoError(t, err)
 	for _, c := range wr.reg.Schema("golden", config.MinRancherVersion).Commands {
 		assert.NotContains(t, c.Usage, runtime.PrimeMarker, "%s: Usage must not carry the marker literal", c.Name)
@@ -822,7 +822,7 @@ func TestBuildWiredRegistryFailsThroughValidateWiring(t *testing.T) {
 	t.Cleanup(func() { flagSources = orig })
 	flagSources = map[string]completion.Source{"role": complete.RoleSource()}
 
-	_, err := buildWiredRegistry("v-test", nil)
+	_, err := buildWiredRegistry("v-test")
 	require.EqualError(t, err, "internal error: live completion setup: --role has a live completion source but is not a shared completion flag")
 }
 

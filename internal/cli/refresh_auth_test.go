@@ -482,7 +482,7 @@ func TestTheFirstLoginDecisionSaysYesForTheThreeCommands(t *testing.T) {
 	const server = "https://rancher.example.com"
 	withServer := &config.Config{CurrentServer: "prod", Servers: map[string]config.Server{"prod": {URL: server}}}
 	setStoredConfigForTest(t, withServer, dir)
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	root := newRoot(t)
 	fresh := recordingState{dir: dir, on: true}

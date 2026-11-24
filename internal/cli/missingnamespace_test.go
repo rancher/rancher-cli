@@ -439,7 +439,7 @@ func (h *missingHarness) run(t *testing.T, argv []string) (code string, requests
 // and the captured command line.
 func TestEveryNamespaceCommandHasAMissingNamespaceRow(t *testing.T) {
 	rows := missingRows()
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	declaring := map[string]bool{}
 	for _, c := range wr.reg.Commands() {

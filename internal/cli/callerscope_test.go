@@ -481,7 +481,7 @@ func (r callerRun) reached(target callerTarget, id string) bool {
 // target.
 func callerRows(t *testing.T) map[string]callerRow {
 	t.Helper()
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	rows := map[string]callerRow{}
 	taking := 0

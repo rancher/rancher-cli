@@ -42,7 +42,7 @@ func TestTelemetryExcludedHasExactlyTheSevenCommands(t *testing.T) {
 // registered command is to record exactly when its name is not excluded,
 // and that the descriptor it returns is the command's.
 func TestEveryRegisteredCommandRecordsOrIsExcluded(t *testing.T) {
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	root := newRoot(t)
 	on := recordingState{on: true, dirExisted: true}
@@ -149,7 +149,7 @@ func TestRecordedRunsEndToEnd(t *testing.T) {
 // command.
 func commandWords(t *testing.T, args []string) int {
 	t.Helper()
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	best := 0
 	for _, c := range wr.reg.Commands() {

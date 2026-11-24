@@ -1218,7 +1218,7 @@ func TestEveryRowNamesAFlagOrAnEnvironmentVariable(t *testing.T) {
 // other command.
 func TestSecretInputIsSetOnEveryCommandWithARowAndOnlyThere(t *testing.T) {
 	t.Parallel()
-	wr, err := buildWiredRegistry("v-test", config.ReadOnlyOverride)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	var descriptors []runtime.Descriptor
 	for _, c := range wr.reg.Commands() {
@@ -1585,7 +1585,7 @@ func TestAnUnknownFlagBeforeTheCommandNameIsNamedByTheCommand(t *testing.T) {
 // SecretInput, in registry order.
 func secretCommands(t *testing.T) []runtime.Descriptor {
 	t.Helper()
-	wr, err := buildWiredRegistry("v-test", config.ReadOnlyOverride)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	var out []runtime.Descriptor
 	for _, c := range wr.reg.Commands() {

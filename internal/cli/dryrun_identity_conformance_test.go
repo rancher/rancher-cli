@@ -127,7 +127,7 @@ func classifyDryRunDisplayIdentity(name string) (generic, bespoke bool) {
 // surface to.
 func TestDryRunDisplayIdentityClosedWorldConformance(t *testing.T) {
 	t.Parallel()
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 
 	seen := map[string]bool{}
@@ -176,7 +176,7 @@ func TestDryRunDisplayIdentityClosedWorldConformance(t *testing.T) {
 // must not run in parallel with tests that read the package-level
 // inventories.
 func TestDryRunDisplayIdentityClosedWorldConformanceCatchesAnUnclassifiedCommand(t *testing.T) {
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 
 	original := dryRunBespokeEffectCommands
@@ -206,7 +206,7 @@ func TestDryRunDisplayIdentityClosedWorldConformanceCatchesAnUnclassifiedCommand
 // against the real registry. This must not run in parallel with tests that
 // read the package-level inventories.
 func TestDryRunDisplayIdentityClosedWorldConformanceCatchesAStaleEntry(t *testing.T) {
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 
 	original := dryRunBespokeEffectCommands

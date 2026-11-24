@@ -144,7 +144,7 @@ var nodeCompletionSites = map[string]nodeCompletionSite{
 func TestEveryValueOfANodeCommandHasACompletion(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Chdir(t.TempDir())
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 
 	declared := map[string]bool{}

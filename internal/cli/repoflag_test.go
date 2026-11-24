@@ -93,7 +93,7 @@ func repoFlagFailures(cmds []runtime.Command, allow map[string]string, line func
 // ClusterRepo name as VALIDATION before any request.
 func TestEveryRepoFlagRefusesANameThatIsNotAClusterRepo(t *testing.T) {
 	h := newContractHarness(t)
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	driven, failures := repoFlagFailures(wr.reg.Commands(), repoFlagAllowlist,
 		func(d runtime.Descriptor) []string { return h.contractArgs(d, true) },
@@ -108,7 +108,7 @@ func TestEveryRepoFlagRefusesANameThatIsNotAClusterRepo(t *testing.T) {
 // refusal, unchanged and before any request.
 func TestRepoFlagTypedEmptyKeepsTheEmptyValueMessage(t *testing.T) {
 	h := newContractHarness(t)
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	seen := 0
 	for _, c := range wr.reg.Commands() {

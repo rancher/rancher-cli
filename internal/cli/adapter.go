@@ -115,7 +115,7 @@ func buildIO(c *Command, in *Input) runtime.IO {
 	if fp, ok := reader.(*os.File); ok {
 		isTTY = term.IsTerminal(int(fp.Fd()))
 	}
-	readOnly, readOnlySources := config.ReadOnlyOverride()
+	readOnly, readOnlySources := in.readOnlyState()
 	return runtime.IO{
 		Out:             r.Writer,
 		Err:             r.ErrWriter,

@@ -28,7 +28,7 @@ var inspectClusterValueSites = map[string]appCompletionSite{
 func TestEveryValueFlagOfInspectClusterHasACompletion(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Chdir(t.TempDir())
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 
 	var declared []string

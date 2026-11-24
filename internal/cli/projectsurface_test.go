@@ -59,7 +59,7 @@ func TestProjectFlagIsShownWhereTaken(t *testing.T) {
 	t.Setenv(config.EnvConfigDir, t.TempDir())
 	t.Setenv(config.EnvCredentialStore, "file")
 	t.Cleanup(func() { CaptureArgv(nil) })
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	schema := map[string]map[string]runtime.ArgSpec{}
 	for _, c := range wr.reg.Schema("v-test", "").Commands {

@@ -15,7 +15,7 @@ import (
 // golden tests drive root.Run via --all; this helper feeds the
 // manifest-invariant tests.
 func buildManifest(version string) (runtime.Manifest, error) {
-	wr, err := buildWiredRegistry(version, nil)
+	wr, err := buildWiredRegistry(version)
 	if err != nil {
 		return runtime.Manifest{}, err
 	}

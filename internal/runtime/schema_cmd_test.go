@@ -104,7 +104,7 @@ func TestSchemaFilter(t *testing.T) {
 	reg := NewRegistry(stubResolver{})
 	reg.Register(fakeRead{d: Descriptor{Name: "get pod", Aliases: []string{"pods"}, CommandType: ReadOnly}})
 	reg.Register(fakeRead{d: Descriptor{Name: "auth login", CommandType: Local}})
-	cmd := NewSchemaCommand(reg, "test", "2.14", nil)
+	cmd := NewSchemaCommand(reg, "test", "2.14")
 
 	t.Run("no args returns the full manifest", func(t *testing.T) {
 		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{}, nil)
@@ -169,7 +169,7 @@ func cardRegistry() *Registry {
 // Data keeps the filtered manifest for the structured formats.
 func TestSchemaSelectionSetsCardText(t *testing.T) {
 	t.Parallel()
-	cmd := NewSchemaCommand(cardRegistry(), "test", "2.14", nil)
+	cmd := NewSchemaCommand(cardRegistry(), "test", "2.14")
 
 	t.Run("readonly command card", func(t *testing.T) {
 		t.Parallel()
@@ -206,7 +206,7 @@ func TestSchemaSelectionSetsCardText(t *testing.T) {
 // wrapper array, no groups (card view is flattened - not a manifest slice).
 func TestSchemaSelectionCardShape(t *testing.T) {
 	t.Parallel()
-	cmd := NewSchemaCommand(cardRegistry(), "test", "2.14", nil)
+	cmd := NewSchemaCommand(cardRegistry(), "test", "2.14")
 	res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"get", "pod"}}, nil)
 	require.NoError(t, err)
 	got := viewCard(t, res)
@@ -316,7 +316,7 @@ func kindRegistry() *Registry {
 // (with the kind-view footnote); --kind forces the kind interpretation.
 func TestSchemaSelectionCommandWinsCollision(t *testing.T) {
 	t.Parallel()
-	cmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
+	cmd := NewSchemaCommand(kindRegistry(), "test", "2.14")
 
 	t.Run("command match wins the bare positional", func(t *testing.T) {
 		t.Parallel()
@@ -364,7 +364,7 @@ func TestSchemaSelectionCommandWinsCollision(t *testing.T) {
 // states are asserted so the fixture cannot drift silently.
 func TestSchemaKindCardVerbTable(t *testing.T) {
 	t.Parallel()
-	cmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
+	cmd := NewSchemaCommand(kindRegistry(), "test", "2.14")
 	sel := func(t *testing.T, name string) ([]string, SchemaKind) {
 		t.Helper()
 		res, err := cmd.(ReadCommand).Execute(t.Context(),
@@ -419,7 +419,7 @@ func TestSchemaKindCardVerbTable(t *testing.T) {
 // level, no commands or groups wrapper (the per-verb detail is one more call away).
 func TestSchemaKindStructured(t *testing.T) {
 	t.Parallel()
-	cmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
+	cmd := NewSchemaCommand(kindRegistry(), "test", "2.14")
 	var out, errBuf bytes.Buffer
 	_, ce := Run(t.Context(), cmd, tin{a: []string{"clusterregistrationtoken"}},
 		IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
@@ -449,7 +449,7 @@ func TestSchemaKindStructured(t *testing.T) {
 // VALIDATION.
 func TestSchemaKindFlagRequiresSelector(t *testing.T) {
 	t.Parallel()
-	cmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
+	cmd := NewSchemaCommand(kindRegistry(), "test", "2.14")
 	_, err := cmd.(ReadCommand).Execute(t.Context(),
 		tin{flags: map[string]bool{"kind": true}}, nil)
 	var ce *clierr.Error
@@ -463,7 +463,7 @@ func TestSchemaKindFlagRequiresSelector(t *testing.T) {
 // and emits the kind-filtered envelope.
 func TestSchemaKindFlagWithGlobalFlags(t *testing.T) {
 	t.Parallel()
-	cmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
+	cmd := NewSchemaCommand(kindRegistry(), "test", "2.14")
 	var out, errBuf bytes.Buffer
 	_, ce := Run(t.Context(), cmd,
 		tin{a: []string{"kubeconfig"}, flags: map[string]bool{"kind": true}},
@@ -488,7 +488,7 @@ func TestSchemaKindFlagWithGlobalFlags(t *testing.T) {
 // substring over command names, full alias forms, and kind names/aliases/keys.
 func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 	t.Parallel()
-	cmd := NewSchemaCommand(cardRegistry(), "test", "2.14", nil)
+	cmd := NewSchemaCommand(cardRegistry(), "test", "2.14")
 
 	t.Run("alias substring matches, case-insensitive", func(t *testing.T) {
 		t.Parallel()
@@ -527,7 +527,7 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 
 	t.Run("kind names join the candidate set", func(t *testing.T) {
 		t.Parallel()
-		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
+		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14")
 		_, err := kcmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"widg"}}, nil)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
@@ -541,7 +541,7 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 
 	t.Run("a command/kind collision yields one candidate", func(t *testing.T) {
 		t.Parallel()
-		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
+		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14")
 		_, err := kcmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"kubeconf"}}, nil)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
@@ -554,7 +554,7 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 
 	t.Run("--kind restricts candidates to kinds", func(t *testing.T) {
 		t.Parallel()
-		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
+		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14")
 		_, err := kcmd.(ReadCommand).Execute(t.Context(),
 			tin{a: []string{"kubeconf"}, flags: map[string]bool{"kind": true}}, nil)
 		var ce *clierr.Error
@@ -570,7 +570,7 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 
 	t.Run("message without --kind covers both commands and kinds", func(t *testing.T) {
 		t.Parallel()
-		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
+		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14")
 		_, err := kcmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"frobnicate"}}, nil)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
@@ -593,7 +593,7 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 		// `schema get pdo` is structurally a
 		// command typo - kinds are single tokens, always - so the noun and
 		// hint collapse to the command tier.
-		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
+		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14")
 		_, err := kcmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"get", "pdo"}}, nil)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
@@ -604,7 +604,7 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 
 	t.Run("dual message on kind-shaped miss without --kind covers commands and kinds", func(t *testing.T) {
 		t.Parallel()
-		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
+		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14")
 		_, err := kcmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"pdo"}}, nil)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
@@ -615,7 +615,7 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 
 	t.Run("hint with --kind points to the kinds array command", func(t *testing.T) {
 		t.Parallel()
-		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
+		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14")
 		_, err := kcmd.(ReadCommand).Execute(t.Context(),
 			tin{a: []string{"frobnicate"}, flags: map[string]bool{"kind": true}}, nil)
 		var ce *clierr.Error
@@ -627,7 +627,7 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 
 	t.Run("hint with --kind and nearest matches still points to the kinds array command", func(t *testing.T) {
 		t.Parallel()
-		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
+		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14")
 		_, err := kcmd.(ReadCommand).Execute(t.Context(),
 			tin{a: []string{"kubeconf"}, flags: map[string]bool{"kind": true}}, nil)
 		var ce *clierr.Error
@@ -645,7 +645,7 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 	// must stay in the dual tier, not the command tier.
 	t.Run("padded single-token selector gets dual guidance not command-only guidance", func(t *testing.T) {
 		t.Parallel()
-		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
+		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14")
 		_, err := kcmd.(ReadCommand).Execute(t.Context(), tin{a: []string{" pod"}}, nil)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
@@ -664,7 +664,7 @@ func TestSchemaSelectionFormats(t *testing.T) {
 	t.Parallel()
 	newRun := func(t *testing.T, format string) (string, string) {
 		t.Helper()
-		cmd := NewSchemaCommand(cardRegistry(), "test", "2.14", nil)
+		cmd := NewSchemaCommand(cardRegistry(), "test", "2.14")
 		var out, errBuf bytes.Buffer
 		_, ce := Run(t.Context(), cmd, tin{a: []string{"get", "pod"}},
 			IO{Out: &out, Err: &errBuf, Format: format}, safety.Binding{})
@@ -719,15 +719,16 @@ func TestSchemaSelectionFormats(t *testing.T) {
 	})
 }
 
-func TestSchemaReportsReadOnlyFromResolver(t *testing.T) {
+// TestSchemaReportsReadOnlyFromContext asserts that the schema command
+// reports the read-only state the context of Execute carries.
+func TestSchemaReportsReadOnlyFromContext(t *testing.T) {
 	t.Parallel()
 	reg := NewRegistry(stubResolver{})
 	reg.Register(fakeRead{d: Descriptor{Name: "get pod", CommandType: ReadOnly}})
-	cmd := NewSchemaCommand(reg, "test", "2.14", func() (bool, []string) {
-		return true, []string{"config readOnly"}
-	})
+	cmd := NewSchemaCommand(reg, "test", "2.14")
 
-	res, err := cmd.(ReadCommand).Execute(t.Context(), tin{}, nil)
+	ctx := withReadOnly(t.Context(), true, []string{"config readOnly"})
+	res, err := cmd.(ReadCommand).Execute(ctx, tin{}, nil)
 	require.NoError(t, err)
 	toc := viewTOC(t, res)
 	assert.Equal(t, true, toc["readOnly"])
@@ -735,11 +736,14 @@ func TestSchemaReportsReadOnlyFromResolver(t *testing.T) {
 	assert.Equal(t, "2.14", toc["minRancherVersion"])
 }
 
-func TestSchemaReadOnlyFalseWhenResolverNil(t *testing.T) {
+// TestSchemaReadOnlyFalseWithoutContextState asserts that the schema
+// command reports read-only mode off, with no readOnlySources, when the
+// context of Execute carries no read-only state.
+func TestSchemaReadOnlyFalseWithoutContextState(t *testing.T) {
 	t.Parallel()
 	reg := NewRegistry(stubResolver{})
 	reg.Register(fakeRead{d: Descriptor{Name: "get pod", CommandType: ReadOnly}})
-	cmd := NewSchemaCommand(reg, "test", "2.14", nil)
+	cmd := NewSchemaCommand(reg, "test", "2.14")
 
 	res, err := cmd.(ReadCommand).Execute(t.Context(), tin{}, nil)
 	require.NoError(t, err)
@@ -748,13 +752,48 @@ func TestSchemaReadOnlyFalseWhenResolverNil(t *testing.T) {
 	assert.NotContains(t, toc, "readOnlySources")
 }
 
+// TestRunGivesTheSchemaCommandTheReadOnlyStateOfItsStreams asserts that the
+// pipeline hands a read command the read-only state of the IO it runs with:
+// the schema command reports it, and reports read-only mode off for an IO
+// that is not read-only.
+func TestRunGivesTheSchemaCommandTheReadOnlyStateOfItsStreams(t *testing.T) {
+	t.Parallel()
+	cmd := NewSchemaCommand(kindRegistry(), "test", "2.14")
+	for _, tc := range []struct {
+		name    string
+		streams IO
+	}{
+		{"read-only", IO{ReadOnly: true, ReadOnlySources: []string{"RANCHER_CLI_READONLY", "--read-only"}}},
+		{"not read-only", IO{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var out, errBuf bytes.Buffer
+			streams := tc.streams
+			streams.Out, streams.Err, streams.Format = &out, &errBuf, "json"
+			_, ce := Run(t.Context(), cmd, tin{}, streams, safety.Binding{})
+			require.Nil(t, ce, "stderr: %s", errBuf.String())
+			var env struct {
+				Data map[string]any `json:"data"`
+			}
+			require.NoError(t, json.Unmarshal(out.Bytes(), &env))
+			assert.Equal(t, tc.streams.ReadOnly, env.Data["readOnly"])
+			if !tc.streams.ReadOnly {
+				assert.NotContains(t, env.Data, "readOnlySources")
+				return
+			}
+			assert.Equal(t, []any{"RANCHER_CLI_READONLY", "--read-only"}, env.Data["readOnlySources"])
+		})
+	}
+}
+
 // TestSchemaFilters covers the filters: --verb, --destructive, --contract, and
 // --mutating filter the manifest's commands (composing with each other and
 // with --search), prune Groups to the retained set, and render the
 // filtered TOC as Text.
 func TestSchemaFilters(t *testing.T) {
 	t.Parallel()
-	cmd := NewSchemaCommand(cardRegistry(), "test", "2.14", nil)
+	cmd := NewSchemaCommand(cardRegistry(), "test", "2.14")
 	run := func(t *testing.T, in tin) (map[string]any, string) {
 		t.Helper()
 		res, err := cmd.(ReadCommand).Execute(t.Context(), in, nil)
@@ -820,7 +859,7 @@ func TestSchemaFilters(t *testing.T) {
 // exit 0.
 func TestSchemaSearch(t *testing.T) {
 	t.Parallel()
-	cmd := NewSchemaCommand(cardRegistry(), "test", "2.14", nil)
+	cmd := NewSchemaCommand(cardRegistry(), "test", "2.14")
 
 	t.Run("desc match is case-insensitive and shows the fragment", func(t *testing.T) {
 		t.Parallel()
@@ -871,7 +910,7 @@ func TestSchemaSearch(t *testing.T) {
 // line.
 func TestSchemaFiltersDescribeSearchText(t *testing.T) {
 	t.Parallel()
-	cmd := NewSchemaCommand(cardRegistry(), "test", "2.14", nil)
+	cmd := NewSchemaCommand(cardRegistry(), "test", "2.14")
 	cases := []struct {
 		name  string
 		input string
@@ -927,7 +966,7 @@ func TestSchemaSelectorFilterConflict(t *testing.T) {
 
 	t.Run("command selector plus --verb", func(t *testing.T) {
 		t.Parallel()
-		cmd := NewSchemaCommand(cardRegistry(), "test", "2.14", nil)
+		cmd := NewSchemaCommand(cardRegistry(), "test", "2.14")
 		_, err := cmd.(ReadCommand).Execute(t.Context(),
 			tin{a: []string{"get", "pod"}, strs: map[string]string{"verb": "get"}}, nil)
 		var ce *clierr.Error
@@ -938,7 +977,7 @@ func TestSchemaSelectorFilterConflict(t *testing.T) {
 
 	t.Run("kind selector plus --search", func(t *testing.T) {
 		t.Parallel()
-		cmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
+		cmd := NewSchemaCommand(kindRegistry(), "test", "2.14")
 		_, err := cmd.(ReadCommand).Execute(t.Context(),
 			tin{a: []string{"crt"}, strs: map[string]string{"search": "pod"}}, nil)
 		var ce *clierr.Error
@@ -949,7 +988,7 @@ func TestSchemaSelectorFilterConflict(t *testing.T) {
 
 	t.Run("--kind plus a filter", func(t *testing.T) {
 		t.Parallel()
-		cmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
+		cmd := NewSchemaCommand(kindRegistry(), "test", "2.14")
 		_, err := cmd.(ReadCommand).Execute(t.Context(),
 			tin{flags: map[string]bool{"kind": true}, strs: map[string]string{"contract": "internal"}}, nil)
 		var ce *clierr.Error
@@ -960,7 +999,7 @@ func TestSchemaSelectorFilterConflict(t *testing.T) {
 
 	t.Run("every filter flag conflicts with a selector", func(t *testing.T) {
 		t.Parallel()
-		cmd := NewSchemaCommand(cardRegistry(), "test", "2.14", nil)
+		cmd := NewSchemaCommand(cardRegistry(), "test", "2.14")
 		cases := []tin{
 			{a: []string{"get", "pod"}, strs: map[string]string{"verb": "get"}},
 			{a: []string{"get", "pod"}, flags: map[string]bool{"destructive": true}},
@@ -983,7 +1022,7 @@ func TestSchemaSelectorFilterConflict(t *testing.T) {
 // Groups.
 func TestSchemaGroupsCommandsConsistency(t *testing.T) {
 	t.Parallel()
-	cmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
+	cmd := NewSchemaCommand(kindRegistry(), "test", "2.14")
 	shapes := []struct {
 		name    string
 		in      tin
@@ -1135,7 +1174,7 @@ func TestSchemaPositionalCompletionCandidatesResolve(t *testing.T) {
 	for name, reg := range regs {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			cmd := NewSchemaCommand(reg, "test", "2.14", nil)
+			cmd := NewSchemaCommand(reg, "test", "2.14")
 			sc, ok := cmd.(ShellCompleter)
 			require.True(t, ok, "schema must implement ShellCompleter")
 			cands := sc.CompleteArgs(t.Context(), nil, nil)
@@ -1165,7 +1204,7 @@ func TestSchemaPositionalCompletionCandidatesResolve(t *testing.T) {
 func TestSchemaAllReturnsFullManifest(t *testing.T) {
 	t.Parallel()
 	reg := kindRegistry()
-	cmd := NewSchemaCommand(reg, "v-test", "2.14", nil)
+	cmd := NewSchemaCommand(reg, "v-test", "2.14")
 	res, err := cmd.(ReadCommand).Execute(t.Context(), tin{flags: map[string]bool{"all": true}}, nil)
 	require.NoError(t, err)
 	got, err := json.Marshal(res.Data)
@@ -1185,7 +1224,7 @@ func TestSchemaAllReturnsFullManifest(t *testing.T) {
 func TestSchemaAllConflicts(t *testing.T) {
 	t.Parallel()
 	reg := kindRegistry()
-	cmd := NewSchemaCommand(reg, "v-test", "2.14", nil)
+	cmd := NewSchemaCommand(reg, "v-test", "2.14")
 	const lead = "--all prints the unfiltered manifest; "
 	cases := []struct {
 		in   tin
@@ -1215,7 +1254,7 @@ func TestSchemaResultStyledTextWiring(t *testing.T) {
 
 	t.Run("bare TOC", func(t *testing.T) {
 		t.Parallel()
-		cmd := NewSchemaCommand(cardRegistry(), "test", "2.14", nil)
+		cmd := NewSchemaCommand(cardRegistry(), "test", "2.14")
 		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{}, nil)
 		require.NoError(t, err)
 		require.NotNil(t, res.StyledText)
@@ -1225,7 +1264,7 @@ func TestSchemaResultStyledTextWiring(t *testing.T) {
 
 	t.Run("all manifest", func(t *testing.T) {
 		t.Parallel()
-		cmd := NewSchemaCommand(cardRegistry(), "test", "2.14", nil)
+		cmd := NewSchemaCommand(cardRegistry(), "test", "2.14")
 		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{flags: map[string]bool{"all": true}}, nil)
 		require.NoError(t, err)
 		require.NotNil(t, res.StyledText)
@@ -1234,7 +1273,7 @@ func TestSchemaResultStyledTextWiring(t *testing.T) {
 
 	t.Run("filtered TOC", func(t *testing.T) {
 		t.Parallel()
-		cmd := NewSchemaCommand(cardRegistry(), "test", "2.14", nil)
+		cmd := NewSchemaCommand(cardRegistry(), "test", "2.14")
 		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{strs: map[string]string{"verb": "get"}}, nil)
 		require.NoError(t, err)
 		require.NotNil(t, res.StyledText)
@@ -1243,7 +1282,7 @@ func TestSchemaResultStyledTextWiring(t *testing.T) {
 
 	t.Run("command card", func(t *testing.T) {
 		t.Parallel()
-		cmd := NewSchemaCommand(cardRegistry(), "test", "2.14", nil)
+		cmd := NewSchemaCommand(cardRegistry(), "test", "2.14")
 		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"get", "pod"}}, nil)
 		require.NoError(t, err)
 		require.NotNil(t, res.StyledText)
@@ -1252,7 +1291,7 @@ func TestSchemaResultStyledTextWiring(t *testing.T) {
 
 	t.Run("command card carries its kind-collision footnote through styling", func(t *testing.T) {
 		t.Parallel()
-		cmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
+		cmd := NewSchemaCommand(kindRegistry(), "test", "2.14")
 		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"kubeconfig"}}, nil)
 		require.NoError(t, err)
 		require.NotNil(t, res.StyledText)
@@ -1261,7 +1300,7 @@ func TestSchemaResultStyledTextWiring(t *testing.T) {
 
 	t.Run("group card", func(t *testing.T) {
 		t.Parallel()
-		cmd := NewSchemaCommand(groupCardRegistry(), "test", "2.14", nil)
+		cmd := NewSchemaCommand(groupCardRegistry(), "test", "2.14")
 		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"create"}}, nil)
 		require.NoError(t, err)
 		require.NotNil(t, res.StyledText)
@@ -1270,7 +1309,7 @@ func TestSchemaResultStyledTextWiring(t *testing.T) {
 
 	t.Run("kind card carries no StyledText", func(t *testing.T) {
 		t.Parallel()
-		cmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
+		cmd := NewSchemaCommand(kindRegistry(), "test", "2.14")
 		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"crt"}}, nil)
 		require.NoError(t, err)
 		assert.Nil(t, res.StyledText)
@@ -1294,7 +1333,7 @@ func TestSchemaSecondArgumentCompletionCandidatesResolve(t *testing.T) {
 	for name, reg := range regs {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			cmd := NewSchemaCommand(reg, "test", "2.14", nil)
+			cmd := NewSchemaCommand(reg, "test", "2.14")
 			sc := cmd.(ShellCompleter)
 			first := map[string]bool{}
 			twoWord := map[string]bool{}
@@ -1336,7 +1375,7 @@ func TestSchemaSecondArgumentCompletionCandidatesResolve(t *testing.T) {
 // is deterministically sorted with no duplicates.
 func TestSchemaPositionalCompletionShape(t *testing.T) {
 	t.Parallel()
-	cmd := NewSchemaCommand(completionRegistry(), "test", "2.14", nil)
+	cmd := NewSchemaCommand(completionRegistry(), "test", "2.14")
 	sc, ok := cmd.(ShellCompleter)
 	require.True(t, ok, "schema must implement ShellCompleter")
 	cands := sc.CompleteArgs(t.Context(), nil, nil)
@@ -1400,7 +1439,7 @@ func groupCardRegistry() *Registry {
 // {name, desc, commands:[{name,usage}], readOnly, readOnlySources}.
 func TestSchemaGroupCardResolution(t *testing.T) {
 	t.Parallel()
-	cmd := NewSchemaCommand(groupCardRegistry(), "test", "2.14", nil)
+	cmd := NewSchemaCommand(groupCardRegistry(), "test", "2.14")
 
 	t.Run("group name resolves to group card text", func(t *testing.T) {
 		t.Parallel()
@@ -1469,7 +1508,7 @@ func TestSchemaGroupResolutionPrecedence(t *testing.T) {
 			{Name: "auth", Desc: "Auth group", Commands: []string{"auth login"}},
 			{Name: "", Commands: []string{"auth"}},
 		})
-		cmd := NewSchemaCommand(reg, "test", "2.14", nil)
+		cmd := NewSchemaCommand(reg, "test", "2.14")
 		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"auth"}}, nil)
 		require.NoError(t, err)
 		_, isCard := res.Data.(cardView)
@@ -1490,7 +1529,7 @@ func TestSchemaGroupResolutionPrecedence(t *testing.T) {
 		reg.SetGroups([]SchemaGroup{
 			{Name: "create", Desc: "Create group", Commands: []string{"create project"}},
 		})
-		cmd := NewSchemaCommand(reg, "test", "2.14", nil)
+		cmd := NewSchemaCommand(reg, "test", "2.14")
 		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"create"}}, nil)
 		require.NoError(t, err)
 		gv, isGroup := res.Data.(groupView)
@@ -1510,7 +1549,7 @@ func TestSchemaGroupResolutionPrecedence(t *testing.T) {
 		reg.SetGroups([]SchemaGroup{
 			{Name: "create", Desc: "Create group", Commands: []string{"create project"}},
 		})
-		cmd := NewSchemaCommand(reg, "test", "2.14", nil)
+		cmd := NewSchemaCommand(reg, "test", "2.14")
 		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"create"}, flags: map[string]bool{"kind": true}}, nil)
 		require.NoError(t, err)
 		kv, isKind := res.Data.(kindView)
@@ -1528,7 +1567,7 @@ func TestSchemaGroupResolutionPrecedence(t *testing.T) {
 // TestSchemaSelectionCommandWinsCollision ("--kind flips the collision").
 func TestSchemaGroupKindFlagBlocksGroupResolution(t *testing.T) {
 	t.Parallel()
-	cmd := NewSchemaCommand(groupCardRegistry(), "test", "2.14", nil)
+	cmd := NewSchemaCommand(groupCardRegistry(), "test", "2.14")
 
 	t.Run("group-only selector with --kind → kind-not-found VALIDATION", func(t *testing.T) {
 		t.Parallel()
@@ -1556,7 +1595,7 @@ func TestSchemaGroupKindFlagBlocksGroupResolution(t *testing.T) {
 // groups from the candidate set (consistent with the group-tier guard).
 func TestSchemaUnknownSelectionSuggestsGroups(t *testing.T) {
 	t.Parallel()
-	cmd := NewSchemaCommand(groupCardRegistry(), "test", "2.14", nil)
+	cmd := NewSchemaCommand(groupCardRegistry(), "test", "2.14")
 
 	t.Run("partial group name appears in candidates", func(t *testing.T) {
 		t.Parallel()
@@ -1630,7 +1669,7 @@ func TestSchemaGroupCardCollapsesGeneratedCommands(t *testing.T) {
 
 	t.Run("text lists bespoke and collapses generated", func(t *testing.T) {
 		t.Parallel()
-		cmd := NewSchemaCommand(mixedGroupRegistry(), "test", "2.14", nil)
+		cmd := NewSchemaCommand(mixedGroupRegistry(), "test", "2.14")
 		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"get"}}, nil)
 		require.NoError(t, err)
 		assert.Contains(t, res.Text, "get cloud-credential", "bespoke command listed")
@@ -1643,7 +1682,7 @@ func TestSchemaGroupCardCollapsesGeneratedCommands(t *testing.T) {
 
 	t.Run("JSON has bespoke commands array + generated summary", func(t *testing.T) {
 		t.Parallel()
-		cmd := NewSchemaCommand(mixedGroupRegistry(), "test", "2.14", nil)
+		cmd := NewSchemaCommand(mixedGroupRegistry(), "test", "2.14")
 		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"get"}}, nil)
 		require.NoError(t, err)
 		gv := viewGroup(t, res)
@@ -1665,7 +1704,7 @@ func TestSchemaGroupCardCollapsesGeneratedCommands(t *testing.T) {
 
 	t.Run("all-bespoke group has no generated key in JSON", func(t *testing.T) {
 		t.Parallel()
-		cmd := NewSchemaCommand(groupCardRegistry(), "test", "2.14", nil)
+		cmd := NewSchemaCommand(groupCardRegistry(), "test", "2.14")
 		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"auth"}}, nil)
 		require.NoError(t, err)
 		gv := viewGroup(t, res)
@@ -1681,7 +1720,7 @@ func TestSchemaGroupCardCollapsesGeneratedCommands(t *testing.T) {
 
 	t.Run("size sanity: mixed get-group card stays small", func(t *testing.T) {
 		t.Parallel()
-		cmd := NewSchemaCommand(mixedGroupRegistry(), "test", "2.14", nil)
+		cmd := NewSchemaCommand(mixedGroupRegistry(), "test", "2.14")
 		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"get"}}, nil)
 		require.NoError(t, err)
 		lines := strings.Split(strings.TrimRight(res.Text, "\n"), "\n")
@@ -1695,7 +1734,7 @@ func TestSchemaGroupCardCollapsesGeneratedCommands(t *testing.T) {
 func TestSchemaGroupCompletionCandidates(t *testing.T) {
 	t.Parallel()
 	reg := groupCardRegistry()
-	cmd := NewSchemaCommand(reg, "test", "2.14", nil)
+	cmd := NewSchemaCommand(reg, "test", "2.14")
 	sc, ok := cmd.(ShellCompleter)
 	require.True(t, ok)
 

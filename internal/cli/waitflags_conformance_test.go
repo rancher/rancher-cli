@@ -124,7 +124,7 @@ func wantGetWaitCommands() []string {
 // new credential is readable, with a fixed limit.
 func TestOnlyGetDeleteAppAndNodeActionsDeclareTheWaitFlags(t *testing.T) {
 	t.Parallel()
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	cmds := wr.reg.Commands()
 

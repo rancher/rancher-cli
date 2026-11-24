@@ -14,7 +14,7 @@ import (
 // suggest a format the command would then reject or resolve ambiguously.
 func TestOutputCompletionRespectsOutputPolicy(t *testing.T) {
 	t.Parallel()
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 
 	site := CompletionSite{Kind: SiteFlagValue, FlagName: "output"}

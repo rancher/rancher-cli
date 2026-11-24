@@ -313,6 +313,19 @@ func (in *Input) Args() []string {
 	return slices.Clone(in.p.levels[in.level].args)
 }
 
+// setReadOnly stores the resolved read-only state on the run that in belongs
+// to. Every Input of the run reads it, at every command level.
+func (in *Input) setReadOnly(active bool, sources []string) {
+	in.p.readOnly, in.p.readOnlySources = active, sources
+}
+
+// readOnlyState returns the read-only state stored on the run that in
+// belongs to; when nothing stored one, read-only mode is off and there are no
+// sources.
+func (in *Input) readOnlyState() (bool, []string) {
+	return in.p.readOnly, in.p.readOnlySources
+}
+
 // exitCoder is an error that carries a process exit code.
 type exitCoder interface {
 	error

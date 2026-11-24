@@ -236,7 +236,7 @@ func runReadBeforeWriteRow(t *testing.T, reg *runtime.Registry, entries map[stri
 // listed in readsNotRunHere. Reads that happen only when the command runs
 // with --apply are not seen.
 func TestEveryCommandThatReadsBeforeItWritesNamesTheMissingVerb(t *testing.T) {
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	entries := map[string]entry{}
 	for _, e := range buildEntries() {
@@ -333,7 +333,7 @@ func (r steveRefusingRoot) GetJSON(ctx context.Context, path string) ([]byte, er
 // the hint rancher access clusters, and that no write is sent, not even a dry
 // run.
 func TestACommandThatReadsThroughSteveBeforeItWritesNamesTheRead(t *testing.T) {
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	entries := map[string]entry{}
 	for _, e := range buildEntries() {

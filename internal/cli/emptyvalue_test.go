@@ -51,7 +51,7 @@ func emptyValueMessage(f runtime.ArgSpec) string {
 func TestEmptyValueIsRefusedForEveryFlag(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Chdir(t.TempDir())
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	pairs := 0
 	for _, cmd := range wr.reg.Commands() {

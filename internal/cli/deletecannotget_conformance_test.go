@@ -120,7 +120,7 @@ func dwRequireUIDDeletes(t *testing.T, s *dwServer) {
 // and exits 0. A client that cannot send a uid precondition sends no delete.
 func TestEveryDeleteDeletesAnObjectTheCallerCannotGet(t *testing.T) {
 	t.Parallel()
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	seen := map[string]bool{}
 	for _, r := range dwRows(t) {

@@ -59,8 +59,7 @@ type outcome struct {
 // request, the check of the flags of a command and the text and format of an
 // error read the captured command line, which the caller captures first, as
 // a process does. A run sets the root's Reader, Writer and ErrWriter when
-// they are nil, reads the captured command line, which is process-wide, and
-// the root's Before writes the process-wide read-only setting.
+// they are nil and reads the captured command line, which is process-wide.
 func (c *Command) Run(ctx context.Context, args []string) error {
 	_, oc := runArgv(ctx, c, args, false)
 	if oc.err != nil {

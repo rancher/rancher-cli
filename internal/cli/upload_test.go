@@ -674,7 +674,7 @@ func urlRequestRows(t *testing.T) {
 // cannot exclude nothing.
 func TestUploadExcludedNamesRegisteredCommands(t *testing.T) {
 	t.Parallel()
-	wr, err := buildWiredRegistry("v-test", config.ReadOnlyOverride)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	registered := map[string]bool{}
 	for _, c := range wr.reg.Commands() {

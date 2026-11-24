@@ -672,7 +672,7 @@ func (run dwRun) requireCommittedError(t *testing.T, r dwRow, code string, exit 
 // read, and a refused read of the object ends with a warning.
 func TestEveryDeleteWaitsUntilTheObjectIsGone(t *testing.T) {
 	t.Parallel()
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	gets := map[string]entry{}
 	for _, e := range buildEntries() {

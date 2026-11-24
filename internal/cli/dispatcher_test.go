@@ -255,7 +255,7 @@ func TestEveryCommandKnowsItsRoot(t *testing.T) {
 	require.NoError(t, err)
 	assert.Greater(t, len(check(root)), 100)
 
-	wr, err := buildWiredRegistry("v-test", func() (bool, []string) { return false, nil })
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	first, second := wr.root("v-test"), wr.root("v-test")
 	inFirst, inSecond := check(first), check(second)

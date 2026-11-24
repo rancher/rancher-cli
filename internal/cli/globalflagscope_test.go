@@ -161,7 +161,7 @@ func TestEveryCommandAndGroupOffersOnlyTheGlobalFlagsItAccepts(t *testing.T) {
 		require.Contains(t, []string{"all", "mutating", "server", "declared"}, gf.AppliesTo, "%s: appliesTo", gf.Name)
 	}
 
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	var descriptors []runtime.Descriptor
 	var registered []string

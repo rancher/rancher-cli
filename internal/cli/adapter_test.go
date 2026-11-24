@@ -252,22 +252,40 @@ func TestResolveReadOnlyAllThreeCombineOrdered(t *testing.T) {
 	assert.Equal(t, []string{"config setting readOnly", "RANCHER_CLI_READONLY", "--read-only"}, sources)
 }
 
-func TestBuildIOReadsReadOnlyOverride(t *testing.T) {
-	t.Cleanup(func() { config.SetReadOnlyOverride(false, nil) })
-	config.SetReadOnlyOverride(true, []string{"RANCHER_CLI_READONLY"})
-
-	var got runtime.IO
-	cmd := link(&Command{
-		Name:       "x",
-		descriptor: &runtime.Descriptor{Name: "x"},
-		Action: func(_ context.Context, c *Command, in *Input) error {
-			got = buildIO(c, in)
+// TestBuildIOReadsTheReadOnlyStateOfItsRun asserts that buildIO reads the
+// read-only state a Before stored on its run, and that read-only mode is
+// off, with no sources, on a run where nothing stored one.
+func TestBuildIOReadsTheReadOnlyStateOfItsRun(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name    string
+		before  func(context.Context, *Command, *Input) error
+		want    bool
+		sources []string
+	}{
+		{"stored by a Before", func(_ context.Context, _ *Command, in *Input) error {
+			in.setReadOnly(true, []string{"RANCHER_CLI_READONLY"})
 			return nil
-		},
-	})
-	require.NoError(t, cmd.Run(t.Context(), []string{"x"}))
-	assert.True(t, got.ReadOnly)
-	assert.Equal(t, []string{"RANCHER_CLI_READONLY"}, got.ReadOnlySources)
+		}, true, []string{"RANCHER_CLI_READONLY"}},
+		{"nothing stored", nil, false, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var got runtime.IO
+			cmd := link(&Command{
+				Name:       "x",
+				descriptor: &runtime.Descriptor{Name: "x"},
+				Before:     tc.before,
+				Action: func(_ context.Context, c *Command, in *Input) error {
+					got = buildIO(c, in)
+					return nil
+				},
+			})
+			require.NoError(t, cmd.Run(t.Context(), []string{"x"}))
+			assert.Equal(t, tc.want, got.ReadOnly)
+			assert.Equal(t, tc.sources, got.ReadOnlySources)
+		})
+	}
 }
 
 // sliceEchoCmd captures what the adapted input delivered.

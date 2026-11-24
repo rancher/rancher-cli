@@ -925,10 +925,7 @@ func checkObjectChecked(rows []kinds.Kind, overrides map[string]kindOverride) er
 // buildWiredRegistry constructs and validates the command registry for the
 // full surface. It handles kind validation, resolver composition, entry wiring,
 // and the fixed schema/completion registrations.
-//
-// readOnly is wired into the schema command; pass config.ReadOnlyOverride for
-// the real CLI path and nil for callers that only need the manifest shape.
-func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wiredRegistry, error) {
+func buildWiredRegistry(version string) (wiredRegistry, error) {
 	if err := checkKindTable(kinds.Validate); err != nil {
 		return wiredRegistry{}, err
 	}
@@ -982,10 +979,9 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 	}
 
 	// schema is a fixed command backed by the registry (no dir/store, no
-	// binding). Its read-only resolver is config.ReadOnlyOverride itself -
-	// the process-wide stash root's Before hook populates below, using the
-	// SAME resolution buildIO reads for every other command.
-	schemaCmd := runtime.NewSchemaCommand(reg, version, config.MinRancherVersion, readOnly)
+	// binding). It reports the read-only state of the run it executes in,
+	// which the pipeline takes from what buildIO read for that run.
+	schemaCmd := runtime.NewSchemaCommand(reg, version, config.MinRancherVersion)
 	reg.Register(schemaCmd)
 
 	// completion is a fixed command backed by the registry (no dir/store,
@@ -1085,7 +1081,7 @@ func validateWiring(reg *runtime.Registry, leaves map[string]runtime.Descriptor,
 
 // BuildRoot builds the command tree. One tree runs any number of lines.
 func BuildRoot(version string) (*Command, error) {
-	wr, err := buildWiredRegistry(version, config.ReadOnlyOverride)
+	wr, err := buildWiredRegistry(version)
 	if err != nil {
 		return nil, err
 	}
@@ -1143,7 +1139,7 @@ func (wr wiredRegistry) root(version string) *Command {
 		// reported before any flag typed after it.
 		StopAtFirstWord: true,
 		Before: func(ctx context.Context, c *Command, in *Input) error {
-			config.SetReadOnlyOverride(resolveReadOnly(in))
+			in.setReadOnly(resolveReadOnly(in))
 			noteExperiments(version)
 			return nil
 		},

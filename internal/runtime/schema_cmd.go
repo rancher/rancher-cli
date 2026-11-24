@@ -17,18 +17,14 @@ type schemaCmd struct {
 	reg               *Registry
 	cliVersion        string
 	minRancherVersion string
-	// readOnly resolves this invocation's read-only state (config + env +
-	// flag OR'd) at Execute time. schema is wired via Adapt, which never
-	// calls resolveDeps, so it has no other way to see --config/--read-only
-	// or the loaded config - internal/cli hands over the SAME resolution
-	// buildIO uses for every other command (one resolver, two consumers).
-	// nil is treated as "inactive" (registry_test's stub registrations).
-	readOnly func() (bool, []string)
 }
 
-// NewSchemaCommand builds the `schema` command bound to a registry.
-func NewSchemaCommand(reg *Registry, cliVersion, minRancherVersion string, readOnly func() (bool, []string)) Command {
-	return &schemaCmd{reg: reg, cliVersion: cliVersion, minRancherVersion: minRancherVersion, readOnly: readOnly}
+// NewSchemaCommand builds the `schema` command bound to a registry. The
+// command reports the read-only state of the run that executes it, which
+// runRead puts on the context of Execute; a context without it reports
+// read-only mode off.
+func NewSchemaCommand(reg *Registry, cliVersion, minRancherVersion string) Command {
+	return &schemaCmd{reg: reg, cliVersion: cliVersion, minRancherVersion: minRancherVersion}
 }
 
 func (s *schemaCmd) Describe() Descriptor {
@@ -145,9 +141,7 @@ func (s *schemaCmd) selectors() []string {
 
 func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, error) {
 	m := s.reg.Schema(s.cliVersion, s.minRancherVersion)
-	if s.readOnly != nil {
-		m.ReadOnly, m.ReadOnlySources = s.readOnly()
-	}
+	m.ReadOnly, m.ReadOnlySources = readOnlyFrom(ctx)
 	asKind := in.Bool("kind")
 	f := filtersFrom(in)
 	// Mutually exclusive selection modes: --all | filter/search | positional

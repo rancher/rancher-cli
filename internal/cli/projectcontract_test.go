@@ -466,7 +466,7 @@ func splitHint(t *testing.T, hint string) []string {
 // error.
 func TestProjectContract(t *testing.T) {
 	h := newContractHarness(t)
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	var hints []string
 	declaring := 0

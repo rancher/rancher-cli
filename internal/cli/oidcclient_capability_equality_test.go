@@ -31,7 +31,7 @@ func TestOIDCBespokeCommandsCapabilityEqualsRow(t *testing.T) {
 	require.True(t, ok)
 	require.True(t, row.Capability.IsSet())
 
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	byName := map[string]runtime.Descriptor{}
 	for _, c := range wr.reg.Commands() {

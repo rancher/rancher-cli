@@ -1446,7 +1446,7 @@ func TestResultScrubRowsCoverEveryMutatingCommand(t *testing.T) {
 // none of the hidden values and every outside value. A kind that hides a
 // path with a wildcard segment runs with lists of one item and of two.
 func TestApplyResultHidesWhatThePreviewHides(t *testing.T) {
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	entries := map[string]entry{}
 	for _, e := range buildEntries() {

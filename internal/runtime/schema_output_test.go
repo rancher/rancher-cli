@@ -35,7 +35,7 @@ func TestSchemaViewMarshalDelegation(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, wantYAML, gotYAML, "yaml of the view is byte-identical to the manifest")
 
-	cmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
+	cmd := NewSchemaCommand(kindRegistry(), "test", "2.14")
 	for _, format := range []string{"", "table"} {
 		var out, errBuf bytes.Buffer
 		_, ce := Run(t.Context(), cmd, tin{}, IO{Out: &out, Err: &errBuf, Format: format}, safety.Binding{})
@@ -89,7 +89,7 @@ func TestSchemaFormatCompat(t *testing.T) {
 		},
 	}
 
-	cmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
+	cmd := NewSchemaCommand(kindRegistry(), "test", "2.14")
 	run := func(t *testing.T, in tin, format string) string {
 		t.Helper()
 		var out, errBuf bytes.Buffer

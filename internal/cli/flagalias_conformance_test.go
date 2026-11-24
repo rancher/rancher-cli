@@ -58,7 +58,7 @@ func aliasOwner(alias string) (string, bool) {
 func TestFlagAliasesMatchTheTable(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Chdir(t.TempDir())
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 
 	for _, cmd := range wr.reg.Commands() {

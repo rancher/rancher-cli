@@ -214,7 +214,7 @@ func TestEnvVarsListTheTelemetryVariable(t *testing.T) {
 // equal telemetry.Controls without the test binary, in order, and its
 // version equals the contract version; every control carries its text.
 func TestManifestTelemetryMatchesTheControls(t *testing.T) {
-	wr, err := buildWiredRegistry("v-test", config.ReadOnlyOverride)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	m := wr.reg.Schema("v-test", config.MinRancherVersion).Telemetry
 	assert.Equal(t, telemetry.ContractVersion, m.ContractVersion)

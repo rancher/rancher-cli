@@ -218,7 +218,7 @@ func TestNoCommandIsNamedHelp(t *testing.T) {
 		}
 	}
 	walk(root, "rancher")
-	wr, err := buildWiredRegistry("golden", config.ReadOnlyOverride)
+	wr, err := buildWiredRegistry("golden")
 	require.NoError(t, err)
 	commandCount := len(wr.reg.Schema("golden", config.MinRancherVersion).Commands)
 	assert.Greater(t, nodes, commandCount, "the walk must cover every command the schema lists")

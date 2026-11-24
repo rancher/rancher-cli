@@ -139,6 +139,12 @@ type parsedLine struct {
 	// helpOrVersionBeforeCommand is set by parseCompletion when a help or
 	// version flag comes before the argument that names a subcommand.
 	helpOrVersionBeforeCommand bool
+	// readOnly and readOnlySources are the read-only state of this run: the
+	// root's Before sets them (Input.setReadOnly) and buildIO reads them. For
+	// a run whose root Before did not run, read-only mode is off and there are
+	// no sources. Each run parses its own line: no other run reads them.
+	readOnly        bool
+	readOnlySources []string
 }
 
 // inWord is an argument handed to a command, with its place in the command

@@ -170,7 +170,7 @@ func ccFromFileArgv(t *testing.T, row ccSecretFieldRow, source, content string) 
 // names a command without the flag.
 func TestEveryCommandWithFromFileHasAByteOrderMarkRow(t *testing.T) {
 	t.Parallel()
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	var declaring []string
 	for _, c := range wr.reg.Commands() {

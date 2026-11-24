@@ -19,7 +19,6 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/telemetry"
 	"github.com/rancher/rancher-cli/internal/testfs"
@@ -236,7 +235,7 @@ func adaptedPaths(fixed []*Command, prefix []string) map[string]bool {
 // adaptedLeaves returns the paths of the commands that Adapt wraps: the fixed
 // commands of the root, which have no config directory to check.
 var adaptedLeaves = sync.OnceValues(func() (map[string]bool, error) {
-	wr, err := buildWiredRegistry(goldenVersion, config.ReadOnlyOverride)
+	wr, err := buildWiredRegistry(goldenVersion)
 	if err != nil {
 		return nil, err
 	}

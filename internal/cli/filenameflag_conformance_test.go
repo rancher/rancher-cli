@@ -40,7 +40,7 @@ func filenameFlagProblems(d runtime.Descriptor) (problems []string, seen int) {
 func TestFilenameFlagNamesAFileTheCommandReads(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Chdir(t.TempDir())
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 
 	total := 0

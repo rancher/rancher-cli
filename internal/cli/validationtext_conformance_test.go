@@ -185,7 +185,7 @@ func refusal(t *testing.T, cmd runtime.Command, in sweepInput) (code, message st
 func TestValidationTextFitsTheDeclaration(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Chdir(t.TempDir())
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 
 	byName := map[string]runtime.Command{}

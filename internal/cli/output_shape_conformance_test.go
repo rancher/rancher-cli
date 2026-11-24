@@ -316,7 +316,7 @@ var bytesAndExecJSONOutputPolicy = map[string]runtime.OutputPolicy{
 // shape that silently drifted from the reviewed value) fails the build.
 func TestOutputShapeClosedWorldConformance(t *testing.T) {
 	t.Parallel()
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 
 	seen := map[string]bool{}
@@ -349,7 +349,7 @@ func TestOutputShapeClosedWorldConformance(t *testing.T) {
 // verification.
 func TestOutputShapeClosedWorldConformanceCatchesADeletedEntry(t *testing.T) {
 	t.Parallel()
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 
 	trimmed := map[string]runtime.OutputShape{}

@@ -17,7 +17,7 @@ import (
 func TestEveryAuthFlowFlagListsTheSameValues(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Chdir(t.TempDir())
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	var seen []string
 	for _, cmd := range wr.reg.Commands() {

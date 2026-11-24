@@ -325,7 +325,8 @@ func checkPlan(eff safety.Effect, exec ExecuteFunc) *clierr.Error {
 // runRead executes a read command.
 func runRead(ctx context.Context, c ReadCommand, in Input, streams IO, b safety.Binding) (int, *clierr.Error) {
 	p := ui.New(streams.Err, streams.In, streams.NoInput, streams.IsTTY).WithNoticeRewrite(streams.ExpandText)
-	res, err := c.Execute(ctx, textTableInput{Input: in, textTable: textRenderFormat(streams.Format)}, p)
+	execCtx := withReadOnly(ctx, streams.ReadOnly, streams.ReadOnlySources)
+	res, err := c.Execute(execCtx, textTableInput{Input: in, textTable: textRenderFormat(streams.Format)}, p)
 	if err != nil {
 		return 0, renderErr(streams, toClierr(ctx, err))
 	}

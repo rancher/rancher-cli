@@ -74,7 +74,7 @@ func TestOnceOnlyOutputPolicyOKRejectsZeroValueOutsideTheNamedException(t *testi
 // seam, and no command can silently opt in without review.
 func TestDeliveryOnceOnlyClosedWorldConformance(t *testing.T) {
 	t.Parallel()
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	for _, c := range wr.reg.Commands() {
 		d := c.Describe()

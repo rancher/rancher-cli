@@ -156,11 +156,9 @@ func TestTheExecPluginAndKubeconfigRemediesNameTheirDirectory(t *testing.T) {
 		assertEveryCommandNames(t, got, named)
 	})
 
-	// The command tree keeps process-wide state of its own (the read-only
-	// override, the loaded config completion reads), so two trees cannot
-	// run at once; runtime asserts the concurrent case per invocation.
-	// Here the invocations alternate in one process: nothing one leaves
-	// behind reaches the next.
+	// Completion reads the loaded config, which is process-wide. Here the
+	// invocations alternate in one process: nothing one leaves behind
+	// reaches the next.
 	t.Run("another command in the same process names its own directory", func(t *testing.T) {
 		require.NoError(t, os.RemoveAll("acct"))
 		require.NoError(t, os.MkdirAll("blank", 0o700))

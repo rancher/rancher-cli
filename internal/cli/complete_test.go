@@ -236,7 +236,7 @@ func TestSchemaVerbFlagValueCompletionSurfaces(t *testing.T) {
 	// resolveStaticEnum emits) - no third hand-copied verb list; the enum's
 	// content is asserted against the registry by TestSchemaVerbEnumMatchesCommandVerbs.
 	var want []string
-	for _, f := range runtime.NewSchemaCommand(nil, "", "", nil).Describe().Flags {
+	for _, f := range runtime.NewSchemaCommand(nil, "", "").Describe().Flags {
 		if f.Name == "verb" {
 			want = append(want, f.Enum...)
 		}

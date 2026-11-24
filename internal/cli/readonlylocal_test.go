@@ -40,7 +40,7 @@ func runBounded(t *testing.T, root *Command, argv []string) (stdout, stderr stri
 // is Local, from the schema manifest.
 func localCommands(t *testing.T) (wiredRegistry, []runtime.SchemaCommand) {
 	t.Helper()
-	wr, err := buildWiredRegistry("v-test", config.ReadOnlyOverride)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	var local []runtime.SchemaCommand
 	for _, c := range wr.reg.Schema("v-test", config.MinRancherVersion).Commands {
@@ -324,7 +324,7 @@ func TestLocalCommandsNeitherListNorOfferReadOnly(t *testing.T) {
 	t.Setenv(config.EnvConfigDir, t.TempDir())
 	t.Setenv(config.EnvCredentialStore, "file")
 	t.Cleanup(func() { CaptureArgv(nil) })
-	wr, err := buildWiredRegistry("v-test", nil)
+	wr, err := buildWiredRegistry("v-test")
 	require.NoError(t, err)
 	local, other := 0, 0
 	for _, c := range wr.reg.Commands() {
