@@ -127,7 +127,7 @@ Read nodes with `get node --cluster <cluster>` and the drain state with
 | `inspect pod <name>` | Composite pod read: describe + recent logs |
 | `inspect deployment <name>` | Composite deployment read |
 | `inspect project <name-or-id> [--cluster]` | Composite project read: project, namespaces, members, resource quota, usage |
-| `inspect user <id\|username\|displayName\|principal>` | Composite user read: id and names, groups, and role bindings at global, cluster and project level - bindings that exist only, never permissions |
+| `inspect user <id\|username\|principal>` | Composite user read: id and names, groups, and role bindings at global, cluster and project level - bindings that exist only, never permissions |
 | `charts --cluster <c> [--repo <name>] [--all-versions] [--include-deprecated]` | List the charts of a cluster's ClusterRepos from the Helm repository index Rancher serves for each: one line per chart with its newest version that is not a prerelease, or every version in the order Rancher serves them with `--all-versions`; deprecated versions are left out unless `--include-deprecated`; disabled ClusterRepos are skipped, and one whose index cannot be read is named in a warning |
 | `images` | Active-pod container images, grouped by image or owning workload, fleet-wide |
 | `usage` | Resource usage composite (grouped by `--by`, filtered by scope flags) |

@@ -12,8 +12,8 @@ import (
 // (metadata.name) of the management Users the kind table does not mark
 // as system accounts, each described by its username and display name.
 // The values are ids only; the descriptions are display only, and inspect
-// user also takes a username, a display name or a principal. It needs a
-// management token and one listing.
+// user also takes a username or a principal. It needs a management token
+// and one listing.
 func UserIDSource() completion.Source {
 	return completion.Source{Claim: claimUsers, Complete: completeUserIDs}
 }

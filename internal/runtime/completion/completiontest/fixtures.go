@@ -65,7 +65,11 @@ const DiscoveryGroupsBody = `{"kind":"APIGroupDiscoveryList","apiVersion":"apidi
 // a username outside the shell-safe charset, a user without principals,
 // a user whose id is its username, two users sharing a username, a user
 // whose display name is another's username, a user whose username is
-// another user's id, and a user whose username is a system account's id.
+// another user's id, a user whose username is a system account's id, a
+// username another user has as display name (frank, offered), a username
+// a user without principals also has (hank, not offered), a username a
+// system account also has (ivy, not offered), and a display name no user
+// has as username (Jo Display, not offered).
 const SubjectsBody = `{"items":[
 	{"metadata":{"name":"u-alice"},"username":"alice","displayName":"Alice","principalIds":["local://u-alice"]},
 	{"metadata":{"name":"u-bob"},"username":"bob","displayName":"Bob","principalIds":["local://u-bob"]},
@@ -78,7 +82,14 @@ const SubjectsBody = `{"items":[
 	{"metadata":{"name":"u-dup2"},"username":"dup","displayName":"Dup Two","principalIds":["local://u-dup2"]},
 	{"metadata":{"name":"u-carol"},"username":"carol","displayName":"nopids","principalIds":["local://u-carol"]},
 	{"metadata":{"name":"u-dave"},"username":"u-alice","displayName":"Dave","principalIds":["local://u-dave"]},
-	{"metadata":{"name":"u-erin"},"username":"u-sys","displayName":"Erin","principalIds":["local://u-erin"]}
+	{"metadata":{"name":"u-erin"},"username":"u-sys","displayName":"Erin","principalIds":["local://u-erin"]},
+	{"metadata":{"name":"u-frank"},"username":"frank","displayName":"Frank","principalIds":["local://u-frank"]},
+	{"metadata":{"name":"u-gina"},"username":"gina","displayName":"frank","principalIds":["local://u-gina"]},
+	{"metadata":{"name":"u-hank"},"username":"hank","displayName":"Hank","principalIds":["local://u-hank"]},
+	{"metadata":{"name":"u-hank2"},"username":"hank"},
+	{"metadata":{"name":"u-sysivy"},"username":"ivy","displayName":"Ivy System","principalIds":["system://ivy"]},
+	{"metadata":{"name":"u-ivy"},"username":"ivy","displayName":"Ivy","principalIds":["local://u-ivy"]},
+	{"metadata":{"name":"u-jo"},"username":"jo","displayName":"Jo Display","principalIds":["local://u-jo"]}
 ]}`
 
 // DiscoveryLegacyCoreBody is the legacy /api document (APIVersions) of the

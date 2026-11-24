@@ -23,7 +23,7 @@ type grantCmd struct {
 
 // NewGrant builds `grant <subject> --role <r> (--project|--cluster|--global)`
 // (mutating): creates the scope's role binding. Subjects resolve per the
-// rbac resolution rules; a fully qualified principal with no user object
+// rbac resolution rules; a principal with no user object
 // takes the provisioning path (userPrincipalName only + preview warning).
 // Duplicate detection is a best-effort client-side list (check/use race
 // accepted).
@@ -40,17 +40,18 @@ func (grantCmd) Describe() runtime.Descriptor {
 			"have the role there, and previews creating the binding. " +
 			"List the available roles with: `rancher get roletemplates` (project and cluster scopes) " +
 			"or `rancher get globalroles` (global scope). " +
+			"A subject that is not a principal is matched by user id, then by username. A display name is never matched: when the value is the display name of one or more users and the user id or username of no user, the command fails with NOT_FOUND and lists those users with their user ids. " +
 			"When Rancher refuses the read of users, the command warns and uses the subject exactly as typed if it is `local://<id>` or an id that looks like u-lpnxw " +
 			"(u-, m- or user- followed by at least five characters from bcdfghjklmnpqrstvwxz2456789). " +
-			"A username, a display name or an external principal can be found only by reading users: pass the user id instead.",
+			"A username, an id that does not look like u-lpnxw, or a user principal other than local://<id> fails: pass the user id as local://<id>.",
 		CommandType: runtime.Mutating,
-		Args:        []runtime.ArgSpec{{Name: "subject", Type: "string", Required: true, Desc: "user/group name, id, or fully qualified principal"}},
+		Args:        []runtime.ArgSpec{{Name: "subject", Type: "string", Required: true, Desc: "user id, username, or a user or group principal (for example local://<id>, <provider>_user://<id>, <provider>_group://<id>)"}},
 		Flags: []runtime.ArgSpec{
 			{Name: "role", Type: "string", Required: true, Desc: "role for the scope: a roletemplate `id` (project/cluster) or globalrole `id` (global); discover with: `rancher get roletemplates` (project/cluster) or `rancher get globalroles` (global)"},
 			runtime.ProjectFlag(false, "project scope: project `id|name`"),
 			{Name: "cluster", Type: "string", Desc: "cluster scope, or the cluster the --project is in"},
 			{Name: "global", Type: "bool", Desc: "global scope"},
-			{Name: "type", Type: "string", Enum: []string{"user", "group"}, Desc: "subject type, user or group; the CLI infers it from a principal prefix it recognizes, and requires it for any other fully qualified principal"},
+			{Name: "type", Type: "string", Enum: []string{"user", "group"}, Desc: "subject type, user or group; the CLI infers it from a principal prefix it recognizes, and requires it for any other principal prefix"},
 		},
 		Examples: []string{
 			"rancher grant u-abc123 --project p-x --cluster c-x --role project-member --apply --yes",
@@ -84,7 +85,7 @@ func (c grantCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	args := in.Args()
 	if len(args) == 0 || args[0] == "" {
 		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
-			"argument <subject> is required; provide a user/group name, id, or fully qualified principal")
+			"argument <subject> is required; provide a user id, a username, or a user or group principal")
 	}
 	role := in.String("role")
 	if role == "" {

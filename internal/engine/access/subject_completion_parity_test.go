@@ -17,10 +17,11 @@ import (
 // TestSubjectCompletionOffersWhatTheAccessCommandsResolve asserts the
 // shared --as source and the access commands' own user lookup agree over
 // the shared user list: every value the source offers resolves to the
-// very user it was taken from, and a system account is never offered.
-// The projection is stricter than this lookup on purpose - it also
-// serves grant and revoke, whose resolver matches display names, so a
-// username another user carries as display name is left out here too.
+// very user it was taken from, and is that user's id or username; a
+// display name is never offered; a system account is never offered. The
+// projection is stricter than this lookup on purpose - it also serves
+// grant and revoke, whose resolver refuses a user without principal ids,
+// so such a user is left out here too.
 func TestSubjectCompletionOffersWhatTheAccessCommandsResolve(t *testing.T) {
 	t.Parallel()
 	var decoded struct {
@@ -63,7 +64,14 @@ func TestSubjectCompletionOffersWhatTheAccessCommandsResolve(t *testing.T) {
 		u, err := findRancherUser(t.Context(), local, name)
 		require.NoError(t, err, "%s is offered, so the commands must resolve it", name)
 		assert.Equal(t, from[name], u.GetName(), "%s must resolve to the user it was offered for", name)
+		username, _, _ := unstructured.NestedString(u.Object, "username")
+		assert.True(t, name == u.GetName() || name == username, "%s is offered, so it must be the id or the username of the user it resolves to", name)
 	}
+	assert.NotContains(t, got.Names, "Jo Display", "a display name nobody has as username is never offered")
+	assert.Contains(t, got.Names, "frank", "a username another user has as display name is offered")
+	frank, err := findRancherUser(t.Context(), local, "frank")
+	require.NoError(t, err)
+	assert.Equal(t, "u-frank", frank.GetName(), "frank resolves to the user with that username, never the one with that display name")
 	for i := range list.Items {
 		if userKind.SystemFilter.Matches(list.Items[i].Object) {
 			username, _, _ := unstructured.NestedString(list.Items[i].Object, "username")
@@ -71,5 +79,5 @@ func TestSubjectCompletionOffersWhatTheAccessCommandsResolve(t *testing.T) {
 			assert.NotContains(t, got.Names, username)
 		}
 	}
-	assert.NotContains(t, got.Names, "nopids", "another user's display name; left out for grant's and revoke's resolver")
+	assert.NotContains(t, got.Names, "nopids", "the username of a user without principal ids; left out for grant's and revoke's resolver")
 }

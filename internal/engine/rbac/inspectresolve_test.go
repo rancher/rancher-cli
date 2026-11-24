@@ -13,7 +13,7 @@ import (
 // The seven-case grammar fixture set:
 // local id, known external user principal, known group principal
 // (rejected), unknown prefix (rejected), unowned external (NOT_FOUND),
-// ambiguous display name, system principal (resolves).
+// display name shared by two users (NOT_FOUND), system principal (resolves).
 
 func TestResolveInspectUserLocalID(t *testing.T) {
 	c := &fakeClient{users: []map[string]any{userObj("u-abc", "Jane", "jane", "local://u-abc")}}
@@ -61,15 +61,34 @@ func TestResolveInspectUserUnownedExternalNotFound(t *testing.T) {
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 }
 
-func TestResolveInspectUserAmbiguousDisplayName(t *testing.T) {
+// TestResolveInspectUserSharedDisplayNameIsNotFound asserts a value two users
+// have as display name is NOT_FOUND with both users as candidates.
+func TestResolveInspectUserSharedDisplayNameIsNotFound(t *testing.T) {
 	c := &fakeClient{users: []map[string]any{
 		userObj("u-1", "Jane", "jane1", "okta_user://1"),
 		userObj("u-2", "Jane", "jane2", "okta_user://2"),
 	}}
 	_, err := ResolveInspectUser(t.Context(), fakeFactory{c: c}, "Jane")
-	var ce *clierr.Error
-	require.ErrorAs(t, err, &ce)
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "want a *clierr.Error, got %v", err)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Equal(t, `no user has the user id or username "Jane"; 2 users have this display name, and inspect user does not match a display name: pass the user id`, ce.Message)
+	assert.Equal(t, []clierr.Candidate{{ID: "u-1", Name: "jane1"}, {ID: "u-2", Name: "jane2"}}, ce.Candidates)
+	assert.Equal(t, clierr.Rancher+" get users", ce.Hint)
+}
+
+// TestResolveInspectUserSharedUsernameIsAmbiguous asserts two users with the
+// same username are AMBIGUOUS_SELECTION.
+func TestResolveInspectUserSharedUsernameIsAmbiguous(t *testing.T) {
+	c := &fakeClient{users: []map[string]any{
+		userObj("u-1", "One", "dev", "local://u-1"),
+		userObj("u-2", "Two", "dev", "local://u-2"),
+	}}
+	_, err := ResolveInspectUser(t.Context(), fakeFactory{c: c}, "dev")
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "want a *clierr.Error, got %v", err)
 	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
+	assert.Equal(t, `2 users have the username "dev": pass the user id`, ce.Message)
 	assert.Len(t, ce.Candidates, 2)
 }
 
@@ -94,15 +113,23 @@ func TestResolveInspectUserSystemUserByIDResolves(t *testing.T) {
 	assert.Equal(t, "u-sys", got.UserID)
 }
 
-func TestResolveInspectUserSystemUserInDisplayNameScanResolves(t *testing.T) {
-	// Divergence from ResolveSubject: system accounts are not excluded from
-	// the name-match scan (named access is intent).
+// TestResolveInspectUserSystemUserByUsernameResolves asserts a system user is
+// found by its username (unlike ResolveSubject, which skips system users),
+// and that its display name alone is NOT_FOUND with that system user as the
+// candidate.
+func TestResolveInspectUserSystemUserByUsernameResolves(t *testing.T) {
 	c := &fakeClient{users: []map[string]any{
 		userObj("u-sys", "Deploy Bot", "bot", "system://c-x"),
 	}}
-	got, err := ResolveInspectUser(t.Context(), fakeFactory{c: c}, "Deploy Bot")
+	got, err := ResolveInspectUser(t.Context(), fakeFactory{c: c}, "bot")
 	require.NoError(t, err)
 	assert.Equal(t, "u-sys", got.UserID)
+
+	_, err = ResolveInspectUser(t.Context(), fakeFactory{c: c}, "Deploy Bot")
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "want a *clierr.Error, got %v", err)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Equal(t, []clierr.Candidate{{ID: "u-sys", Name: "bot"}}, ce.Candidates)
 }
 
 func TestResolveInspectUserDuplicateOwnerAmbiguous(t *testing.T) {

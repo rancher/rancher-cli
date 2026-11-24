@@ -9,10 +9,11 @@ import (
 
 // SubjectSource is the shared --as source of the access commands: the
 // management Users that are not system accounts, each by id and, when
-// the username names exactly one user across usernames and display
-// names and is no account's id, by username - the values the commands
-// resolve a subject by without ambiguity. Each id is described by its
-// username and display name; a username value carries no description.
+// exactly one listed user has the username and no account has it as id,
+// by username - the values the commands resolve a subject by without
+// ambiguity. A display name is never offered: no command matches one.
+// Each id is described by its username and display name; a username
+// value carries no description.
 // Users only: the completion protocol splits a candidate at its first ':',
 // so a group principal cannot be offered, and under --type group, where a
 // bare value is a group, nothing is. It needs a management token and one
@@ -85,11 +86,13 @@ func completeRevoke(ctx context.Context, conn *completion.Connection, req comple
 
 // completeSubjects lists the management Users once and projects them
 // into subject values: every non-system user's id, in list order, then
-// its username when no other user carries that string as username or
-// display name and no account, a system one included, carries it as id
-// (an exact id wins in the commands' resolution). A user without
-// principal ids is left out: grant and revoke refuse to bind one. A user
-// whose display name equals its own username counts once.
+// its username when no other listed user, a system one or one without
+// principal ids included, has that username and no account, a system one
+// included, has it as id (an exact id wins in the commands' resolution).
+// Usernames are counted over every listed user because the --as lookup
+// counts system users and grant's and revoke's resolver counts users
+// without principal ids. A user without principal ids is not offered:
+// grant and revoke refuse to bind one.
 func completeSubjects(ctx context.Context, conn *completion.Connection, _ completion.Request) completion.Result {
 	k, ok := kinds.ByKey("user")
 	if !ok {
@@ -108,10 +111,17 @@ func completeSubjects(ctx context.Context, conn *completion.Connection, _ comple
 	var entries []entry
 	descriptions := map[string]string{}
 	ids := map[string]bool{}
-	named := map[string]int{}
+	usernames := map[string]int{}
+	counted := map[string]bool{}
 	for _, item := range list.Items {
-		if id := completion.ItemName(item); id != "" {
-			ids[id] = true
+		id := completion.ItemName(item)
+		if id == "" || counted[id] {
+			continue
+		}
+		counted[id] = true
+		ids[id] = true
+		if username, _ := item["username"].(string); username != "" {
+			usernames[username]++
 		}
 	}
 	seen := map[string]bool{}
@@ -125,22 +135,15 @@ func completeSubjects(ctx context.Context, conn *completion.Connection, _ comple
 		}
 		seen[id] = true
 		username, _ := item["username"].(string)
-		display, _ := item["displayName"].(string)
 		entries = append(entries, entry{id: id, username: username})
 		if d := completion.ItemDescription(item, paths); d != "" {
 			descriptions[id] = d
-		}
-		if username != "" {
-			named[username]++
-		}
-		if display != "" && display != username {
-			named[display]++
 		}
 	}
 	var out []string
 	for _, e := range entries {
 		out = append(out, e.id)
-		if e.username != "" && named[e.username] == 1 && (!ids[e.username] || e.username == e.id) {
+		if e.username != "" && usernames[e.username] == 1 && (!ids[e.username] || e.username == e.id) {
 			out = append(out, e.username)
 		}
 	}

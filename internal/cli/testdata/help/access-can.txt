@@ -5,7 +5,7 @@ USAGE:
    rancher access can [options] <verb> [resource]
 
 OPTIONS:
-   --as string                    subject to ask about: user name, id, or principal; group principal; system:serviceaccount:<ns>:<name>; omitted = you
+   --as string                    subject to ask about: username, user id, or user principal; group principal; system:serviceaccount:<ns>:<name>; omitted = you
    --cluster string               cluster name or id the question is about
    --group string                 API group when the resource name exists in several groups
    --help, -h                     show help

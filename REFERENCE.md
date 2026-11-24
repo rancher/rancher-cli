@@ -3041,7 +3041,7 @@ RESOURCE QUOTA, USAGE); members are ProjectRoleTemplateBindings with display
 names resolved from Users/UserAttributes; if the members section cannot be
 read, it shows a warning and the other sections still show.
 
-`inspect user <id|username|displayName|principal>` answers who a user is and
+`inspect user <id|username|principal>` answers who a user is and
 what role bindings they have at global, cluster and project level - never what
 they can actually do (only the server can answer that, and no command in this
 CLI asks it). The output puts the user's id and names, group memberships (as
@@ -3057,7 +3057,10 @@ the groups the CLI cannot confirm the role bindings are complete.
 at project, cluster, or global scope. `grant` auto-provisions unknown principals when the binding
 applies - this is Rancher behavior, not a CLI choice. For both commands,
 partial failures leave already-created (or already-deleted) bindings in
-place. Omitting `--role` on `revoke` revokes every role at the scope.
+place. Omitting `--role` on `revoke` revokes every role at the scope. A subject that is not a
+principal is matched by user id, then by username. A display name is never matched: when the value
+is the display name of one or more users and the user id or username of no user, the command fails
+with NOT_FOUND and lists those users with their user ids.
 
 When Rancher refuses the read of a user (you may create role bindings but not read users, for
 example as a project owner), `grant` and `revoke` warn and use the subject exactly as typed if it is
@@ -3067,7 +3070,7 @@ then sends `userName` with that id, and `userPrincipalName` too for `local://<id
 without `local://` it sends no `userPrincipalName`, and Rancher fills that in when the user exists.
 The preview shows the warning, and the server-side dry-run checks only that Rancher accepts the
 create. If no user has that id, the create still succeeds and the binding has no effect. A username,
-a display name or an external principal can be found only by reading users: the command fails with
+an id that does not look like `u-lpnxw`, or a user principal other than `local://<id>` fails with
 Rancher's refusal and advice to pass the user id as `local://<id>`; an administrator can list ids
 with `rancher get users`. `grant` also continues, with a warning, when Rancher refuses the read of
 the existing bindings; `grant` then cannot check whether the subject already has the role. `revoke`

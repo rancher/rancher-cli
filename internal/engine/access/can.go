@@ -60,7 +60,7 @@ func (c *canCmd) Describe() runtime.Descriptor {
 			clusterFlag("cluster name or id the question is about"),
 			namespaceFlag("namespace the question is about"),
 			runtime.ProjectFlag(false, "ask about the project's namespaces"),
-			{Name: "as", Type: "string", Desc: "subject to ask about: user name, id, or principal; group principal; system:serviceaccount:<ns>:<name>; omitted = you"},
+			{Name: "as", Type: "string", Desc: "subject to ask about: username, user id, or user principal; group principal; system:serviceaccount:<ns>:<name>; omitted = you"},
 			{Name: "type", Type: "string", Enum: []string{"user", "group"}, Desc: "kind of a bare --as value when ambiguous"},
 			{Name: "group", Type: "string", Desc: "API group when the resource name exists in several groups"},
 			{Name: "subresource", Type: "string", Desc: "subresource such as status or log"},

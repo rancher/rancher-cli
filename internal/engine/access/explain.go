@@ -51,7 +51,7 @@ func (c *explainCmd) Describe() runtime.Descriptor {
 			{Name: "group", Type: "string", Desc: "API group when the resource name exists in several groups"},
 			{Name: "subresource", Type: "string", Desc: "subresource such as status or log"},
 			{Name: "non-resource-url", Type: "string", Desc: "ask about a non-resource path such as /healthz instead of a resource"},
-			{Name: "as", Type: "string", Desc: "subject to explain instead of you: a Rancher user (id, username, or principal), a group principal, or a service account"},
+			{Name: "as", Type: "string", Desc: "subject to explain instead of you: a Rancher user (user id, username, or user principal), a group principal, or a service account"},
 			{Name: "type", Type: "string", Enum: []string{typeUser, typeGroup}, Desc: "how to read a bare --as value: user or group"},
 			timeoutFlag(),
 		},

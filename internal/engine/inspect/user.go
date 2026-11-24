@@ -53,9 +53,10 @@ func (c *userCmd) Describe() runtime.Descriptor {
 		Desc: degradedContractDesc +
 			"Finding the user and reading it are required: the command fails when any of them fails; " +
 			"every other section can be unavailable. " +
-			"The argument accepts a user id, username, displayName, or a fully qualified user " +
-			"principal (local://<id>, <provider>_user://<id>) - a fully qualified principal is the one way to name " +
-			"a user unambiguously when ids and display names collide. " +
+			"The argument accepts a user id, a username, or a user principal (local://<id>, <provider>_user://<id>). " +
+			"An argument that is not a principal is matched by user id, then by username. " +
+			"A display name is never matched: when the value is the display name of one or more users and the user id " +
+			"or username of no user, the command fails with NOT_FOUND and lists those users with their user ids. " +
 			"data.user carries id, username, displayName, enabled, principals, created, and system, " +
 			"plus everything Rancher records per user in UserAttributes: groups (the group memberships " +
 			"as Rancher last refreshed them, which also happens at login; a flat array of {principal, displayName, " +
@@ -78,7 +79,7 @@ func (c *userCmd) Describe() runtime.Descriptor {
 			"Roles can be bound to the user's groups; when reading the groups fails, all three role sections " +
 			"are left out too (they could not be complete) and are recorded in data.degraded with groups.",
 		CommandType: runtime.ReadOnly,
-		Args:        []runtime.ArgSpec{{Name: "user", Type: "string", Required: true, Desc: "id|username|displayName|principal"}},
+		Args:        []runtime.ArgSpec{{Name: "user", Type: "string", Required: true, Desc: "id|username|principal"}},
 		Auth:        true,
 		Shape:       runtime.ShapeText,
 	}

@@ -41,6 +41,16 @@ jsonquery stdout data.0.userPrincipalName local://u-alice
 jsonquery stdout data.0.roleTemplateName project-member
 jsonquery stdout data.0.projectName c-test:members-proj
 
+# a value that is only a user's display name is not matched: NOT_FOUND that
+# lists the user by id; the user's username resolves.
+exec rancher create resource -f dora.yaml --apply --yes
+! exec rancher grant 'Dora Display' --role project-member --project members-proj --cluster testcluster --dry-run -o json
+jsonquery stderr data.error.code NOT_FOUND
+jsonquery stderr data.error.candidates.0.id u-dora
+exec rancher grant dora --role project-member --project members-proj --cluster testcluster --dry-run -o json
+jsonquery stdout data.action create
+jsonquery stdout 'data.diff.#(path="/userName").to' u-dora
+
 # the default table now carries MEMBER/ROLE/PROJECT (members ergonomics).
 exec rancher get prtb --namespace members-proj
 stdout 'MEMBER'
@@ -128,3 +138,13 @@ displayName: alice
 username: alice
 principalIds:
   - local://u-alice
+
+-- dora.yaml --
+apiVersion: management.cattle.io/v3
+kind: User
+metadata:
+  name: u-dora
+displayName: Dora Display
+username: dora
+principalIds:
+  - local://u-dora

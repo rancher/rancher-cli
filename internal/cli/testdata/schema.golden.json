@@ -46,7 +46,7 @@
           "type": "string"
         },
         {
-          "desc": "subject to ask about: user name, id, or principal; group principal; system:serviceaccount:<ns>:<name>; omitted = you",
+          "desc": "subject to ask about: username, user id, or user principal; group principal; system:serviceaccount:<ns>:<name>; omitted = you",
           "name": "as",
           "type": "string"
         },
@@ -105,7 +105,7 @@
       ],
       "flags": [
         {
-          "desc": "user name, id, or principal; omitted = you",
+          "desc": "username, user id, or user principal; omitted = you",
           "name": "as",
           "type": "string"
         },
@@ -190,7 +190,7 @@
           "type": "string"
         },
         {
-          "desc": "subject to explain instead of you: a Rancher user (id, username, or principal), a group principal, or a service account",
+          "desc": "subject to explain instead of you: a Rancher user (user id, username, or user principal), a group principal, or a service account",
           "name": "as",
           "type": "string"
         },
@@ -261,7 +261,7 @@
           "type": "bool"
         },
         {
-          "desc": "user name, id, or principal, or system:serviceaccount:<ns>:<name>; omitted = you",
+          "desc": "username, user id, or user principal, or system:serviceaccount:<ns>:<name>; omitted = you",
           "name": "as",
           "type": "string"
         },
@@ -309,7 +309,7 @@
           "type": "string"
         },
         {
-          "desc": "user name, id, or principal; omitted = you",
+          "desc": "username, user id, or user principal; omitted = you",
           "name": "as",
           "type": "string"
         },
@@ -9058,7 +9058,7 @@
     {
       "args": [
         {
-          "desc": "user/group name, id, or fully qualified principal",
+          "desc": "user id, username, or a user or group principal (for example local://<id>, <provider>_user://<id>, <provider>_group://<id>)",
           "name": "subject",
           "required": true,
           "type": "string"
@@ -9067,7 +9067,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "public",
-      "desc": "Checks that the role exists for the scope (a roletemplate for project or cluster scope, a globalrole for global scope), finds the subject, checks that the subject does not already have the role there, and previews creating the binding. List the available roles with: `rancher get roletemplates` (project and cluster scopes) or `rancher get globalroles` (global scope). When Rancher refuses the read of users, the command warns and uses the subject exactly as typed if it is `local://<id>` or an id that looks like u-lpnxw (u-, m- or user- followed by at least five characters from bcdfghjklmnpqrstvwxz2456789). A username, a display name or an external principal can be found only by reading users: pass the user id instead.",
+      "desc": "Checks that the role exists for the scope (a roletemplate for project or cluster scope, a globalrole for global scope), finds the subject, checks that the subject does not already have the role there, and previews creating the binding. List the available roles with: `rancher get roletemplates` (project and cluster scopes) or `rancher get globalroles` (global scope). A subject that is not a principal is matched by user id, then by username. A display name is never matched: when the value is the display name of one or more users and the user id or username of no user, the command fails with NOT_FOUND and lists those users with their user ids. When Rancher refuses the read of users, the command warns and uses the subject exactly as typed if it is `local://<id>` or an id that looks like u-lpnxw (u-, m- or user- followed by at least five characters from bcdfghjklmnpqrstvwxz2456789). A username, an id that does not look like u-lpnxw, or a user principal other than local://<id> fails: pass the user id as local://<id>.",
       "destructive": "true",
       "examples": [
         "rancher grant u-abc123 --project p-x --cluster c-x --role project-member --apply --yes",
@@ -9097,7 +9097,7 @@
           "type": "bool"
         },
         {
-          "desc": "subject type, user or group; the CLI infers it from a principal prefix it recognizes, and requires it for any other fully qualified principal",
+          "desc": "subject type, user or group; the CLI infers it from a principal prefix it recognizes, and requires it for any other principal prefix",
           "enum": [
             "user",
             "group"
@@ -9358,7 +9358,7 @@
       ],
       "args": [
         {
-          "desc": "id|username|displayName|principal",
+          "desc": "id|username|principal",
           "name": "user",
           "required": true,
           "type": "string"
@@ -9367,7 +9367,7 @@
       "auth": true,
       "commandType": "readOnly",
       "contract": "internal",
-      "desc": "If you cannot read part of the data, the command still exits 0: each section it could not read in full is named in data.degraded ({section, state, code, target}), and each entry has one warning. Finding the user and reading it are required: the command fails when any of them fails; every other section can be unavailable. The argument accepts a user id, username, displayName, or a fully qualified user principal (local://<id>, <provider>_user://<id>) - a fully qualified principal is the one way to name a user unambiguously when ids and display names collide. data.user carries id, username, displayName, enabled, principals, created, and system, plus everything Rancher records per user in UserAttributes: groups (the group memberships as Rancher last refreshed them, which also happens at login; a flat array of {principal, displayName, provider}), lastLogin, lastRefresh and needsRefresh (when Rancher last refreshed the user's group memberships, and whether they need a refresh), disableAfter and deleteAfter (per-user values that override the disable-inactive-user-after and delete-inactive-user-after settings), and extra (extra information for audit logs, listed by provider, then key, with a list of values for each key; Rancher writes principalid and username today). These fields are read together: when reading the UserAttributes fails for any reason other than the object not existing (a user who has never logged in has none), all of them are left out of the output - never shown as an empty list - and the failure is recorded in data.degraded; on a successful read, an optional field that is left out was not set. data.roles.{global,clusters,projects} lists the role bindings that exist for the user or any of their group principals. They show which role bindings exist and do not say what the user can do; only the server can answer that, and this command does not ask it. Each row has the same fields as a member row in inspect cluster and inspect project (principal, displayName, role, binding (the name of the GlobalRoleBinding, ClusterRoleTemplateBinding or ProjectRoleTemplateBinding), and system); clusters and projects group the rows by cluster or project, with a displayName when it can be looked up for that entry. Roles can be bound to the user's groups; when reading the groups fails, all three role sections are left out too (they could not be complete) and are recorded in data.degraded with groups.",
+      "desc": "If you cannot read part of the data, the command still exits 0: each section it could not read in full is named in data.degraded ({section, state, code, target}), and each entry has one warning. Finding the user and reading it are required: the command fails when any of them fails; every other section can be unavailable. The argument accepts a user id, a username, or a user principal (local://<id>, <provider>_user://<id>). An argument that is not a principal is matched by user id, then by username. A display name is never matched: when the value is the display name of one or more users and the user id or username of no user, the command fails with NOT_FOUND and lists those users with their user ids. data.user carries id, username, displayName, enabled, principals, created, and system, plus everything Rancher records per user in UserAttributes: groups (the group memberships as Rancher last refreshed them, which also happens at login; a flat array of {principal, displayName, provider}), lastLogin, lastRefresh and needsRefresh (when Rancher last refreshed the user's group memberships, and whether they need a refresh), disableAfter and deleteAfter (per-user values that override the disable-inactive-user-after and delete-inactive-user-after settings), and extra (extra information for audit logs, listed by provider, then key, with a list of values for each key; Rancher writes principalid and username today). These fields are read together: when reading the UserAttributes fails for any reason other than the object not existing (a user who has never logged in has none), all of them are left out of the output - never shown as an empty list - and the failure is recorded in data.degraded; on a successful read, an optional field that is left out was not set. data.roles.{global,clusters,projects} lists the role bindings that exist for the user or any of their group principals. They show which role bindings exist and do not say what the user can do; only the server can answer that, and this command does not ask it. Each row has the same fields as a member row in inspect cluster and inspect project (principal, displayName, role, binding (the name of the GlobalRoleBinding, ClusterRoleTemplateBinding or ProjectRoleTemplateBinding), and system); clusters and projects group the rows by cluster or project, with a displayName when it can be looked up for that entry. Roles can be bound to the user's groups; when reading the groups fails, all three role sections are left out too (they could not be complete) and are recorded in data.degraded with groups.",
       "group": "inspect",
       "name": "inspect user",
       "serverAccess": "read",
@@ -14292,7 +14292,7 @@
     {
       "args": [
         {
-          "desc": "user/group name, id, or fully qualified principal",
+          "desc": "user id, username, or a user or group principal (for example local://<id>, <provider>_user://<id>, <provider>_group://<id>)",
           "name": "subject",
           "required": true,
           "type": "string"
@@ -14301,7 +14301,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "public",
-      "desc": "Finds the subject's bindings at the scope (only those for --role when it is given), checks each deletion with a server-side dry-run, and previews deleting them one at a time. List the available roles with: `rancher get roletemplates` (project and cluster scopes) or `rancher get globalroles` (global scope). When Rancher refuses the read of users, the command warns and uses the subject exactly as typed if it is `local://<id>` or an id that looks like u-lpnxw (u-, m- or user- followed by at least five characters from bcdfghjklmnpqrstvwxz2456789). A username, a display name or an external principal can be found only by reading users: pass the user id instead.",
+      "desc": "Finds the subject's bindings at the scope (only those for --role when it is given), checks each deletion with a server-side dry-run, and previews deleting them one at a time. List the available roles with: `rancher get roletemplates` (project and cluster scopes) or `rancher get globalroles` (global scope). A subject that is not a principal is matched by user id, then by username. A display name is never matched: when the value is the display name of one or more users and the user id or username of no user, the command fails with NOT_FOUND and lists those users with their user ids. When Rancher refuses the read of users, the command warns and uses the subject exactly as typed if it is `local://<id>` or an id that looks like u-lpnxw (u-, m- or user- followed by at least five characters from bcdfghjklmnpqrstvwxz2456789). A username, an id that does not look like u-lpnxw, or a user principal other than local://<id> fails: pass the user id as local://<id>.",
       "destructive": "true",
       "examples": [
         "rancher revoke u-abc123 --project p-x --cluster c-x --apply --yes",
@@ -14330,7 +14330,7 @@
           "type": "bool"
         },
         {
-          "desc": "subject type, user or group; the CLI infers it from a principal prefix it recognizes, and requires it for any other fully qualified principal",
+          "desc": "subject type, user or group; the CLI infers it from a principal prefix it recognizes, and requires it for any other principal prefix",
           "enum": [
             "user",
             "group"

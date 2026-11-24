@@ -51,7 +51,7 @@ func (c *projectsCmd) Describe() runtime.Descriptor {
 			"about themselves sees their own projects only. Exit 0 when every cluster, project and namespace answered, 13 when any is unknown.",
 		Flags: []runtime.ArgSpec{
 			{Name: "cluster", Type: "string", Desc: "restrict to one cluster, by id or unique display name; omitted = every cluster you can list"},
-			{Name: flagAs, Type: "string", Desc: "user name, id, or principal; omitted = you"},
+			{Name: flagAs, Type: "string", Desc: "username, user id, or user principal; omitted = you"},
 			{Name: flagType, Type: "string", Enum: []string{typeUser}, Desc: "kind of the --as value (only user is accepted here)"},
 			timeoutFlag(),
 		},

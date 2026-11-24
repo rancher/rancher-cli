@@ -2,6 +2,7 @@ package rbac
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -182,15 +183,23 @@ func TestResolveSubjectBareByIDNoList(t *testing.T) {
 	assert.Zero(t, c.lists, "exact id hit must not list")
 }
 
-func TestResolveSubjectBareByDisplayName(t *testing.T) {
+// TestResolveSubjectBareDisplayNameIsNotFoundWithCandidates asserts a value
+// that only a user's display name matches does not resolve: NOT_FOUND that
+// lists that user by id and username, with the hint to list users, and no
+// system user.
+func TestResolveSubjectBareDisplayNameIsNotFoundWithCandidates(t *testing.T) {
+	t.Parallel()
 	c := &fakeClient{users: []map[string]any{
 		userObj("u-abc", "Jane Doe", "jane", "okta_user://x"),
-		userObj("u-sys", "System account for Cluster c-x", "system-c-x", "system://c-x"),
+		userObj("u-sys", "Jane Doe", "system-c-x", "system://c-x"),
 	}}
-	got, err := ResolveSubject(t.Context(), fakeFactory{c: c}, Subject{Kind: SubjectUser, Bare: "Jane Doe"})
-	require.NoError(t, err)
-	assert.Equal(t, "u-abc", got.UserID)
-	assert.Equal(t, "okta_user://x", got.Principal)
+	_, err := ResolveSubject(t.Context(), fakeFactory{c: c}, Subject{Kind: SubjectUser, Bare: "Jane Doe"})
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "want a *clierr.Error, got %v", err)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Equal(t, `no user has the user id or username "Jane Doe" (system users are not matched); 1 user has this display name, and grant and revoke do not match a display name: pass the user id`, ce.Message)
+	assert.Equal(t, []clierr.Candidate{{ID: "u-abc", Name: "jane"}}, ce.Candidates)
+	assert.Equal(t, clierr.Rancher+" get users", ce.Hint)
 }
 
 func TestResolveSubjectBareSystemDisplayExcluded(t *testing.T) {
@@ -233,16 +242,116 @@ func TestResolveSubjectSystemUserGetHitIsTerminal(t *testing.T) {
 	}
 }
 
-func TestResolveSubjectBareAmbiguousDisplay(t *testing.T) {
+// TestResolveSubjectBareSharedDisplayNameIsNotFound asserts a value that two
+// users have as display name is NOT_FOUND, not AMBIGUOUS_SELECTION, and
+// lists both users.
+func TestResolveSubjectBareSharedDisplayNameIsNotFound(t *testing.T) {
+	t.Parallel()
 	c := &fakeClient{users: []map[string]any{
 		userObj("u-1", "Jane", "jane1", "okta_user://1"),
 		userObj("u-2", "Jane", "jane2", "okta_user://2"),
 	}}
 	_, err := ResolveSubject(t.Context(), fakeFactory{c: c}, Subject{Kind: SubjectUser, Bare: "Jane"})
-	var ce *clierr.Error
-	require.ErrorAs(t, err, &ce)
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "want a *clierr.Error, got %v", err)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	require.ErrorContains(t, err, `no user has the user id or username "Jane" (system users are not matched); 2 users have this display name`)
+	assert.Equal(t, []clierr.Candidate{{ID: "u-1", Name: "jane1"}, {ID: "u-2", Name: "jane2"}}, ce.Candidates)
+}
+
+// TestResolveSubjectBareSharedUsernameIsAmbiguous asserts two users with the
+// same username are AMBIGUOUS_SELECTION with both as candidates and no hint.
+func TestResolveSubjectBareSharedUsernameIsAmbiguous(t *testing.T) {
+	t.Parallel()
+	c := &fakeClient{users: []map[string]any{
+		userObj("u-1", "One", "dev", "local://u-1"),
+		userObj("u-2", "Two", "dev", "local://u-2"),
+	}}
+	_, err := ResolveSubject(t.Context(), fakeFactory{c: c}, Subject{Kind: SubjectUser, Bare: "dev"})
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "want a *clierr.Error, got %v", err)
 	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
-	assert.Len(t, ce.Candidates, 2)
+	assert.Equal(t, `2 users have the username "dev": pass the user id`, ce.Message)
+	assert.Equal(t, []clierr.Candidate{{ID: "u-1", Name: "One"}, {ID: "u-2", Name: "Two"}}, ce.Candidates)
+	assert.Empty(t, ce.Hint)
+}
+
+// TestResolveSubjectBareDisplayNameAndSystemUsernameListsTheUserOnly asserts
+// a value that is one user's display name and a system user's username is
+// NOT_FOUND with only the user that is not a system user listed.
+func TestResolveSubjectBareDisplayNameAndSystemUsernameListsTheUserOnly(t *testing.T) {
+	t.Parallel()
+	c := &fakeClient{users: []map[string]any{
+		userObj("u-abc", "bot", "abc", "github_user://1"),
+		userObj("u-sys", "Deploy Bot", "bot", "system://c-x"),
+	}}
+	_, err := ResolveSubject(t.Context(), fakeFactory{c: c}, Subject{Kind: SubjectUser, Bare: "bot"})
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "want a *clierr.Error, got %v", err)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Equal(t, `no user has the user id or username "bot" (system users are not matched); 1 user has this display name, and grant and revoke do not match a display name: pass the user id`, ce.Message)
+	assert.Equal(t, []clierr.Candidate{{ID: "u-abc", Name: "abc"}}, ce.Candidates)
+}
+
+// TestResolveSubjectBareDisplayMatchCandidateName asserts the name of a
+// candidate found by display name: the username when set, else the
+// local:// principal, else the first principal id, else the user id - never
+// empty and never the display name.
+func TestResolveSubjectBareDisplayMatchCandidateName(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		user map[string]any
+		want clierr.Candidate
+	}{
+		{name: "username", user: userObj("u-xk2mq", "Shown", "shown", "github_user://99999"),
+			want: clierr.Candidate{ID: "u-xk2mq", Name: "shown"}},
+		{name: "external principal", user: userObj("u-xk2mq", "Shown", "", "github_user://99999"),
+			want: clierr.Candidate{ID: "u-xk2mq", Name: "github_user://99999"}},
+		{name: "local principal first", user: userObj("u-xk2mq", "Shown", "", "github_user://99999", "local://u-xk2mq"),
+			want: clierr.Candidate{ID: "u-xk2mq", Name: "local://u-xk2mq"}},
+		{name: "no username and no principal ids", user: userObj("u-xk2mq", "Shown", ""),
+			want: clierr.Candidate{ID: "u-xk2mq", Name: "u-xk2mq"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := ResolveSubject(t.Context(), fakeFactory{c: &fakeClient{users: []map[string]any{tt.user}}}, Subject{Kind: SubjectUser, Bare: "Shown"})
+			ce, ok := errors.AsType[*clierr.Error](err)
+			require.True(t, ok, "want a *clierr.Error, got %v", err)
+			assert.Equal(t, clierr.CodeNotFound, ce.Code)
+			assert.Equal(t, []clierr.Candidate{tt.want}, ce.Candidates)
+		})
+	}
+}
+
+// TestResolveSubjectBareDisplayNameErrorEnvelope asserts the JSON form of the
+// NOT_FOUND for a value only a display name matches: code, message, hint and
+// candidates with id and name.
+func TestResolveSubjectBareDisplayNameErrorEnvelope(t *testing.T) {
+	t.Parallel()
+	c := &fakeClient{users: []map[string]any{userObj("u-xk2mq", "Dora Display", "", "github_user://99999")}}
+	_, err := ResolveSubject(t.Context(), fakeFactory{c: c}, Subject{Kind: SubjectUser, Bare: "Dora Display"})
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "want a *clierr.Error, got %v", err)
+	raw, merr := json.Marshal(ce)
+	require.NoError(t, merr)
+	var envelope struct {
+		Code       string `json:"code"`
+		Message    string `json:"message"`
+		Hint       string `json:"hint"`
+		Candidates []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"candidates"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &envelope))
+	assert.Equal(t, "NOT_FOUND", envelope.Code)
+	assert.Equal(t, `no user has the user id or username "Dora Display" (system users are not matched); 1 user has this display name, and grant and revoke do not match a display name: pass the user id`, envelope.Message)
+	assert.Equal(t, clierr.Rancher+" get users", envelope.Hint)
+	require.Len(t, envelope.Candidates, 1)
+	assert.Equal(t, "u-xk2mq", envelope.Candidates[0].ID)
+	assert.Equal(t, "github_user://99999", envelope.Candidates[0].Name)
 }
 
 func TestResolveSubjectBareNotFoundNearMatchCandidates(t *testing.T) {
@@ -420,18 +529,37 @@ func TestResolveSubjectBareByUsername(t *testing.T) {
 	assert.Equal(t, "local://u-adm", got.Principal)
 }
 
-func TestResolveSubjectBareUsernameDisplayCollision(t *testing.T) {
-	// User A has displayName "dev"; user B has username "dev" - input "dev" is ambiguous.
+// TestResolveSubjectBareNearMatchIsUnchangedWithoutAnExactDisplayName asserts
+// a value that is part of a display name, and no user's exact display name,
+// is the near-match NOT_FOUND: its message names the value and its
+// candidates show each user's display name.
+func TestResolveSubjectBareNearMatchIsUnchangedWithoutAnExactDisplayName(t *testing.T) {
+	t.Parallel()
+	c := &fakeClient{users: []map[string]any{
+		userObj("u-abc", "Jane Doe", "jdoe", "local://u-abc"),
+		userObj("u-zed", "Zed", "zed", "local://u-zed"),
+	}}
+	_, err := ResolveSubject(t.Context(), fakeFactory{c: c}, Subject{Kind: SubjectUser, Bare: "Jane"})
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "want a *clierr.Error, got %v", err)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Equal(t, "user not found: Jane", ce.Message)
+	assert.Equal(t, []clierr.Candidate{{ID: "u-abc", Name: "Jane Doe"}}, ce.Candidates)
+	assert.Equal(t, clierr.Rancher+" get users", ce.Hint)
+}
+
+// TestResolveSubjectBareUsernameWinsOverDisplayName asserts a value that is
+// user A's display name and user B's username resolves to B.
+func TestResolveSubjectBareUsernameWinsOverDisplayName(t *testing.T) {
+	t.Parallel()
 	c := &fakeClient{users: []map[string]any{
 		userObj("u-aaa", "dev", "aaa", "local://u-aaa"),
 		userObj("u-bbb", "", "dev", "local://u-bbb"),
 	}}
-	_, err := ResolveSubject(t.Context(), fakeFactory{c: c}, Subject{Kind: SubjectUser, Bare: "dev"})
-	var ce *clierr.Error
-	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
-	assert.Len(t, ce.Candidates, 2)
-	assert.Empty(t, ce.Hint, "candidates already carry the selection guidance")
+	got, err := ResolveSubject(t.Context(), fakeFactory{c: c}, Subject{Kind: SubjectUser, Bare: "dev"})
+	require.NoError(t, err)
+	assert.Equal(t, "u-bbb", got.UserID)
+	assert.Equal(t, "local://u-bbb", got.Principal)
 }
 
 func TestResolveSubjectBareSameUserBothFields(t *testing.T) {

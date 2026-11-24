@@ -5,7 +5,7 @@ USAGE:
    rancher access clusters [options]
 
 OPTIONS:
-   --as string       user name, id, or principal; omitted = you
+   --as string       username, user id, or user principal; omitted = you
    --help, -h        show help
    --timeout string  time limit for the whole command, e.g. 2m (default 60s)
    --type string     kind of the --as value (only user is accepted here)

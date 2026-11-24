@@ -98,10 +98,11 @@ func TestGrantAndRevokeSourceClaim(t *testing.T) {
 
 // TestCompleteSubjects asserts one listing answers every non-system
 // user's id in list order, each followed by its username when no other
-// user carries that string as username or display name and no account,
-// a system one included, carries it as id; a user without principal ids
-// left out; a repeated row once; usernames answered raw for the surface
-// to sanitize.
+// listed user, a system one or one without principal ids included, has
+// that username and no account, a system one included, has it as id; a
+// username another user has as display name still offered; no display
+// name offered; a user without principal ids left out; a repeated row
+// once; usernames answered raw for the surface to sanitize.
 func TestCompleteSubjects(t *testing.T) {
 	t.Parallel()
 	s := completiontest.NewFixed(t, completiontest.SubjectsBody)
@@ -115,6 +116,11 @@ func TestCompleteSubjects(t *testing.T) {
 		"u-carol", "carol",
 		"u-dave",
 		"u-erin",
+		"u-frank", "frank",
+		"u-gina", "gina",
+		"u-hank",
+		"u-ivy",
+		"u-jo", "jo",
 	}, got.Names)
 	assert.Equal(t, []string{"/k8s/clusters/local/apis/management.cattle.io/v3/users"}, s.Requested())
 
@@ -151,8 +157,13 @@ func TestCompleteSubjectsDescribesEveryIdAndNoUsername(t *testing.T) {
 		"u-carol":   "carol (nopids)",
 		"u-dave":    "u-alice (Dave)",
 		"u-erin":    "u-sys (Erin)",
+		"u-frank":   "frank (Frank)",
+		"u-gina":    "gina (frank)",
+		"u-hank":    "hank (Hank)",
+		"u-ivy":     "ivy (Ivy)",
+		"u-jo":      "jo (Jo Display)",
 	}, got.Descriptions)
-	for _, username := range []string{"alice", "bob", "carol"} {
+	for _, username := range []string{"alice", "bob", "carol", "frank", "gina", "jo"} {
 		assert.Contains(t, got.Names, username)
 		assert.NotContains(t, got.Descriptions, username, "a username offered as a value carries no description")
 	}

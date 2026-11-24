@@ -5,7 +5,7 @@ USAGE:
    rancher access explain [options] <verb> [resource]
 
 OPTIONS:
-   --as string                    subject to explain instead of you: a Rancher user (id, username, or principal), a group principal, or a service account
+   --as string                    subject to explain instead of you: a Rancher user (user id, username, or user principal), a group principal, or a service account
    --cluster string               cluster name or id the question is about
    --group string                 API group when the resource name exists in several groups
    --help, -h                     show help

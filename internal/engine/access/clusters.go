@@ -69,7 +69,7 @@ func (c *clustersCmd) Describe() runtime.Descriptor {
 			"Reachability is the proxy's answer before any Kubernetes rule is consulted; what the identity may do inside a cluster is `rancher access list`'s question. " +
 			"Exit 0 when every cluster answered, 13 when any is unknown.",
 		Flags: []runtime.ArgSpec{
-			{Name: flagAs, Type: "string", Desc: "user name, id, or principal; omitted = you"},
+			{Name: flagAs, Type: "string", Desc: "username, user id, or user principal; omitted = you"},
 			{Name: flagType, Type: "string", Enum: []string{typeUser}, Desc: "kind of the --as value (only user is accepted here)"},
 			timeoutFlag(),
 		},

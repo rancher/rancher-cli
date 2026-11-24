@@ -41,7 +41,7 @@ func (c *listCmd) Describe() runtime.Descriptor {
 			namespaceFlag("namespace to list rules in (default: default)"),
 			runtime.ProjectFlag(false, "ask about the project's namespaces"),
 			{Name: "all-namespaces", Type: "bool", Aliases: []string{"A"}, Desc: "list rules in every namespace you can list"},
-			{Name: "as", Type: "string", Desc: "user name, id, or principal, or system:serviceaccount:<ns>:<name>; omitted = you"},
+			{Name: "as", Type: "string", Desc: "username, user id, or user principal, or system:serviceaccount:<ns>:<name>; omitted = you"},
 			{Name: "type", Type: "string", Enum: []string{"user", "group"}, Desc: "kind of a bare --as value when ambiguous (group is rejected here)"},
 			timeoutFlag(),
 		},

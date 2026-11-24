@@ -112,7 +112,7 @@ func preferredPrincipal(principalIDs []string) string {
 
 // ResolveSubject resolves a parsed Subject to binding fields:
 // groups pass through; bare user names resolve against existing users
-// only; fully qualified user principals resolve via deterministic-id and
+// only; user principals resolve via deterministic-id and
 // principalIds lookups and fall through to the provisioning path when no
 // user exists. Only structured NOT_FOUND advances a lookup step. When the
 // server refuses the read of a user (RBAC), a user id typed as local://<id>,
@@ -220,11 +220,13 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 		}
 	}
 
-	// Bare name/id: exact-id Get wins outright, with no warning naming a
-	// user whose display name or username is the same value.
-	// On Get miss, list scan matches exact equality on displayName OR
-	// username; a single user matching both fields counts once;
-	// >1 match → AMBIGUOUS_SELECTION; 0 → NOT_FOUND.
+	// A value that is not a principal: the exact-id Get wins
+	// outright, with no warning naming a user whose username is the same
+	// value. On a Get miss, the non-system users whose username equals the
+	// value: one resolves, more is AMBIGUOUS_SELECTION. A display name never
+	// resolves: with no username match, users whose display name equals the
+	// value make a NOT_FOUND that lists them by id; with neither, the
+	// NOT_FOUND lists near matches.
 	obj, err := client.Get(ctx, userKind.GVR, "", sub.Bare)
 	if err == nil {
 		if IsSystemUser(obj) {
@@ -243,55 +245,95 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 	if err != nil {
 		return ResolvedSubject{}, unreadableUserError(err, sub.Bare)
 	}
-	// nameMatches collects users where displayName == input OR username == input.
-	// Each list item is evaluated once, so a user whose both fields equal the
-	// input appends exactly once.
-	var nameMatches []*unstructured.Unstructured
-	var all []*unstructured.Unstructured
+	var usernameMatches, displayMatches, all []*unstructured.Unstructured
 	for i := range list.Items {
 		u := &list.Items[i]
 		if IsSystemUser(u) {
 			continue
 		}
 		all = append(all, u)
-		display, _, _ := unstructured.NestedString(u.Object, "displayName")
 		username, _, _ := unstructured.NestedString(u.Object, "username")
-		if display == sub.Bare || username == sub.Bare {
-			nameMatches = append(nameMatches, u)
+		display, _, _ := unstructured.NestedString(u.Object, "displayName")
+		switch {
+		case username == sub.Bare:
+			usernameMatches = append(usernameMatches, u)
+		case display == sub.Bare:
+			displayMatches = append(displayMatches, u)
 		}
 	}
-	switch len(nameMatches) {
-	case 1:
-		return resolvedFromUser(nameMatches[0])
-	case 0:
+	switch {
+	case len(usernameMatches) == 1:
+		return resolvedFromUser(usernameMatches[0])
+	case len(usernameMatches) > 1:
+		return ResolvedSubject{}, usernameAmbiguousError(usernameMatches, sub.Bare)
+	case len(displayMatches) > 0:
+		return ResolvedSubject{}, displayNameOnlyError(displayMatches, sub.Bare,
+			"no user has the user id or username %q (system users are not matched); %s this display name, and grant and revoke do not match a display name: pass the user id")
+	default:
 		return ResolvedSubject{}, clierr.New(clierr.CodeNotFound, "user not found: "+sub.Bare).
 			WithCandidatesCut(SubjectCandidates(all, sub.Bare), CandidateLimit).
 			WithHintCommand(clierr.NewCommand("get users"))
-	default:
-		cands := make([]clierr.Candidate, 0, len(nameMatches))
-		for _, u := range nameMatches {
-			cands = append(cands, UserCandidate(u))
-		}
-		return ResolvedSubject{}, clierr.New(clierr.CodeAmbiguousSelection,
-			fmt.Sprintf("%d users match %q", len(nameMatches), sub.Bare)).
-			WithCandidates(cands)
 	}
+}
+
+// usernameAmbiguousError is the error for a value that more than one user
+// has as username, each listed as a candidate.
+func usernameAmbiguousError(users []*unstructured.Unstructured, value string) error {
+	cands := make([]clierr.Candidate, 0, len(users))
+	for _, u := range users {
+		cands = append(cands, UserCandidate(u))
+	}
+	return clierr.New(clierr.CodeAmbiguousSelection,
+		fmt.Sprintf("%d users have the username %q: pass the user id", len(users), value)).
+		WithCandidates(cands)
+}
+
+// displayNameOnlyError is the NOT_FOUND for a value that no user has as id or
+// username and that users have as display name: those users are the
+// candidates, by id. format is the message, with the value (%q) and how many
+// users have the display name (%s) as its arguments.
+func displayNameOnlyError(users []*unstructured.Unstructured, value, format string) error {
+	have := "1 user has"
+	if len(users) > 1 {
+		have = fmt.Sprintf("%d users have", len(users))
+	}
+	cands := make([]clierr.Candidate, 0, len(users))
+	for _, u := range users {
+		cands = append(cands, displayMatchCandidate(u))
+	}
+	return clierr.New(clierr.CodeNotFound,
+		fmt.Sprintf(format, value, have)).
+		WithCandidatesCut(cands, CandidateLimit).
+		WithHintCommand(clierr.NewCommand("get users"))
 }
 
 // systemUserError is the terminal result for a lookup that lands on a
 // system account: never a fallback, never provisioning.
 func systemUserError(subject string) error {
 	return clierr.New(clierr.CodeValidation,
-		fmt.Sprintf("%q resolves to a system user; system users cannot be granted or revoked roles; pass a regular user or group", subject))
+		fmt.Sprintf("%q resolves to a system user; system users cannot be granted or revoked roles; pass a user that is not a system user, or a group", subject))
 }
 
 func resolvedFromUser(u *unstructured.Unstructured) (ResolvedSubject, error) {
 	pids, _, _ := unstructured.NestedStringSlice(u.Object, "principalIds")
 	if len(pids) == 0 {
 		return ResolvedSubject{}, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("user %q has no principalIds; fix the user in Rancher, or pass a fully qualified principal", u.GetName()))
+			fmt.Sprintf("user %q has no principalIds; fix the user in Rancher, or pass a principal", u.GetName()))
 	}
 	return ResolvedSubject{UserID: u.GetName(), Principal: preferredPrincipal(pids), PrincipalIDs: pids}, nil
+}
+
+// displayMatchCandidate returns u, a user found by its display name, as a
+// candidate: its id, and as name its username, else its preferred principal,
+// else its id. Never the display name, which every such candidate shares with
+// the typed value, and never empty.
+func displayMatchCandidate(u *unstructured.Unstructured) clierr.Candidate {
+	name, _, _ := unstructured.NestedString(u.Object, "username")
+	if name == "" {
+		pids, _, _ := unstructured.NestedStringSlice(u.Object, "principalIds")
+		name = PreferredPrincipalOrID(u.GetName(), pids)
+	}
+	return clierr.Candidate{ID: u.GetName(), Name: name}
 }
 
 // UserCandidate returns u as a selectable candidate: its id (the object name)

@@ -51,8 +51,12 @@ jsonquery stdout data.roles.projects.0.roles.0.role project-member
 exec rancher inspect user local://u-bob -o json
 jsonquery stdout data.user.id u-bob
 
-# Resolution by displayName.
-exec rancher inspect user 'Bob Example' -o json
+# A display name is not matched: NOT_FOUND that lists the user by id; the
+# username resolves.
+! exec rancher inspect user 'Bob Example' -o json
+jsonquery stderr data.error.code NOT_FOUND
+jsonquery stderr data.error.candidates.0.id u-bob
+exec rancher inspect user bob -o json
 jsonquery stdout data.user.id u-bob
 
 # Never-logged-in user: no UserAttribute object exists for it - verified

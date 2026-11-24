@@ -743,7 +743,7 @@ outright.
 - `rancher inspect pod <name>` - status, owners, events, logs, metrics
 - `rancher inspect deployment <name>` - rollout + its pods (the pods its selector matches)
 - `rancher inspect project <name-or-id>` - project namespaces, workload counts, members, resource quota, usage
-- `rancher inspect user <id|username|displayName|principal>` - id and names, groups, and role bindings at global, cluster and project level; bindings that exist only, never permissions
+- `rancher inspect user <id|username|principal>` - id and names, groups, and role bindings at global, cluster and project level; bindings that exist only, never permissions
 - `rancher usage` - capacity and consumption, grouped by `--by namespace|project|node|pod` and narrowed by `--namespace`/`--project`/`--node`; a `--namespace` or `--node` that matches no pods is read; a missing one is NOT_FOUND (a warning when you cannot read it, an RBAC error when you cannot list pods there)
 - `rancher images [--by image|workload] [--match substr]` - active-pod image inventory; repeatable `--match` substring-filters (OR), `--by workload` maps each image to its owning workload (CVE blast radius: `--match <affected-repo>: --by workload --all-clusters`)
 - `rancher get projects` - without `--cluster`, lists the projects you can read on every cluster; `rancher get project <id>` needs `--cluster`. Only `rancher images` takes `--all-clusters`.
@@ -985,9 +985,14 @@ takes neither).
 Never present a role list as permissions.
 
 - `rancher grant <subject> (--project <p> --cluster <c> | --cluster <c> | --global) --role <r>` -
-  grant a role at project, cluster, or global scope. Subject is a user/group
-  name, id, or fully qualified principal. Groups must be passed as a fully
-  qualified group principal id (e.g. `okta_group://<id>`); `--type` only
+  grant a role at project, cluster, or global scope. Subject is a user id,
+  username, or a user or group principal (for example `local://<id>`,
+  `<provider>_user://<id>`, `<provider>_group://<id>`). A subject that is not a
+  principal is matched by user id, then by username. A display name is never
+  matched: when the value is the display name of one or more users and the user
+  id or username of no user, the command fails with NOT_FOUND and lists those
+  users with their user ids. Groups must be passed as a group principal (for
+  example `okta_group://<id>`); `--type` only
   disambiguates principals whose provider prefix cannot be inferred.
   Principals with no matching user trigger a provisioning warning;
   Rancher auto-creates the user when the binding applies. Dry-run/apply --yes.
@@ -996,9 +1001,10 @@ Never present a role list as permissions.
   that looks like `u-lpnxw` (`u-`, `m-` or `user-` followed by at least five
   characters from `bcdfghjklmnpqrstvwxz2456789`). The server-side dry-run checks
   only that Rancher accepts the create: if no user has that id, the create still
-  succeeds and the binding has no effect. A username, a display name or an
-  external principal then fails: pass the user id as `local://<id>`; an
-  administrator can list ids with `rancher get users`. When Rancher refuses the
+  succeeds and the binding has no effect. A username, an id that does not look
+  like `u-lpnxw`, or a user principal other than `local://<id>` then fails: pass
+  the user id as `local://<id>`; an administrator can list ids with
+  `rancher get users`. When Rancher refuses the
   read of the existing bindings, grant continues with a warning and does not
   check whether the subject already has the role.
 - `rancher revoke <subject> (--project <p> --cluster <c> | --cluster <c> | --global) [--role <r>]` -

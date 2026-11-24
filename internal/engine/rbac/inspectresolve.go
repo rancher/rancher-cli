@@ -36,7 +36,7 @@ func ResolveInspectUser(ctx context.Context, clients engine.ClusterClientFactory
 	return resolveInspectUserBare(ctx, client, userKind.GVR, arg)
 }
 
-// resolveInspectUserPrincipal resolves a fully qualified principal argument.
+// resolveInspectUserPrincipal resolves a principal argument.
 // Ownership is proven by scanning Users' principalIds - the only
 // authoritative source; a deterministic predicted-user-id GET is not used,
 // since the scan alone already covers every case the prediction would
@@ -60,7 +60,7 @@ func resolveInspectUserPrincipal(ctx context.Context, client engine.ClusterClien
 			fmt.Sprintf("%q is a group principal; inspect user only supports individual users; use grant/revoke to work with group role bindings", principal))
 	default:
 		return ResolvedSubject{}, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("cannot infer subject type from principal %q; pass a user id, username, displayName, or a local:// / <provider>_user:// principal", principal))
+			fmt.Sprintf("cannot infer subject type from principal %q; pass a user id, a username, or a local:// or <provider>_user:// principal", principal))
 	}
 
 	list, err := client.List(ctx, userGVR, "", "")
@@ -94,12 +94,14 @@ func resolveInspectUserPrincipal(ctx context.Context, client engine.ClusterClien
 	}
 }
 
-// resolveInspectUserBare resolves a user id, username, or displayName.
-// Exact-id Get wins outright (ResolveSubject's precedence; unlike the
-// project and cluster lookups of engine.MatchOne, it matches username as
-// well as displayName and names no other user in a warning); on a Get
-// miss, username/displayName collisions become AMBIGUOUS_SELECTION. System
-// users resolve at every step - never excluded, never terminal.
+// resolveInspectUserBare resolves a user id or a username. The exact-id Get
+// wins outright (ResolveSubject's precedence; unlike the project and cluster
+// lookups of engine.MatchOne, it names no other user in a warning); on a Get
+// miss, one user with the username resolves and several are
+// AMBIGUOUS_SELECTION. A display name never resolves: with no username match,
+// the users whose display name equals the value make a NOT_FOUND that lists
+// them by id. System users are matched at every step - never excluded, never
+// terminal.
 func resolveInspectUserBare(ctx context.Context, client engine.ClusterClient, userGVR schema.GroupVersionResource, bare string) (ResolvedSubject, error) {
 	obj, err := client.Get(ctx, userGVR, "", bare)
 	if err == nil {
@@ -113,30 +115,30 @@ func resolveInspectUserBare(ctx context.Context, client engine.ClusterClient, us
 	if err != nil {
 		return ResolvedSubject{}, err
 	}
-	var matches []*unstructured.Unstructured
+	var usernameMatches, displayMatches []*unstructured.Unstructured
 	for i := range list.Items {
 		u := &list.Items[i]
-		display, _, _ := unstructured.NestedString(u.Object, "displayName")
 		username, _, _ := unstructured.NestedString(u.Object, "username")
-		if display == bare || username == bare {
-			matches = append(matches, u)
+		display, _, _ := unstructured.NestedString(u.Object, "displayName")
+		switch {
+		case username == bare:
+			usernameMatches = append(usernameMatches, u)
+		case display == bare:
+			displayMatches = append(displayMatches, u)
 		}
 	}
-	switch len(matches) {
-	case 1:
-		return resolvedInspectUser(matches[0]), nil
-	case 0:
+	switch {
+	case len(usernameMatches) == 1:
+		return resolvedInspectUser(usernameMatches[0]), nil
+	case len(usernameMatches) > 1:
+		return ResolvedSubject{}, usernameAmbiguousError(usernameMatches, bare)
+	case len(displayMatches) > 0:
+		return ResolvedSubject{}, displayNameOnlyError(displayMatches, bare,
+			"no user has the user id or username %q; %s this display name, and inspect user does not match a display name: pass the user id")
+	default:
 		return ResolvedSubject{}, clierr.New(clierr.CodeNotFound, "user not found: "+bare).
 			WithCandidatesCut(SubjectCandidates(toPointerSlice(list.Items), bare), CandidateLimit).
 			WithHintCommand(clierr.NewCommand("get users"))
-	default:
-		cands := make([]clierr.Candidate, 0, len(matches))
-		for _, u := range matches {
-			cands = append(cands, UserCandidate(u))
-		}
-		return ResolvedSubject{}, clierr.New(clierr.CodeAmbiguousSelection,
-			fmt.Sprintf("%d users match %q", len(matches), bare)).
-			WithCandidates(cands)
 	}
 }
 

@@ -20,15 +20,15 @@ const (
 )
 
 // Subject is the parsed <subject> argument. Exactly one of Principal
-// (fully qualified, contains "://") and Bare is set.
+// (a principal, contains "://") and Bare is set.
 type Subject struct {
 	Kind      SubjectKind
 	Principal string
 	Bare      string
 }
 
-// ParseSubject parses the positional subject plus --type. A fully qualified
-// principal infers its kind by a CLOSED rule: "local" and "_user"-suffixed
+// ParseSubject parses the positional subject plus --type. A principal
+// infers its kind by a CLOSED rule: "local" and "_user"-suffixed
 // prefixes are users; "_group"-suffixed prefixes plus Rancher's documented
 // group aliases (github_org, github_team) are groups; any other prefix is not
 // inferred - an explicit --type decides it, and without one it is a validation
@@ -38,7 +38,7 @@ type Subject struct {
 func ParseSubject(arg, typeFlag string) (Subject, error) {
 	if arg == "" {
 		return Subject{}, clierr.New(clierr.CodeValidation,
-			"argument <subject> is required; provide a user/group name, id, or fully qualified principal")
+			"argument <subject> is required; provide a user id, a username, or a user or group principal")
 	}
 	var flagKind SubjectKind
 	switch typeFlag {
@@ -61,7 +61,7 @@ func ParseSubject(arg, typeFlag string) (Subject, error) {
 	if !strings.Contains(arg, "://") {
 		if flagKind == SubjectGroup {
 			return Subject{}, clierr.New(clierr.CodeValidation,
-				"group subjects require a fully qualified principal id; pass the full group principal id, e.g. okta_group://<id>")
+				"group subjects require a principal; pass the full group principal, for example okta_group://<id>")
 		}
 		return Subject{Kind: SubjectUser, Bare: arg}, nil
 	}
