@@ -333,7 +333,8 @@ func (e *shellEnv) run(program string) (stdout, stderr string, code int, dockerC
 // cleanupDefinitions sets what cleanup reads and defines cleanup with the
 // functions and variables it uses, under set -euo pipefail. DRIFT_REPORTED is
 // set first because the script runs under set -u. The memory reading has no
-// meminfo file and reads the memory_pressure stub of the environment.
+// meminfo file and reads the memory_pressure stub of the environment, with a
+// read limit of 60 s that a loaded host does not reach while the stub starts.
 func (e *shellEnv) cleanupDefinitions(drift int, reported int) string {
 	e.t.Helper()
 	state := filepath.Join(e.dir, "state.json")
@@ -343,7 +344,7 @@ func (e *shellEnv) cleanupDefinitions(drift int, reported int) string {
 	return "set -euo pipefail\n" +
 		"DRIFT=" + strconv.Itoa(drift) + "\nDRIFT_REPORTED=" + strconv.Itoa(reported) + "\n" +
 		"STATE_FILE=" + state + " LOCK_DIR=" + lock + " CONTAINER=c K3S_CONTAINER=c-k3s NETWORK=c-net\n" +
-		"MEMINFO_FILE=" + filepath.Join(e.dir, "no-meminfo") + " MEMORY_PRESSURE_CMD=memory_pressure MEMORY_READ_LIMIT_SECONDS=5\n" +
+		"MEMINFO_FILE=" + filepath.Join(e.dir, "no-meminfo") + " MEMORY_PRESSURE_CMD=memory_pressure MEMORY_READ_LIMIT_SECONDS=60\n" +
 		shellFunction(e.t, "redact_log") +
 		shellFunction(e.t, "host_memory_free") +
 		shellFunction(e.t, "cleanup")

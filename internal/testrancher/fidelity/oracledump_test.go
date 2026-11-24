@@ -241,6 +241,10 @@ func TestHostMemoryFree(t *testing.T) {
 	testfs.SkipOnWindows(t, "scripts/e2e-fidelity is a bash script")
 	const absent = "memory-pressure-is-not-installed"
 	pressure := func(body string) string { return "#!/bin/sh\n" + body + "\n" }
+	// readLimit is long enough that a loaded host does not reach it while the
+	// stub memory_pressure starts; only the row that asserts the stop uses a
+	// short limit.
+	const readLimit = 60
 	cases := []struct {
 		name     string
 		meminfo  string
@@ -251,25 +255,25 @@ func TestHostMemoryFree(t *testing.T) {
 		want     string
 		maxTakes time.Duration
 	}{
-		{name: "meminfo", meminfo: "MemTotal:        1000 kB\nMemFree: 1 kB\nMemAvailable:    250 kB\n", hasInfo: true, command: absent, limit: 5,
+		{name: "meminfo", meminfo: "MemTotal:        1000 kB\nMemFree: 1 kB\nMemAvailable:    250 kB\n", hasInfo: true, command: absent, limit: readLimit,
 			want: "[host] memory free: 25% (MemAvailable of MemTotal)"},
-		{name: "meminfo with a total of 0", meminfo: "MemTotal: 0 kB\nMemAvailable: 0 kB\n", hasInfo: true, command: absent, limit: 5, want: "[host] memory free: unknown"},
-		{name: "meminfo with a total that is no number", meminfo: "MemTotal: lots kB\nMemAvailable: 5 kB\n", hasInfo: true, command: absent, limit: 5, want: "[host] memory free: unknown"},
-		{name: "meminfo with an available above the total", meminfo: "MemTotal: 10 kB\nMemAvailable: 50 kB\n", hasInfo: true, command: absent, limit: 5, want: "[host] memory free: unknown"},
-		{name: "memory_pressure when meminfo is missing", stub: pressure(`echo "System-wide memory free percentage: 41%"`), command: "memory_pressure", limit: 5,
+		{name: "meminfo with a total of 0", meminfo: "MemTotal: 0 kB\nMemAvailable: 0 kB\n", hasInfo: true, command: absent, limit: readLimit, want: "[host] memory free: unknown"},
+		{name: "meminfo with a total that is no number", meminfo: "MemTotal: lots kB\nMemAvailable: 5 kB\n", hasInfo: true, command: absent, limit: readLimit, want: "[host] memory free: unknown"},
+		{name: "meminfo with an available above the total", meminfo: "MemTotal: 10 kB\nMemAvailable: 50 kB\n", hasInfo: true, command: absent, limit: readLimit, want: "[host] memory free: unknown"},
+		{name: "memory_pressure when meminfo is missing", stub: pressure(`echo "System-wide memory free percentage: 41%"`), command: "memory_pressure", limit: readLimit,
 			want: "[host] memory free: 41% (memory_pressure)"},
-		{name: "memory_pressure when meminfo lacks MemAvailable", meminfo: "MemTotal: 1000 kB\n", hasInfo: true, stub: pressure(`echo "System-wide memory free percentage: 41%"`), command: "memory_pressure", limit: 5,
+		{name: "memory_pressure when meminfo lacks MemAvailable", meminfo: "MemTotal: 1000 kB\n", hasInfo: true, stub: pressure(`echo "System-wide memory free percentage: 41%"`), command: "memory_pressure", limit: readLimit,
 			want: "[host] memory free: 41% (memory_pressure)"},
-		{name: "memory_pressure with 0 percent", stub: pressure(`echo "System-wide memory free percentage: 0%"`), command: "memory_pressure", limit: 5,
+		{name: "memory_pressure with 0 percent", stub: pressure(`echo "System-wide memory free percentage: 0%"`), command: "memory_pressure", limit: readLimit,
 			want: "[host] memory free: 0% (memory_pressure)"},
-		{name: "memory_pressure that fails", stub: pressure("exit 1"), command: "memory_pressure", limit: 5, want: "[host] memory free: unknown"},
-		{name: "memory_pressure that prints no line", stub: pressure("echo nothing useful"), command: "memory_pressure", limit: 5, want: "[host] memory free: unknown"},
-		{name: "memory_pressure that prints a value above 100", stub: pressure(`echo "System-wide memory free percentage: 142%"`), command: "memory_pressure", limit: 5,
+		{name: "memory_pressure that fails", stub: pressure("exit 1"), command: "memory_pressure", limit: readLimit, want: "[host] memory free: unknown"},
+		{name: "memory_pressure that prints no line", stub: pressure("echo nothing useful"), command: "memory_pressure", limit: readLimit, want: "[host] memory free: unknown"},
+		{name: "memory_pressure that prints a value above 100", stub: pressure(`echo "System-wide memory free percentage: 142%"`), command: "memory_pressure", limit: readLimit,
 			want: "[host] memory free: unknown"},
-		{name: "memory_pressure that prints a value that is no number", stub: pressure(`echo "System-wide memory free percentage: ?%"`), command: "memory_pressure", limit: 5,
+		{name: "memory_pressure that prints a value that is no number", stub: pressure(`echo "System-wide memory free percentage: ?%"`), command: "memory_pressure", limit: readLimit,
 			want: "[host] memory free: unknown"},
 		{name: "memory_pressure that does not answer", stub: pressure("sleep 30"), command: "memory_pressure", limit: 1, want: "[host] memory free: unknown", maxTakes: 10 * time.Second},
-		{name: "neither source", command: absent, limit: 5, want: "[host] memory free: unknown"},
+		{name: "neither source", command: absent, limit: readLimit, want: "[host] memory free: unknown"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
