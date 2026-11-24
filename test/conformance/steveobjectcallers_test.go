@@ -69,7 +69,8 @@ func steveFirstReaderOutside(name, path string) bool {
 // are called only from steveread.go (the steve package itself declares them and
 // its tests call them), and that each function of steveFirstReaders is called
 // only from the files of its entry, each of which calls it. Only the generated
-// get and EtcdSnapshotsAfterForbidden (steveread.go) may read a kind through
+// get, EtcdSnapshotsAfterForbidden, ManagementClustersAfterForbidden and
+// ProvisioningClustersAfterForbidden (steveread.go) may read a kind through
 // Steve after the Kubernetes API refused it; the functions of steveFirstReaders
 // are the reviewed exceptions that read through Steve first.
 func TestSteveObjectReadersOnlyFromTheGetPath(t *testing.T) {

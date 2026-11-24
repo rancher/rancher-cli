@@ -61,7 +61,7 @@ var normanPathAllowlist = map[string]normanAllowance{
 	"internal/cli/nodeactionclient.go:normanNodesPath": {1, "the one file that sends Norman /v3/nodes requests",
 		map[string]int{"nodeActionClient.GetNode": 1, "nodeActionClient.PostNodeAction": 1}},
 	"internal/cli/cloudcredclient.go:normanCloudCredentialsPath": {1, "the one file that sends Norman /v3/cloudcredentials requests",
-		map[string]int{"cloudCredentialClient.Create": 2}},
+		map[string]int{"cloudCredentialItemPath": 1, "cloudCredentialClient.Create": 2}},
 }
 
 // groupVersionV3 is an API group and version, <group>.io/v3, where it starts a

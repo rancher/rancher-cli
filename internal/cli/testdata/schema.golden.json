@@ -1781,7 +1781,7 @@
       "examples": [
         "rancher create cluster imported-1 --import --apply",
         "rancher create cluster custom-1 --custom --k8s-version v1.30.5+rke2r1 --apply",
-        "rancher create cluster node-1 --machine-config amazonec2config/mycfg --cloud-credential aws-prod --k8s-version v1.30.5+rke2r1 --etcd --controlplane --worker --apply"
+        "rancher create cluster node-1 --machine-config amazonec2config/mycfg --cloud-credential cc-abc12 --k8s-version v1.30.5+rke2r1 --etcd --controlplane --worker --apply"
       ],
       "flags": [
         {
@@ -1800,7 +1800,7 @@
           "type": "string"
         },
         {
-          "desc": "cloud credential `id|display name` for a node-driver cluster",
+          "desc": "cloud credential `id` for a node-driver cluster; a display name is refused",
           "name": "cloud-credential",
           "type": "string"
         },
@@ -2559,6 +2559,46 @@
       "stability": "beta",
       "toolset": "core",
       "usage": "Delete the certificate-rotation"
+    },
+    {
+      "args": [
+        {
+          "name": "credential",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "desc": "Deletes a cloud credential through Rancher's Norman API, which refuses the delete while a provisioning cluster uses the credential. <credential> is the credential's id, as `rancher get cloud-credential` shows it (with or without cattle-global-data:), not its display name. A value that is the id of one credential and the display name of another is refused: give the id as cattle-global-data:<id>. The preview refuses when a provisioning cluster uses the credential. It warns for each hosted cluster that uses it and for each provisioning cluster that uses it only for etcd snapshots in S3; Rancher does not check these references. The command is previewed from server reads: --apply reads the cloud credential again and stops if it changed, and a change after that read is not detected. Without --wait=false the command waits until the credential is gone.",
+      "destructive": "true",
+      "examples": [
+        "rancher delete cloud-credential cc-abc12 --dry-run"
+      ],
+      "flags": [
+        {
+          "desc": "wait until the cloud credential is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "delete",
+      "name": "delete cloud-credential",
+      "serverAccess": "write",
+      "shape": "tabular",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Delete a cloud credential"
     },
     {
       "aliases": [
@@ -10204,6 +10244,56 @@
       "usage": "Patch the certificate-rotation"
     },
     {
+      "args": [
+        {
+          "name": "credential",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "desc": "Changes a cloud credential through Rancher's Norman API, the one API that runs Rancher's credential checks. <credential> is the credential's id, as `rancher get cloud-credential` shows it (with or without cattle-global-data:), not its display name. A value that is the id of one credential and the display name of another is refused: give the id as cattle-global-data:<id>. Give at least one of --set <field>=<value> (a public field), --from-file <field>=<path> (a secret or multi-line field; a <path> of - reads stdin, once), --display-name and --description; fields not given keep their values. The command takes no patch document: --patch, -p, --patch-file and --type are refused. Replacing a secret value needs --yes. The command is previewed from server reads: --apply reads the cloud credential again and stops if it changed, and a change after that read is not detected, because Rancher's Norman API takes no precondition. In the diff of a preview, `from` is left out when the CLI did not read the stored value, and is null when the field had no value.",
+      "destructive": "dependsOnInput",
+      "examples": [
+        "rancher patch cloud-credential cc-abc12 --from-file secretKey=./secret-key.txt --dry-run",
+        "rancher patch cloud-credential cc-abc12 --description 'production account' --dry-run"
+      ],
+      "flags": [
+        {
+          "desc": "a public field of the driver, as `field=value`; repeat the flag for more fields",
+          "name": "set",
+          "type": "stringSlice"
+        },
+        {
+          "desc": "a secret or multi-line field of the driver and the file that has its value, as `field=path`; a path of - reads stdin once; repeat the flag for more fields",
+          "name": "from-file",
+          "type": "stringSlice"
+        },
+        {
+          "desc": "the credential's new display `name`",
+          "name": "display-name",
+          "type": "string"
+        },
+        {
+          "desc": "the credential's new `description`",
+          "name": "description",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply"
+      ],
+      "group": "patch",
+      "name": "patch cloud-credential",
+      "serverAccess": "write",
+      "shape": "tabular",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Change the fields, display name or description of a cloud credential"
+    },
+    {
       "aliases": [
         "clusters"
       ],
@@ -15530,9 +15620,10 @@
         "patch harvesterconfig",
         "patch vmwarevsphereconfig",
         "patch nodedriver",
-        "patch clusterregistrationtoken"
+        "patch clusterregistrationtoken",
+        "patch cloud-credential"
       ],
-      "desc": "Apply a partial update to a resource from a patch file or stdin. Generated for every kind `rancher schema` lists.",
+      "desc": "Apply a partial update to a resource from a patch file or stdin. Generated for every kind `rancher schema` lists. `rancher patch cloud-credential` is a dedicated command with its own flags.",
       "name": "patch"
     },
     {
@@ -15579,9 +15670,10 @@
         "delete azureconfig",
         "delete digitaloceanconfig",
         "delete harvesterconfig",
-        "delete vmwarevsphereconfig"
+        "delete vmwarevsphereconfig",
+        "delete cloud-credential"
       ],
-      "desc": "Delete a resource by name. Generated for kinds that support deletion; some kinds add extra checks or cascade warnings.",
+      "desc": "Delete a resource by name. Generated for kinds that support deletion; some kinds add extra checks or cascade warnings. `rancher delete cloud-credential` is a dedicated command.",
       "name": "delete"
     }
   ],

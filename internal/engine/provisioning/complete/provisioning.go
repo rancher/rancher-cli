@@ -2,6 +2,7 @@ package complete
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
@@ -46,7 +47,7 @@ func claimCreateCluster(req completion.Request) (completion.Requirements, bool) 
 func completeCreateCluster(ctx context.Context, conn *completion.Connection, req completion.Request) completion.Result {
 	switch req.Flag {
 	case "cloud-credential":
-		return completeCloudCredentials(ctx, conn)
+		return completeCredentialIDs(ctx, conn)
 	case "machine-config":
 		return completeMachineConfigs(ctx, conn, req)
 	}
@@ -102,10 +103,64 @@ func completeCloudCredentials(ctx context.Context, conn *completion.Connection) 
 	return completion.Result{Names: cloudCredentialNames(list.Items)}
 }
 
+// completeCredentialIDs lists the Secrets of cattle-global-data and gives the
+// cloud credential values that create cluster, patch cloud-credential and
+// delete cloud-credential accept: the credential id only (see credentialIDs).
+func completeCredentialIDs(ctx context.Context, conn *completion.Connection) completion.Result {
+	p, err := completion.ManagementNamespacedPath("", "v1", cloudCredentialNamespace, "secrets")
+	if err != nil {
+		return completion.Result{}
+	}
+	var list completion.ItemList
+	if err := conn.GetJSON(ctx, p, "", &list); err != nil {
+		return completion.Result{}
+	}
+	return credentialIDs(list.Items)
+}
+
+// credentialIDs projects the Secrets of cattle-global-data into the values
+// create cluster, patch cloud-credential and delete cloud-credential accept
+// for a credential: the bare Secret name (metadata.name) of every
+// credential-shaped Secret, with the display name (the field.cattle.io/name
+// annotation) as its description. The completion surface takes no ":" in a
+// candidate, so the "cattle-global-data:" form is not offered. A Secret name
+// that is another credential's display name is left out: the command refuses
+// it as ambiguous, and a suggestion must be valid verbatim. A display name
+// is never offered. List order, each value once. Only metadata and data KEY
+// names are read; a data value never reaches a candidate.
+func credentialIDs(items []map[string]any) completion.Result {
+	type entry struct{ id, display string }
+	var entries []entry
+	seen := map[string]bool{}
+	for _, item := range items {
+		id := completion.ItemName(item)
+		if id == "" || seen[id] || !credentialShaped(item, id) {
+			continue
+		}
+		seen[id] = true
+		entries = append(entries, entry{id: id, display: storedDisplayName(item)})
+	}
+	var res completion.Result
+	for _, e := range entries {
+		if slices.ContainsFunc(entries, func(o entry) bool { return o.id != e.id && o.display == e.id }) {
+			continue
+		}
+		res.Names = append(res.Names, e.id)
+		if e.display != "" {
+			if res.Descriptions == nil {
+				res.Descriptions = map[string]string{}
+			}
+			res.Descriptions[e.id] = e.display
+		}
+	}
+	return res
+}
+
 // cloudCredentialNames projects the Secrets of cattle-global-data into
 // the values create cluster resolves --cloud-credential to: the id
-// (metadata.name) of every credential-shaped Secret - named cc-*, or
-// carrying a data key with the credentialConfig- marker - and each
+// (metadata.name) of every credential-shaped Secret - named with the cc-
+// prefix, or whose first data key in sorted order that contains the
+// credentialConfig- marker has a driver name in front of it - and each
 // display name (the field.cattle.io/name annotation) that is on exactly
 // one credential and is not itself an id, so a value offered never
 // resolves ambiguously. List order, each value once. Only metadata and
@@ -145,16 +200,23 @@ func cloudCredentialNames(items []map[string]any) []string {
 }
 
 // credentialShaped reports whether a Secret of cattle-global-data is a
-// cloud credential: named with the credential prefix, or carrying a data
-// KEY with the credentialConfig- marker. Keys only; values are never read.
+// cloud credential, by the rule the resolver applies: named with the
+// credential prefix, or the first data KEY in sorted order that contains the
+// credentialConfig- marker has a driver name in front of it. Keys only;
+// values are never read.
 func credentialShaped(item map[string]any, id string) bool {
 	if strings.HasPrefix(id, cloudCredentialPrefix) {
 		return true
 	}
 	data, _ := item["data"].(map[string]any)
+	keys := make([]string, 0, len(data))
 	for key := range data {
-		if strings.Contains(key, credentialConfigMarker) {
-			return true
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	for _, key := range keys {
+		if before, _, ok := strings.Cut(key, credentialConfigMarker); ok {
+			return before != ""
 		}
 	}
 	return false

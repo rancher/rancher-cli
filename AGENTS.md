@@ -160,8 +160,9 @@ Gotchas:
   and a warning that says so. The cluster client refuses a delete that is not
   a dry run and has neither precondition, before any request
   (`TestEveryDeleteIsBoundByAPrecondition`); every DELETE request to
-  Rancher or Kubernetes is sent by that client or by a file the Local
-  rule below lists (`TestEveryDeleteIsSentByTheProviderOrIsListed`);
+  Rancher or Kubernetes is sent by that client, by the Norman cloud
+  credential client or by a file the Local rule below lists
+  (`TestEveryDeleteIsSentByTheProviderOrIsListed`);
   only the authorizer's refusal of the read selects the uid precondition
   (`TestTheUIDPreconditionIsChosenOnlyByTheAuthorizersRefusal`,
   `TestEveryDeleteDeletesAnObjectTheCallerCannotGet`). A command cannot weaken
@@ -170,8 +171,11 @@ Gotchas:
   `extension install`, `extension upgrade`, `extension uninstall`, and
   `node drain` and `node stop-drain` for a caller without access to Rancher's
   local cluster), and the cloud credential writes through Norman
-  (`create cloud-credential`), carry no precondition and say so in the Effect
-  (`previewSource: serverReads`); every other mutation sets
+  (`create cloud-credential`, `patch cloud-credential`,
+  `delete cloud-credential`), carry no precondition the server checks and say
+  so in the Effect (`previewSource: serverReads`); the patch and delete Effects
+  carry the `resourceVersion` the preview read, and `--apply` reads the
+  credential again before it writes; every other mutation sets
   `previewSource: serverDryRun`.
 - **A Local command writes to the server only objects the CLI created for its
   own use and can prove it created.** Anything else is a resource mutation and

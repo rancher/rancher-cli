@@ -36,11 +36,26 @@ type ccwInput struct {
 	desc     string
 	wait     *bool
 	terminal bool
+	// display and description are set for a patch: a flag typed with a value,
+	// the empty value included.
+	display, description *string
+	// timeout is --timeout of a delete.
+	timeout string
 }
 
 func (i ccwInput) String(k string) string {
-	if k == "description" {
+	switch k {
+	case "description":
+		if i.description != nil {
+			return *i.description
+		}
 		return i.desc
+	case "display-name":
+		if i.display != nil {
+			return *i.display
+		}
+	case "timeout":
+		return i.timeout
 	}
 	return ""
 }
@@ -54,7 +69,19 @@ func (i ccwInput) Strings(k string) []string {
 	}
 	return nil
 }
-func (i ccwInput) IsSet(k string) bool { return k == "wait" && i.wait != nil }
+func (i ccwInput) IsSet(k string) bool {
+	switch k {
+	case "wait":
+		return i.wait != nil
+	case "display-name":
+		return i.display != nil
+	case "timeout":
+		return i.timeout != ""
+	case "description":
+		return i.description != nil
+	}
+	return false
+}
 func (i ccwInput) Args() []string      { return i.args }
 func (i ccwInput) StdinTerminal() bool { return i.terminal }
 
@@ -89,11 +116,26 @@ type ccwClient struct {
 	secretsErr error
 	review     func() (engine.ReviewResponse, error)
 	getsLeft   int // reads of the new Secret that respond with not found first
-	gets       int
-	settings   int // reads of the kev2-operators setting
+	// getSecret, when set, responds to the read of a Secret by name.
+	getSecret func(name string) (*unstructured.Unstructured, error)
+	gets      int
+	settings  int // reads of the kev2-operators setting
+	// clusterLists returns the List of the clusters of an API group; a group
+	// with no entry has none. clusterListGroups records every such List.
+	clusterLists      map[string]func() (*unstructured.UnstructuredList, error)
+	clusterListGroups []string
 }
 
 func (c *ccwClient) List(_ context.Context, gvr schema.GroupVersionResource, _ string, _ string) (*unstructured.UnstructuredList, error) {
+	if gvr.Resource == "clusters" {
+		c.mu.Lock()
+		c.clusterListGroups = append(c.clusterListGroups, gvr.Group)
+		c.mu.Unlock()
+		if read := c.clusterLists[gvr.Group]; read != nil {
+			return read()
+		}
+		return &unstructured.UnstructuredList{}, nil
+	}
 	if gvr.Resource == "nodedrivers" {
 		l := &unstructured.UnstructuredList{}
 		for _, d := range c.drivers {
@@ -119,6 +161,12 @@ func (c *ccwClient) Get(_ context.Context, gvr schema.GroupVersionResource, _ st
 			return nil, c.settingErr
 		}
 		return &unstructured.Unstructured{Object: map[string]any{"value": c.setting}}, nil
+	}
+	if c.getSecret != nil {
+		c.mu.Lock()
+		c.gets++
+		c.mu.Unlock()
+		return c.getSecret(name)
 	}
 	c.mu.Lock()
 	c.gets++
@@ -180,6 +228,16 @@ type ccwNorman struct {
 	id       string
 	err      error
 	sentBody engine.CloudCredentialBody
+	// updates and deletes record the id of every Update and Delete; updateBodies
+	// has the body of each Update.
+	updates      []string
+	updateBodies []string
+	deletes      []string
+	updateErr    error
+	deleteErr    error
+	// onDelete runs after a Delete is recorded, as the server deletes or
+	// replaces the Secret.
+	onDelete func()
 }
 
 func (n *ccwNorman) CloudCredentials() (engine.CloudCredentialClient, error) { return n, nil }
@@ -198,6 +256,25 @@ func (n *ccwNorman) Create(_ context.Context, body engine.CloudCredentialBody) (
 		return "cattle-global-data:cc-abcde", nil
 	}
 	return n.id, nil
+}
+
+func (n *ccwNorman) Update(_ context.Context, id string, body engine.CloudCredentialBody) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	raw, _ := body.RequestJSON()
+	n.updates = append(n.updates, id)
+	n.updateBodies = append(n.updateBodies, string(raw))
+	return n.updateErr
+}
+
+func (n *ccwNorman) Delete(_ context.Context, id string) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.deletes = append(n.deletes, id)
+	if n.onDelete != nil {
+		n.onDelete()
+	}
+	return n.deleteErr
 }
 
 func (n *ccwNorman) body(t *testing.T) map[string]any {
@@ -265,6 +342,8 @@ func TestOrdinal(t *testing.T) {
 	}
 }
 
+// TestCloudCredentialPlanDisplayIdentity asserts the Effect of a create and of a
+// patch names the kind and the display name the preview and the result show.
 func TestCloudCredentialPlanDisplayIdentity(t *testing.T) {
 	t.Parallel()
 	r := newCCWRig(ccwFilesFor(ccwSecret + "\n"))
@@ -278,6 +357,31 @@ func TestCloudCredentialPlanDisplayIdentity(t *testing.T) {
 	assert.Empty(t, eff.ResourceVersion)
 	assert.True(t, eff.Reversible)
 	assert.False(t, eff.Destructive)
+
+	// A patch names the same kind and the Secret name, an update of the server
+	// reads it came from, with the resourceVersion it read.
+	p := newCCPRig(newCCWRig(nil), "amazonec2")
+	in := ccpInputOf()
+	in.description = new("new")
+	peff, _, err := p.plan(t, in)
+	require.NoError(t, err)
+	assert.Equal(t, "cloud-credential", peff.DisplayKind)
+	assert.Equal(t, ccpID, peff.DisplayName)
+	assert.Equal(t, safety.ActionUpdate, peff.Action)
+	assert.Equal(t, "cloudcredentials", peff.Target)
+	assert.Equal(t, safety.PreviewServerReads, peff.PreviewSource)
+	assert.Equal(t, "7", peff.ResourceVersion)
+	assert.False(t, peff.ConflictDetection)
+	assert.False(t, peff.Reversible)
+	assert.False(t, peff.Destructive)
+
+	// A delete names the same kind and the Secret name.
+	d := newCCDRig(newCCWRig(nil), "amazonec2")
+	deff, _, err := d.plan(t, ccpInputOf())
+	require.NoError(t, err)
+	assert.Equal(t, "cloud-credential", deff.DisplayKind)
+	assert.Equal(t, ccpID, deff.DisplayName)
+	assert.Equal(t, safety.ActionDelete, deff.Action)
 }
 
 // TestCloudCredentialEffectDiffHidesSecrets asserts the diff has the name,
@@ -396,7 +500,10 @@ func TestCloudCredentialCommandGates(t *testing.T) {
 // sets SecretInput, so no typed argument reaches a refusal of the command line.
 func TestCloudCredentialCommandsTakeSecretInput(t *testing.T) {
 	t.Parallel()
-	for _, c := range []runtime.Command{NewCreateCloudCredential(fakeFactory{}, &ccwNorman{}, &ccwFiles{})} {
+	for _, c := range []runtime.Command{
+		NewCreateCloudCredential(fakeFactory{}, &ccwNorman{}, &ccwFiles{}),
+		NewPatchCloudCredential(fakeFactory{}, &ccwNorman{}, &ccwFiles{}),
+	} {
 		d := c.Describe()
 		assert.True(t, d.SecretInput, d.Name)
 	}
@@ -823,4 +930,54 @@ func TestCloudCredentialCompletionOffersOnlyWhatPlanAccepts(t *testing.T) {
 			}
 		}
 	}
+}
+
+// TestPatchCloudCredentialCompletionOffersOnlyWhatPlanAccepts asserts every
+// field name the patch completion source offers for a stored credential of each
+// driver of the fixture passes the command's own checks: Plan never refuses an
+// offered field as unknown, secret in --set or public in --from-file, and the
+// credential value the source resolved is the one Plan resolves.
+func TestPatchCloudCredentialCompletionOffersOnlyWhatPlanAccepts(t *testing.T) {
+	t.Parallel()
+	items := make([]string, 0, len(defaultDrivers()))
+	for _, d := range defaultDrivers() {
+		raw, err := json.Marshal(d.Object)
+		require.NoError(t, err)
+		items = append(items, string(raw))
+	}
+	src := complete.PatchCloudCredentialSource()
+	refusedWords := []string{"is not a field of", "cannot be given with --set", "is a public field of", "has no fields of a node driver"}
+	offered := 0
+	for _, driver := range []string{"amazonec2", "digitalocean", "harvester", "pnap", "twosecrets", "s3"} {
+		stored, err := json.Marshal(ccpStored(driver, "7").Object)
+		require.NoError(t, err)
+		server := completiontest.New(t, map[string]string{
+			"/k8s/clusters/local/api/v1/namespaces/cattle-global-data/secrets":         `{"items":[` + string(stored) + `]}`,
+			"/k8s/clusters/local/apis/management.cattle.io/v3/nodedrivers":             `{"items":[` + strings.Join(items, ",") + `]}`,
+			"/k8s/clusters/local/apis/management.cattle.io/v3/settings/kev2-operators": `{"value":"[{\"name\":\"alibaba\",\"active\":false}]"}`,
+		})
+		for _, value := range []string{ccpID, "prod"} {
+			for _, flag := range []string{"set", "from-file"} {
+				fields := src.Complete(t.Context(), server.Conn(2), completion.Request{Flag: flag, Positionals: []string{value}})
+				offered += len(fields.Names)
+				for _, field := range fields.Names {
+					r := newCCPRig(newCCWRig(ccwFilesFor(ccwSecret)), driver)
+					in := ccwInput{args: []string{ccpID}}
+					if flag == "set" {
+						in.set = []string{field + "=value"}
+					} else {
+						in.fromFile = []string{field + "=secret.txt"}
+					}
+					_, _, err := r.plan(t, in)
+					if err == nil {
+						continue
+					}
+					for _, word := range refusedWords {
+						assert.NotContains(t, err.Error(), word, "%s %s %s=...", driver, flag, field)
+					}
+				}
+			}
+		}
+	}
+	require.Positive(t, offered)
 }

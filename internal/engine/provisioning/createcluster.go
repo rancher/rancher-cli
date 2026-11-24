@@ -184,7 +184,7 @@ func (createClusterCmd) Describe() runtime.Descriptor {
 			// Deliberately NOT ArgSpec.Enum: the flag's values are kind/name
 			// composites, so the runtime enum validator would reject them all.
 			{Name: "machine-config", Type: "string", Desc: "machine config `kind/name` for the machine pool of a node-driver cluster; kinds: " + machineConfigKindsHint()},
-			{Name: "cloud-credential", Type: "string", Desc: "cloud credential `id|display name` for a node-driver cluster"},
+			{Name: "cloud-credential", Type: "string", Desc: "cloud credential `id` for a node-driver cluster; a display name is refused"},
 			{Name: "k8s-version", Type: "string", Desc: "Kubernetes `version`; required for --custom and for a node-driver cluster, optional for --import"},
 			{Name: "pool-name", Type: "string", Desc: "machine pool name (default: pool1)"},
 			{Name: "etcd", Type: "bool", Desc: "machine pool: etcd role"},
@@ -195,7 +195,7 @@ func (createClusterCmd) Describe() runtime.Descriptor {
 		Examples: []string{
 			"rancher create cluster imported-1 --import --apply",
 			"rancher create cluster custom-1 --custom --k8s-version v1.30.5+rke2r1 --apply",
-			"rancher create cluster node-1 --machine-config amazonec2config/mycfg --cloud-credential aws-prod " +
+			"rancher create cluster node-1 --machine-config amazonec2config/mycfg --cloud-credential cc-abc12 " +
 				"--k8s-version v1.30.5+rke2r1 --etcd --controlplane --worker --apply",
 		},
 		Destructive: "false",
@@ -390,13 +390,11 @@ func (c createClusterCmd) Plan(ctx context.Context, in runtime.Input) (safety.Ef
 		return safety.Effect{}, nil, err
 	}
 
-	var credWarning string
 	if mode == modeNodeDriver {
-		ref, warning, rerr := ResolveCloudCredential(ctx, c.clients, in.String("cloud-credential"))
+		ref, _, rerr := ResolveCloudCredential(ctx, c.clients, in.String("cloud-credential"), lookupForChange)
 		if rerr != nil {
 			return safety.Effect{}, nil, rerr
 		}
-		credWarning = warning
 		_ = unstructured.SetNestedField(obj.Object, ref.ID, "spec", "cloudCredentialSecretName")
 	}
 
@@ -466,9 +464,6 @@ func (c createClusterCmd) Plan(ctx context.Context, in runtime.Input) (safety.Ef
 	}
 
 	eff.Warnings = c.versionWarnings(ctx, in.String("k8s-version"))
-	if credWarning != "" {
-		eff.Warnings = append(eff.Warnings, credWarning)
-	}
 	if stampWarning != "" {
 		eff.Warnings = append(eff.Warnings, stampWarning)
 	}

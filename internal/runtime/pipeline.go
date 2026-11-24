@@ -1124,6 +1124,10 @@ func dryRunText(eff safety.Effect) string {
 		// clierr.ValueText writes them: one that has a hidden character or
 		// an invalid byte shows as a double-quoted string with escapes, and
 		// a value cannot add a line.
+		if d.FromUnread {
+			lines = append(lines, output.Printable(fmt.Sprintf("%s: (stored value not read) -> %s", clierr.ValueText(d.Path), clierr.ValueText(diffValueText(d.To)))))
+			continue
+		}
 		lines = append(lines, output.Printable(fmt.Sprintf("%s: %s -> %s", clierr.ValueText(d.Path), clierr.ValueText(diffValueText(d.From)), clierr.ValueText(diffValueText(d.To)))))
 	}
 	lines = append(lines, ObjectLines(eff.Objects, eff.DisplayKind)...)

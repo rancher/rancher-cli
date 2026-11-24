@@ -24,7 +24,7 @@ import (
 // dry-run. A command or row added to either list is a reviewed exception to
 // the safety pipeline.
 var (
-	serverReadsCommands = []string{"app install", "app upgrade", "app uninstall", "extension install", "extension upgrade", "extension uninstall", "create cloud-credential"}
+	serverReadsCommands = []string{"app install", "app upgrade", "app uninstall", "extension install", "extension upgrade", "extension uninstall", "create cloud-credential", "patch cloud-credential", "delete cloud-credential"}
 	serverReadsRows     = []string{
 		"node drain (no wait, through Rancher's node action)",
 		"node drain (waited, through Rancher's node action)",

@@ -74,16 +74,17 @@ func TestCompleteMachineConfigs(t *testing.T) {
 	assert.Zero(t, conn.Used())
 }
 
-// TestCompleteCloudCredentials asserts the --cloud-credential projection:
-// every credential-shaped Secret's id, in list order, followed by its
-// display name when that name is on exactly one credential and is not
-// itself an id; a Secret that is no credential is left out; names are
-// answered raw for the surface to sanitize.
+// TestCompleteCloudCredentials asserts the --cloud-credential projection: the
+// id of every credential-shaped Secret, in list order, each with its display
+// name as the description; no display name is offered; an id that is another
+// credential's display name is left out; a Secret that is no credential is
+// left out; names are answered raw for the surface to sanitize.
 func TestCompleteCloudCredentials(t *testing.T) {
 	t.Parallel()
 	s := completiontest.New(t, map[string]string{cloudCredsPath: completiontest.CloudCredentialsBody})
 	got := CreateClusterSource().Complete(t.Context(), s.Conn(1), completion.Request{Flag: "cloud-credential"})
-	assert.Equal(t, []string{"cc-abc12", "aws-prod", "cc-dup1", "cc-dup2", "cc-collide", "cc-hostile", "bad name!", "cc-noannotation", "marker-only"}, got.Names)
+	assert.Equal(t, []string{"cc-dup1", "cc-dup2", "cc-collide", "cc-hostile", "cc-noannotation", "marker-only"}, got.Names)
+	assert.Equal(t, map[string]string{"cc-dup1": "dup", "cc-dup2": "dup", "cc-collide": "cc-abc12", "cc-hostile": "bad name!"}, got.Descriptions)
 	assert.Empty(t, got.Prefix)
 	assert.Equal(t, []string{cloudCredsPath}, s.Requested())
 }

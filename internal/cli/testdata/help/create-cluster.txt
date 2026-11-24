@@ -5,17 +5,17 @@ USAGE:
    rancher create cluster [options] <name>
 
 OPTIONS:
-   --cloud-credential id|display name  cloud credential id|display name for a node-driver cluster
-   --controlplane                      machine pool: control-plane role
-   --custom                            custom cluster; nodes join separately via a registration command
-   --etcd                              machine pool: etcd role
-   --help, -h                          show help
-   --import                            imported cluster (no RKE config)
-   --k8s-version version               Kubernetes version; required for --custom and for a node-driver cluster, optional for --import
-   --machine-config kind/name          machine config kind/name for the machine pool of a node-driver cluster; kinds: amazonec2config, azureconfig, digitaloceanconfig, harvesterconfig, vmwarevsphereconfig
-   --pool-name string                  machine pool name (default: pool1)
-   --quantity string                   number of nodes in the machine pool (default: 1)
-   --worker                            machine pool: worker role
+   --cloud-credential id       cloud credential id for a node-driver cluster; a display name is refused
+   --controlplane              machine pool: control-plane role
+   --custom                    custom cluster; nodes join separately via a registration command
+   --etcd                      machine pool: etcd role
+   --help, -h                  show help
+   --import                    imported cluster (no RKE config)
+   --k8s-version version       Kubernetes version; required for --custom and for a node-driver cluster, optional for --import
+   --machine-config kind/name  machine config kind/name for the machine pool of a node-driver cluster; kinds: amazonec2config, azureconfig, digitaloceanconfig, harvesterconfig, vmwarevsphereconfig
+   --pool-name string          machine pool name (default: pool1)
+   --quantity string           number of nodes in the machine pool (default: 1)
+   --worker                    machine pool: worker role
 
 GLOBAL OPTIONS:
    --allow-deprecated          allow writing to a deprecated resource

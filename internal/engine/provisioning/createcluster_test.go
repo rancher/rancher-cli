@@ -80,7 +80,7 @@ func (r *ccRecClient) Get(_ context.Context, _ schema.GroupVersionResource, _ st
 	if obj, ok := r.objects[name]; ok {
 		return obj, nil
 	}
-	return nil, fmt.Errorf("ccRecClient: no object named %q", name)
+	return nil, clierr.New(clierr.CodeNotFound, fmt.Sprintf("ccRecClient: no object named %q", name))
 }
 
 func (r *ccRecClient) List(context.Context, schema.GroupVersionResource, string, string) (*unstructured.UnstructuredList, error) {
@@ -903,11 +903,11 @@ func TestCreateClusterDeniedDryRunBlocksApplyToo(t *testing.T) {
 	assert.Empty(t, client.dryRuns, "the fake records only creates it accepted; none was")
 }
 
-// TestCreateClusterCredentialIDWinsWarningIsInThePreview asserts a
-// --cloud-credential that is one credential's id and another's display
-// name resolves to the id, and the warning naming the other credential is
-// in the preview's warnings, before any confirmation.
-func TestCreateClusterCredentialIDWinsWarningIsInThePreview(t *testing.T) {
+// TestCreateClusterCredentialThatIsAnotherDisplayNameIsRefused asserts a
+// --cloud-credential that is one credential's id and another's display name
+// is refused as ambiguous, naming both ids, and the prefixed id selects the
+// credential with that id, with no warning about the other.
+func TestCreateClusterCredentialThatIsAnotherDisplayNameIsRefused(t *testing.T) {
 	t.Parallel()
 	client := &ccRecClient{list: &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
 		*secretObj("cc-abc12", map[string]string{displayNameAnnotation: "AWS Prod"}, nil),
@@ -916,13 +916,29 @@ func TestCreateClusterCredentialIDWinsWarningIsInThePreview(t *testing.T) {
 	// errRootFactory: --k8s-version is set, so Plan reaches versionWarnings;
 	// its warning is not this test's subject.
 	cmd := NewCreateCluster(fakeFactory{c: client}, errRootFactory{})
-	eff, _, err := planCluster(t, cmd, ccInput{
-		a: []string{"node-1"},
-		s: map[string]string{"machine-config": "amazonec2config/mycfg", "cloud-credential": "cc-abc12", "k8s-version": "v1.30.5+rke2r1"},
-		b: map[string]bool{"worker": true},
-	})
+	in := func(credential string) ccInput {
+		return ccInput{
+			a: []string{"node-1"},
+			s: map[string]string{"machine-config": "amazonec2config/mycfg", "cloud-credential": credential, "k8s-version": "v1.30.5+rke2r1"},
+			b: map[string]bool{"worker": true},
+		}
+	}
+
+	_, _, err := planCluster(t, cmd, in("cc-abc12"))
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
+	assert.Equal(t, []clierr.Candidate{
+		{ID: "cattle-global-data:cc-abc12", Name: "AWS Prod"},
+		{ID: "cattle-global-data:cc-zzz99", Name: "cc-abc12"},
+	}, ce.Candidates)
+	assert.Nil(t, client.created)
+
+	eff, _, err := planCluster(t, cmd, in("cattle-global-data:cc-abc12"))
 	require.NoError(t, err)
 	credSecretName, _, _ := unstructured.NestedString(client.created.Object, "spec", "cloudCredentialSecretName")
 	assert.Equal(t, "cattle-global-data:cc-abc12", credSecretName)
-	assert.Contains(t, eff.Warnings, "--cloud-credential 'cc-abc12' is the id of cloud credential 'cc-abc12' and the display name of cloud credential 'cc-zzz99'; the command uses the one with that id. To use the other one, pass --cloud-credential 'cc-zzz99'")
+	for _, w := range eff.Warnings {
+		assert.NotContains(t, w, "cc-zzz99")
+	}
 }

@@ -319,6 +319,35 @@ func TestDryRunTextDiffLines(t *testing.T) {
 		"  dry-run preview - re-run with --apply to apply the change\n", out.String())
 }
 
+// TestDryRunTextUnreadDiffEntry asserts an entry whose stored value the command
+// did not read prints "(stored value not read)" for its from side, and an
+// entry with a nil or a set from side prints as it does without the flag.
+func TestDryRunTextUnreadDiffEntry(t *testing.T) {
+	t.Parallel()
+	cmd := fakeMutating{
+		d: mutatingDesc(),
+		eff: safety.Effect{
+			PreviewSource: safety.PreviewServerReads,
+			Action:        safety.ActionUpdate, Target: "x", DisplayKind: "cloud-credential", DisplayName: "aws",
+			Diff: []safety.DiffEntry{
+				{Path: "/name", From: "old", To: "new"},
+				{Path: "/description", To: "text"},
+				{Path: "/amazonec2credentialConfig/accessKey", To: "AK", FromUnread: true},
+			},
+		},
+		exec: unusedExec(t),
+	}
+	var out bytes.Buffer
+	_, ce := Run(t.Context(), cmd, mapInput{},
+		IO{Out: &out, Err: io.Discard, Format: "", DryRun: true}, safety.Binding{})
+	require.Nil(t, ce)
+	assert.Equal(t, "update cloud-credential/aws\n"+
+		"  /name: old -> new\n"+
+		"  /description: <nil> -> text\n"+
+		"  /amazonec2credentialConfig/accessKey: (stored value not read) -> AK\n"+
+		"  dry-run preview - re-run with --apply to apply the change\n", out.String())
+}
+
 // TestDryRunTextDiffValues asserts a map or list value prints as compact JSON
 // on its entry's one line (<, > and & as typed, a newline inside it as the
 // two characters \n), a text value with a newline prints as a double-quoted

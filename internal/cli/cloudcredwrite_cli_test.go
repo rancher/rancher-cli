@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -19,6 +20,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/telemetry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/yaml"
 )
 
 const (
@@ -32,7 +34,35 @@ const (
 	ccReviews   = "/k8s/clusters/local/apis/authorization.k8s.io/v1/selfsubjectaccessreviews"
 	ccSettings  = "/k8s/clusters/local/apis/management.cattle.io/v3/settings/kev2-operators"
 	ccNormanURL = "/v3/cloudcredentials"
+	// ccItemURL is the Norman route of the stored credential cc-abcde, which an
+	// update and a delete name.
+	ccItemURL = "/v3/cloudCredentials/cattle-global-data:cc-abcde"
+	// ccAnnotation is a stored annotation value, sent back by an update with a
+	// new name or description, that no output may show.
+	ccAnnotation = "fake-cc-annotation-0001"
+	// ccStoredData is the decoded value of a data key of the stored credential,
+	// which the CLI never keeps or shows.
+	ccStoredData = "fake-cc-stored-data-0001"
 )
+
+// ccClusterPaths are the paths of the lists of provisioning clusters and of
+// management clusters, through the Kubernetes API and through Steve.
+var ccClusterPaths = []string{
+	"/k8s/clusters/local/apis/provisioning.cattle.io/v1/clusters",
+	"/k8s/clusters/local/apis/management.cattle.io/v3/clusters",
+	"/v1/provisioning.cattle.io.clusters",
+	"/v1/management.cattle.io.clusters",
+}
+
+// ccStoredSecret is the credential cc-abcde as the stub stores it; changed
+// serves the next resourceVersion.
+func ccStoredSecret(changed bool, driver string) string {
+	rv := "7"
+	if changed {
+		rv = "8"
+	}
+	return `{"apiVersion":"v1","kind":"Secret","metadata":{"name":"cc-abcde","resourceVersion":"` + rv + `","annotations":{"field.cattle.io/name":"prod","field.cattle.io/description":"old","provisioning.cattle.io/driver":"aws","e2e/keep":"` + ccAnnotation + `"}},"data":{"` + driver + `credentialConfig-stored":"` + base64.StdEncoding.EncodeToString([]byte(ccStoredData)) + `"}}`
+}
 
 // ccDrivers is the node driver list the stub serves: one object per row of
 // the driver table with its credential annotations.
@@ -95,7 +125,24 @@ type ccNorman struct {
 // ccOptions changes what the stub serves: an inactive node driver in the list,
 // the alibaba operator marked inactive, a stored credential named "prod",
 // or an access review that denies the create.
-type ccOptions struct{ dormant, alibabaOff, existing, reviewDenied bool }
+// With stored the stub has the credential cc-abcde, and with changed its read
+// by name, the one after the list, responds with another resourceVersion.
+type ccOptions struct {
+	dormant, alibabaOff, existing, reviewDenied, stored, changed bool
+	// clustersRefused makes the lists of provisioning and management clusters,
+	// through the Kubernetes API and through Steve, respond with 403.
+	clustersRefused bool
+	// storedDriver is the driver of the stored credential; amazonec2 when empty.
+	storedDriver string
+}
+
+func (o ccOptions) storedSecret(changed bool) string {
+	driver := o.storedDriver
+	if driver == "" {
+		driver = "amazonec2"
+	}
+	return ccStoredSecret(changed, driver)
+}
 
 // ccStub responds to the reads and the review of the command, and to the create
 // as norman says. The posts it saw are returned through *posts.
@@ -113,8 +160,16 @@ func ccStubWith(opts ccOptions, norman ccNorman, posts *[]string, listRefused bo
 	if opts.existing {
 		stored = `{"apiVersion":"v1","kind":"SecretList","items":[{"metadata":{"name":"cc-other","annotations":{"field.cattle.io/name":"prod"}}}]}`
 	}
+	if opts.stored {
+		stored = `{"apiVersion":"v1","kind":"SecretList","items":[` + opts.storedSecret(false) + `]}`
+	}
+	var deleted atomic.Bool
 	return func(w http.ResponseWriter, r *http.Request) bool {
 		switch {
+		case opts.clustersRefused && slices.Contains(ccClusterPaths, r.URL.Path):
+			writeKubeJSON(w, http.StatusForbidden, `{"kind":"Status","apiVersion":"v1","status":"Failure","reason":"Forbidden","code":403,"message":"clusters is forbidden: User cannot list"}`)
+		case slices.Contains(ccClusterPaths[:2], r.URL.Path):
+			writeKubeJSON(w, http.StatusOK, `{"apiVersion":"v1","kind":"ClusterList","items":[]}`)
 		case r.URL.Path == ccNodeDrv && r.Method == http.MethodGet:
 			writeKubeJSON(w, http.StatusOK, ccDriverList(opts.dormant))
 		case r.URL.Path == ccSettings:
@@ -125,12 +180,21 @@ func ccStubWith(opts ccOptions, norman ccNorman, posts *[]string, listRefused bo
 			writeKubeJSON(w, http.StatusForbidden, `{"kind":"Status","apiVersion":"v1","status":"Failure","reason":"Forbidden","code":403,"message":"secrets is forbidden: User cannot list"}`)
 		case r.URL.Path == ccSecrets:
 			writeKubeJSON(w, http.StatusOK, stored)
+		case opts.stored && r.URL.Path == ccSecrets+"/cc-abcde" && deleted.Load():
+			writeKubeJSON(w, http.StatusNotFound, `{"kind":"Status","apiVersion":"v1","status":"Failure","reason":"NotFound","code":404,"message":"secrets not found"}`)
+		case opts.stored && r.URL.Path == ccSecrets+"/cc-abcde":
+			writeKubeJSON(w, http.StatusOK, opts.storedSecret(opts.changed))
+		case opts.stored && strings.HasPrefix(r.URL.Path, ccSecrets+"/"):
+			writeKubeJSON(w, http.StatusNotFound, `{"kind":"Status","apiVersion":"v1","status":"Failure","reason":"NotFound","code":404,"message":"secrets not found"}`)
 		case strings.HasPrefix(r.URL.Path, ccSecrets+"/"):
 			writeKubeJSON(w, http.StatusOK, `{"apiVersion":"v1","kind":"Secret","metadata":{"name":"cc-abcde"},"data":{"amazonec2credentialConfig-accessKey":"eA=="}}`)
-		case r.URL.Path == ccNormanURL && r.Method == http.MethodPost:
+		case (r.URL.Path == ccNormanURL && r.Method == http.MethodPost) || (r.URL.Path == ccItemURL && (r.Method == http.MethodPut || r.Method == http.MethodDelete)):
 			body := make([]byte, 1<<16)
 			n, _ := r.Body.Read(body)
 			*posts = append(*posts, string(body[:n]))
+			if r.Method == http.MethodDelete && norman.status >= 200 && norman.status < 300 {
+				deleted.Store(true)
+			}
 			if norman.drop {
 				if hj, ok := w.(http.Hijacker); ok {
 					if conn, _, err := hj.Hijack(); err == nil {
@@ -290,7 +354,7 @@ func ccCheck(t *testing.T, c ccCase) {
 				}
 				decoded = strings.Join(ccStringLeaves(envelope.Data), "\n")
 			case c.errCode != "":
-				assert.Contains(t, stderr, "error ("+c.errCode+")")
+				assert.Contains(t, stderr, "error ("+c.errCode)
 				assert.Contains(t, stderr, c.message)
 			}
 			events := storedRuns(t, dir)
@@ -517,6 +581,89 @@ func TestCloudCredentialCommandsNeverShowASecretValue(t *testing.T) {
 		{"a file that cannot be read", ccCase{argv: []string{"create", "cloud-credential", "amazonec2", "prod", "--set", "accessKey=AKIAFAKE", "--from-file", "secretKey=missing.txt", "--dry-run"}, errCode: clierr.CodeValidation, secrets: []string{base}}},
 		{"a display name in use", ccCase{argv: ccAmazon("--dry-run"), stdin: base + "\n", opts: ccOptions{existing: true}, errCode: clierr.CodeValidation, secrets: []string{base}}},
 	}
+	stored := ccOptions{stored: true}
+	patch := func(extra ...string) []string {
+		return append([]string{"patch", "cloud-credential", "cc-abcde", "--set", "accessKey=AKIAFAKE", "--from-file", "secretKey=-"}, extra...)
+	}
+	applied := func(extra ...string) []string { return patch(append([]string{"--apply", "--yes"}, extra...)...) }
+	both := []string{base, ccAnnotation}
+	changedRow := func(name string, c ccCase) {
+		rows = append(rows, struct {
+			name string
+			c    ccCase
+		}{name, c})
+	}
+	changedRow("a patch preview", ccCase{argv: patch("--dry-run"), stdin: base + "\n", opts: stored, kind: "Effect", secrets: both})
+	changedRow("a patch preview with a refused display name list", ccCase{argv: patch("--dry-run", "--display-name", "renamed"), stdin: base + "\n", opts: stored, list: true, kind: "Effect", secrets: both})
+	changedRow("a patch", ccCase{argv: applied("--description", "new"), stdin: base + "\n", opts: stored, norman: ccNorman{status: 200, body: `{"id":"cattle-global-data:cc-abcde"}`}, kind: "CloudCredential", posts: 1, sent: key, secrets: both})
+	for _, status := range []struct {
+		code int
+		want string
+	}{{401, clierr.CodeAuth}, {403, clierr.CodeRBAC}, {404, clierr.CodeNotFound}, {409, clierr.CodeConflict}, {422, clierr.CodeValidation}} {
+		changedRow("a patch responded with "+strconv.Itoa(status.code)+" that echoes the value and the annotation", ccCase{argv: applied("--description", "new"), stdin: base + "\n", opts: stored,
+			norman: answer(status.code, ccEcho(base+" "+ccAnnotation)), errCode: status.want, posts: 1, secrets: both})
+	}
+	for _, status := range []int{500, 502, 504} {
+		changedRow("a patch responded with "+strconv.Itoa(status), ccCase{argv: applied("--description", "new"), stdin: base + "\n", opts: stored,
+			norman: answer(status, ccEcho(base+" "+ccAnnotation)), errCode: clierr.CodeGeneric, posts: 1, secrets: both})
+	}
+	changedRow("a patch responded with 422 with the base64 form", ccCase{argv: applied("--description", "new"), stdin: base + "\n", opts: stored,
+		norman: answer(422, ccEcho(base64.StdEncoding.EncodeToString([]byte(base)))), errCode: clierr.CodeValidation, posts: 1, secrets: both})
+	changedRow("a patch responded with 422 with the value JSON-escaped", ccCase{argv: applied(), stdin: quoted + "\n", opts: stored,
+		norman: answer(422, `{"type":"error","message":"bad value fake-cc-\\"quoted\\"-0001 here"}`), errCode: clierr.CodeValidation, posts: 1, secrets: []string{quoted}})
+	changedRow("a patch with a lost response", ccCase{argv: applied("--description", "new"), stdin: base + "\n", opts: stored, norman: ccNorman{drop: true}, errCode: clierr.CodeGeneric, posts: 1, secrets: both})
+	changedRow("a patch with one byte order mark", ccCase{argv: applied(), stdin: "\xef\xbb\xbf" + base + "\n", opts: stored, norman: answer(422, ccEcho(base)), errCode: clierr.CodeValidation, posts: 1, sent: key, secrets: []string{base}})
+	changedRow("a patch with two byte order marks and CRLF", ccCase{argv: applied(), stdin: "\xef\xbb\xbf\xef\xbb\xbf" + base + "\r\n", opts: stored, norman: answer(422, ccEcho(base)), errCode: clierr.CodeValidation, posts: 1, sent: key, secrets: []string{base}})
+	changedRow("a patch with a CRLF value echoed JSON-escaped", ccCase{argv: applied(), stdin: base + "\r\n", opts: stored,
+		norman: answer(422, `{"type":"error","message":"bad value `+base+`\\r\\n here"}`), errCode: clierr.CodeValidation, posts: 1, sent: key, secrets: []string{base}})
+	changedRow("a patch of a multi-line value with CRLF", ccCase{argv: []string{"patch", "cloud-credential", "cc-abcde", "--from-file", "authEncodedJson=-", "--apply", "--yes"}, stdin: ccLineOne + "\r\n" + ccLineTwo + "\r\n",
+		opts: ccOptions{stored: true, storedDriver: "google"}, norman: answer(422, `{"type":"error","message":"bad `+ccLineTwo+`"}`), errCode: clierr.CodeValidation, posts: 1, secrets: []string{ccLineOne + "\r\n" + ccLineTwo}})
+	changedRow("a patch of a harvester kubeconfig whose parser error quotes it", ccCase{argv: []string{"patch", "cloud-credential", "cc-abcde", "--from-file", "kubeconfigContent=-", "--apply", "--yes"}, stdin: ccKube, opts: ccOptions{stored: true, storedDriver: "harvester"},
+		norman: answer(500, `{"type":"error","code":"ServerError","message":"failed to process harvester cloud credential: failed to get tokens from kubeconfig: yaml: `+ccCanary+`"}`), errCode: clierr.CodeValidation, posts: 1, secrets: []string{ccCanary, strings.TrimSpace(ccKube)}})
+	changedRow("a patch of a harvester kubeconfig whose token is in use", ccCase{argv: []string{"patch", "cloud-credential", "cc-abcde", "--from-file", "kubeconfigContent=-", "--apply", "--yes"}, stdin: ccKube, opts: ccOptions{stored: true, storedDriver: "harvester"},
+		norman: answer(500, `{"type":"error","code":"ServerError","message":"failed to process harvester cloud credential: token kubeconfig-user-x is already in use by secret"}`), errCode: clierr.CodeValidation, posts: 1, secrets: []string{ccCanary, strings.TrimSpace(ccKube)}})
+	changedRow("a patch after a change found by the read before the request", ccCase{argv: applied("--description", "new"), stdin: base + "\n", opts: ccOptions{stored: true, changed: true}, errCode: clierr.CodeConflict, secrets: both})
+	changedRow("a patch with an extra argument", ccCase{argv: patch("--dry-run", base), stdin: base + "\n", opts: stored, errCode: clierr.CodeValidation, secrets: []string{base}})
+	changedRow("a patch with a --set argument with no equals sign", ccCase{argv: []string{"patch", "cloud-credential", "cc-abcde", "--set", base, "--dry-run"}, opts: stored, errCode: clierr.CodeValidation, secrets: []string{base}})
+	changedRow("a patch with a --from-file argument with no equals sign", ccCase{argv: []string{"patch", "cloud-credential", "cc-abcde", "--from-file", base, "--dry-run"}, opts: stored, errCode: clierr.CodeValidation, secrets: []string{base}})
+	changedRow("a patch with a secret given with --set", ccCase{argv: []string{"patch", "cloud-credential", "cc-abcde", "--set", "secretKey=" + base, "--dry-run"}, opts: stored, errCode: clierr.CodeValidation, secrets: []string{base}})
+	changedRow("a patch with no field flag", ccCase{argv: []string{"patch", "cloud-credential", "cc-abcde", "--dry-run"}, opts: stored, errCode: clierr.CodeValidation})
+	changedRow("a patch with a secret that needs --yes", ccCase{argv: patch("--apply"), stdin: base + "\n", opts: stored, errCode: clierr.CodeConfirmationRequired, secrets: []string{base}})
+	changedRow("a patch with an access review that denies", ccCase{argv: patch("--dry-run"), stdin: base + "\n", opts: ccOptions{stored: true, reviewDenied: true}, errCode: clierr.CodeRBAC, secrets: []string{base}})
+	changedRow("a patch of a credential that is not there", ccCase{argv: []string{"patch", "cloud-credential", "nope", "--set", "accessKey=AKIAFAKE", "--from-file", "secretKey=-", "--dry-run"}, stdin: base + "\n", opts: stored, errCode: clierr.CodeNotFound, secrets: []string{base}})
+	changedRow("a patch with a line break in a single-line value", ccCase{argv: patch("--dry-run"), stdin: ccLineOne + "\n" + ccLineTwo + "\n", opts: stored, errCode: clierr.CodeValidation, secrets: []string{ccLineOne, ccLineTwo}})
+	changedRow("a patch with a line break and a tab in a single-line value", ccCase{argv: patch("--dry-run"), stdin: ccLineOne + "\n" + ccTabLine + "\n", opts: stored, errCode: clierr.CodeValidation, secrets: []string{ccLineOne, ccTabLine}})
+	changedRow("a patch responded with 422 with a field error that quotes the value", ccCase{argv: applied(), stdin: nbsp + "\n", opts: stored, norman: answer(422, ccFieldError(nbsp)), errCode: clierr.CodeValidation, posts: 1, secrets: []string{nbsp}})
+	changedRow("a patch with a secret as the field of a --set argument", ccCase{argv: []string{"patch", "cloud-credential", "cc-abcde", "--set", base + "=x", "--dry-run"}, opts: stored, errCode: clierr.CodeValidation, secrets: []string{base}})
+	changedRow("a patch with a secret given with --set in another case", ccCase{argv: []string{"patch", "cloud-credential", "cc-abcde", "--set", "SECRETKEY=" + base, "--dry-run"}, opts: stored, errCode: clierr.CodeValidation, secrets: []string{base}})
+	changedRow("a patch with a pasted secret that ends in equals signs as a --set argument", ccCase{argv: []string{"patch", "cloud-credential", "cc-abcde", "--set", base + "==", "--dry-run"}, opts: stored, errCode: clierr.CodeValidation, secrets: []string{base}})
+	changedRow("a patch with a pasted secret that ends in equals signs as a --from-file argument", ccCase{argv: []string{"patch", "cloud-credential", "cc-abcde", "--from-file", base + "==", "--dry-run"}, opts: stored, errCode: clierr.CodeValidation, secrets: []string{base}})
+	changedRow("a patch with a pasted secret that ends in equals signs given twice", ccCase{argv: []string{"patch", "cloud-credential", "cc-abcde", "--set", base + "==", "--set", base + "==", "--dry-run"}, opts: stored, errCode: clierr.CodeValidation, secrets: []string{base}})
+	storedValues := []string{ccAnnotation, ccStoredData}
+	remove := func(extra ...string) []string {
+		return append([]string{"delete", "cloud-credential", "cc-abcde"}, extra...)
+	}
+	removed := ccNorman{status: 204}
+	changedRow("a delete preview", ccCase{argv: remove("--dry-run"), opts: stored, kind: "Effect", secrets: storedValues})
+	changedRow("a delete preview with the lists of clusters refused", ccCase{argv: remove("--dry-run"), opts: ccOptions{stored: true, clustersRefused: true}, kind: "Effect", secrets: storedValues})
+	changedRow("a delete", ccCase{argv: remove("--apply", "--yes"), opts: stored, norman: removed, kind: "CloudCredential", posts: 1, secrets: storedValues})
+	changedRow("a delete that does not wait", ccCase{argv: remove("--apply", "--yes", "--wait=false"), opts: stored, norman: removed, kind: "CloudCredential", posts: 1, secrets: storedValues})
+	changedRow("a delete with the lists of clusters refused", ccCase{argv: remove("--apply", "--yes"), opts: ccOptions{stored: true, clustersRefused: true}, norman: removed, kind: "CloudCredential", posts: 1, secrets: storedValues})
+	for _, status := range []struct {
+		code int
+		want string
+	}{{401, clierr.CodeAuth}, {403, clierr.CodeRBAC}, {404, clierr.CodeNotFound}, {409, clierr.CodeConflict}, {422, clierr.CodeValidation}} {
+		changedRow("a delete responded with "+strconv.Itoa(status.code), ccCase{argv: remove("--apply", "--yes"), opts: stored,
+			norman: answer(status.code, ccEcho("cc-abcde")), errCode: status.want, posts: 1, secrets: storedValues})
+	}
+	for _, status := range []int{500, 502, 504} {
+		changedRow("a delete responded with "+strconv.Itoa(status), ccCase{argv: remove("--apply", "--yes"), opts: stored,
+			norman: answer(status, ccEcho("cc-abcde")), errCode: clierr.CodeGeneric, posts: 1, secrets: storedValues})
+	}
+	changedRow("a delete with a lost response", ccCase{argv: remove("--apply", "--yes"), opts: stored, norman: ccNorman{drop: true}, errCode: clierr.CodeGeneric, posts: 1, secrets: storedValues})
+	changedRow("a delete after a change found by the read before the request", ccCase{argv: remove("--apply", "--yes"), opts: ccOptions{stored: true, changed: true}, errCode: clierr.CodeConflict, secrets: storedValues})
+	changedRow("a delete with no --yes", ccCase{argv: remove("--apply"), opts: stored, errCode: clierr.CodeConfirmationRequired, secrets: storedValues})
+	changedRow("a delete of a credential that is not there", ccCase{argv: []string{"delete", "cloud-credential", "nope", "--dry-run"}, opts: stored, errCode: clierr.CodeNotFound, secrets: storedValues})
 	for _, shaped := range []string{"hunter2Secret", "q3XrT9vLm2Pz8KdWb1YcNa"} {
 		word := shaped + "=="
 		secrets := []string{shaped, word}
@@ -528,6 +675,31 @@ func TestCloudCredentialCommandsNeverShowASecretValue(t *testing.T) {
 			{"a pasted secret shaped like a field name as a --set argument: " + shaped, ccCase{argv: append(slices.Clone(amazon), "--set", word, "--dry-run"), errCode: clierr.CodeValidation, secrets: secrets}},
 			{"a pasted secret shaped like a field name as a --from-file argument: " + shaped, ccCase{argv: append(slices.Clone(amazon), "--from-file", word, "--dry-run"), errCode: clierr.CodeValidation, secrets: secrets}},
 			{"a pasted secret shaped like a field name given twice: " + shaped, ccCase{argv: append(slices.Clone(amazon), "--set", word, "--set", word, "--dry-run"), errCode: clierr.CodeValidation, secrets: secrets}},
+		}...)
+	}
+	for _, shaped := range []string{"hunter2Secret", "q3XrT9vLm2Pz8KdWb1YcNa"} {
+		word := shaped + "=="
+		secrets := []string{shaped, word}
+		patchArgv := []string{"patch", "cloud-credential", "cc-abcde"}
+		rows = append(rows, []struct {
+			name string
+			c    ccCase
+		}{
+			{"a patch with a pasted secret shaped like a field name as a --set argument: " + shaped, ccCase{argv: append(slices.Clone(patchArgv), "--set", word, "--dry-run"), opts: ccOptions{stored: true}, errCode: clierr.CodeValidation, secrets: secrets}},
+			{"a patch with a pasted secret shaped like a field name as a --from-file argument: " + shaped, ccCase{argv: append(slices.Clone(patchArgv), "--from-file", word, "--dry-run"), opts: ccOptions{stored: true}, errCode: clierr.CodeValidation, secrets: secrets}},
+			{"a patch with a pasted secret shaped like a field name given twice: " + shaped, ccCase{argv: append(slices.Clone(patchArgv), "--set", word, "--set", word, "--dry-run"), opts: ccOptions{stored: true}, errCode: clierr.CodeValidation, secrets: secrets}},
+		}...)
+	}
+	for _, pasted := range []string{"hunter2Secret", "q3XrT9vLm2Pz8KdWb1YcNa0"} {
+		word := pasted + "="
+		secrets := []string{pasted, word}
+		patchArgv := []string{"patch", "cloud-credential", "cc-abcde"}
+		rows = append(rows, []struct {
+			name string
+			c    ccCase
+		}{
+			{"a patch with a pasted secret ending in one equals sign as a --set argument: " + pasted, ccCase{argv: append(slices.Clone(patchArgv), "--set", word, "--dry-run"), opts: ccOptions{stored: true}, errCode: clierr.CodeValidation, message: "the 1st --set has an empty value", secrets: secrets}},
+			{"a patch with a pasted secret ending in one equals sign as a --from-file argument: " + pasted, ccCase{argv: append(slices.Clone(patchArgv), "--from-file", word, "--dry-run"), opts: ccOptions{stored: true}, errCode: clierr.CodeValidation, message: "the 1st --from-file has an empty path", secrets: secrets}},
 		}...)
 	}
 	for _, pasted := range []string{"hunter2Secret", "q3XrT9vLm2Pz8KdWb1YcNa0"} {
@@ -546,13 +718,13 @@ func TestCloudCredentialCommandsNeverShowASecretValue(t *testing.T) {
 		t.Run(row.name, func(t *testing.T) { ccCheck(t, row.c) })
 	}
 
-	t.Run("the error of the client returned unconverted", func(t *testing.T) {
+	t.Run("the error of the client returned unconverted by an update", func(t *testing.T) {
 		echo := ccEcho(ccCanary)
 		for _, status := range []int{http.StatusUnprocessableEntity, http.StatusInternalServerError} {
 			n := newNorman(t)
 			n.status = status
 			n.answer = echo
-			_, err := credentialClientFor(t, n).Create(t.Context(), clientBody())
+			err := credentialClientFor(t, n).Update(t.Context(), "cattle-global-data:cc-abcde", clientBody())
 			require.Error(t, err)
 			require.Equal(t, 1, len(n.seen()), "the client sent the request once")
 			for _, form := range ccForms(ccCanary) {
@@ -561,4 +733,52 @@ func TestCloudCredentialCommandsNeverShowASecretValue(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("the error of the client returned unconverted", func(t *testing.T) {
+		echo := ccEcho(ccCanary)
+		for _, status := range []int{http.StatusUnprocessableEntity, http.StatusInternalServerError} {
+			n := newNorman(t)
+			n.status = status
+			n.answer = echo
+			_, err := credentialClientFor(t, n).Create(t.Context(), clientBody())
+			require.Error(t, err)
+
+			require.Equal(t, 1, len(n.seen()), "the client sent the request once")
+			for _, form := range ccForms(ccCanary) {
+				assert.NotContains(t, err.Error(), form, "the error text")
+				assert.NotContains(t, clierr.From(err).Message, form, "the rendered message")
+			}
+		}
+	})
+}
+
+// TestCloudCredentialPatchYAMLDiffLeavesOutFromOfUnreadValues asserts the -o yaml
+// preview of a patch has no `from` on the entries of the config fields, whose
+// stored values the CLI does not read, and keeps it on the name and the
+// description.
+func TestCloudCredentialPatchYAMLDiffLeavesOutFromOfUnreadValues(t *testing.T) {
+	argv := []string{"patch", "cloud-credential", "cc-abcde", "--set", "accessKey=AKIAFAKE", "--from-file", "secretKey=-",
+		"--display-name", "renamed", "--description", "new", "--dry-run", "-o", "yaml"}
+	var posts []string
+	stdout, stderr, code, _ := ccRun(t, ccStubWith(ccOptions{stored: true}, ccNorman{}, &posts, false), argv, ccCanary+"\n")
+	require.Zero(t, code, stderr)
+	var envelope struct {
+		Data struct {
+			Diff []map[string]any `json:"diff"`
+		} `json:"data"`
+	}
+	require.NoError(t, yaml.Unmarshal([]byte(stdout), &envelope), stdout)
+	byPath := map[string]map[string]any{}
+	for _, e := range envelope.Data.Diff {
+		byPath[e["path"].(string)] = e
+	}
+	require.Len(t, byPath, 4)
+	assert.Equal(t, "prod", byPath["/name"]["from"])
+	assert.Equal(t, "old", byPath["/description"]["from"])
+	for _, path := range []string{"/amazonec2credentialConfig/accessKey", "/amazonec2credentialConfig/secretKey"} {
+		require.Contains(t, byPath, path)
+		assert.NotContains(t, byPath[path], "from", path)
+		assert.Contains(t, byPath[path], "to", path)
+	}
+	assert.NotContains(t, stdout, ccCanary)
 }

@@ -2412,7 +2412,7 @@ func seedNamespaces() {
 
 // seedCloudCredential creates the fixture cloud-credential Secrets in
 // cattle-global-data - global and one-time: `create cluster`'s node-driver e2e
-// scenarios resolve --cloud-credential by display name, and a per-script Setup
+// scenarios select --cloud-credential by id, and a per-script Setup
 // creating these same fixtures would race AlreadyExists across every script
 // sharing this one envtest apiserver. cc-e2etest ("e2e-cred") carries the
 // amazonec2 driver key; cc-e2edo ("e2e-do-cred") the digitalocean one, so the

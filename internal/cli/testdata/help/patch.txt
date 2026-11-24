@@ -13,6 +13,7 @@ COMMANDS:
    bundledeployment, bundledeployments:                                        Patch the bundledeployment
    capi-cluster, capiclusters, capi-clusters:                                  Patch the capi-cluster
    certificate-rotation, certificaterotations, certificate-rotations:          Patch the certificate-rotation
+   cloud-credential:                                                           Change the fields, display name or description of a cloud credential
    cluster, clusters:                                                          Patch the cluster
    clustergroup, clustergroups:                                                Patch the clustergroup
    clusterregistrationtoken, clusterregistrationtokens, crt:                   Patch the clusterregistrationtoken

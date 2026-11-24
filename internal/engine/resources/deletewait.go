@@ -110,6 +110,9 @@ type deleteTarget struct {
 	uid string
 	// kind is the kind name that messages and the committed details use.
 	kind string
+	// noun, when set, replaces kind in the sentences of messages and warnings:
+	// the committed details keep kind.
+	noun string
 	// recovery is the get command that reads the object.
 	recovery clierr.Command
 	// readBefore is true when the command read the object before the
@@ -121,6 +124,14 @@ type deleteTarget struct {
 	// namespace of a project fails, the details name the project, which the
 	// command did not delete.
 	subjectKind, subjectName string
+}
+
+// word is the noun a sentence uses for the target: noun when set, else kind.
+func (t deleteTarget) word() string {
+	if t.noun != "" {
+		return t.noun
+	}
+	return t.kind
 }
 
 // newDeleteTarget is the target of the wait for obj, an object of kind k that
@@ -229,15 +240,15 @@ func (t deleteTarget) wait(ctx context.Context, client engine.ClusterClient, dea
 			if !t.readBefore {
 				return t.refusedReadError(err)
 			}
-			warning = fmt.Sprintf("your access to %s %s ended after the delete request; the deletion was requested and not confirmed", t.kind, t.name)
+			warning = fmt.Sprintf("your access to %s %s ended after the delete request; the deletion was requested and not confirmed", t.word(), t.name)
 			return nil
 		},
 		OnCancel: func(context.Context, *unstructured.Unstructured, *clierr.Error) error {
-			return t.committedError(fmt.Sprintf("stopped waiting for %s %s to be deleted; the deletion was requested", t.kind, t.name))
+			return t.committedError(fmt.Sprintf("stopped waiting for %s %s to be deleted; the deletion was requested", t.word(), t.name))
 		},
 		OnTimeout: func(last *unstructured.Unstructured, lastErr *clierr.Error) error {
 			msg := fmt.Sprintf("timed out after %s waiting for %s %s to be deleted; the deletion was requested; last state: %s",
-				timeoutText, t.kind, t.name, t.state(last))
+				timeoutText, t.word(), t.name, t.state(last))
 			if lastErr != nil {
 				msg += fmt.Sprintf("; last error: %s: %s", lastErr.Code, lastErr.Message)
 			}
@@ -324,7 +335,7 @@ func (t deleteTarget) abortedError(err error) *clierr.Error {
 // the error keeps the response's code.
 func (t deleteTarget) refusedReadError(err error) *clierr.Error {
 	ce := clierr.From(err)
-	return clierr.New(ce.Code, fmt.Sprintf("could not read %s %s after the delete request: %s; the deletion was requested and not confirmed", t.kind, t.name, ce.Message)).
+	return clierr.New(ce.Code, fmt.Sprintf("could not read %s %s after the delete request: %s; the deletion was requested and not confirmed", t.word(), t.name, ce.Message)).
 		WithRetryable(false).WithHintCommand(t.recovery).WithDetails(t.committed()).WithCause(err)
 }
 
@@ -340,4 +351,36 @@ func deleteResult(k kinds.Kind, name string, end deleteEnd) runtime.Result {
 	res.Data = map[string]any{"deleted": name, "waited": end.waited}
 	res.Warnings = end.warnings
 	return res
+}
+
+// WaitCloudCredentialDeleted waits, as waitDeleted does for any delete, until
+// the Secret of the deleted cloud credential is gone from cattle-global-data:
+// the server responds NOT_FOUND or a Secret of that name has a different uid
+// from uid, the one the command read before the delete. w is the wait
+// ParseDeleteWait read; with --wait=false the function reads nothing. The
+// texts name a "cloud credential", the committed details the kind
+// "cloud-credential", and the command in the hint is get cloud-credential. It
+// returns the warnings of a wait that ended without seeing the deletion.
+func WaitCloudCredentialDeleted(ctx context.Context, client engine.ClusterClient, w DeleteWait, name, uid string) ([]string, error) {
+	switch w.mode {
+	case waitOff:
+		return nil, nil
+	case waitUnset:
+		return nil, clierr.New(clierr.CodeGeneric, "internal error: the delete has no wait setting")
+	}
+	secret, ok := kinds.ByKey("secret")
+	if !ok {
+		return nil, clierr.New(clierr.CodeGeneric, "internal error: the secret kind is missing; report this as a defect in rancher-cli")
+	}
+	target := deleteTarget{
+		gvr: secret.GVR, ns: "cattle-global-data", name: name, uid: uid,
+		kind: "cloud-credential", noun: "cloud credential",
+		recovery:   clierr.NewCommand("get cloud-credential").Arg(name),
+		readBefore: true,
+	}
+	end, err := waitDeleted(ctx, client, []deleteTarget{target}, time.Now().Add(w.timeout), w.timeoutText)
+	if err != nil {
+		return nil, err
+	}
+	return end.warnings, nil
 }

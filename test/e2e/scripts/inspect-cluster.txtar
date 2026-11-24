@@ -42,7 +42,7 @@ jsonquery stderr data.error.code VALIDATION
 
 # Node-driver cluster: pools carry the machineConfigRef from the create
 # cluster flow.
-exec rancher create cluster insp-node --machine-config amazonec2config/mycfg --cloud-credential e2e-cred --k8s-version v1.30.5+rke2r1 --etcd --controlplane --worker --apply
+exec rancher create cluster insp-node --machine-config amazonec2config/mycfg --cloud-credential cc-e2etest --k8s-version v1.30.5+rke2r1 --etcd --controlplane --worker --apply
 flipstatus local provisioning.cattle.io/v1/clusters fleet-default insp-node '{"clusterName":"c-other","ready":false,"conditions":[{"type":"Ready","status":"False","reason":"Provisioning","message":"waiting for nodes"}]}'
 
 exec rancher inspect cluster c-other --registration -o json

@@ -75,8 +75,11 @@ var deletePropagationAllowlist = map[string]requestAllowance{
 		"a v3 token is a custom resource, for which the policy changes nothing, and an ext token is stored as a Secret, " +
 		"whose default policy already deletes dependents in the background; the revoke path is restricted credential code " +
 		"(TestTokenRevokesOnlyFromTheFilesThatMayDeleteTokens lists the files that may send it)"},
-	"internal/token/token.go:samlAuth":                            {2, "Rancher's /v1-public/authtokens/<id> delete and the error text that names it; Norman takes no DeleteOptions"},
-	"cmd/rancher-credential-vault/vault.go:(*vaultHandler).Erase": {1, "HashiCorp Vault's API, not a delete through the cluster client"},
+	"internal/token/token.go:samlAuth":                                                   {2, "Rancher's /v1-public/authtokens/<id> delete and the error text that names it; Norman takes no DeleteOptions"},
+	"internal/cli/cloudcredclient.go:(*cloudCredentialClient).Delete":                    {1, "the method name of Rancher's Norman /v3/cloudcredentials delete; Norman takes no DeleteOptions"},
+	"internal/cli/cloudcredclient.go:(*cloudCredentialClient).send":                      {1, "the check that a Norman /v3/cloudcredentials delete sends no body; Norman takes no DeleteOptions"},
+	"internal/engine/provisioning/cloudcredwrite.go:(*deleteCloudCredentialCmd).execute": {1, "the method name of Rancher's Norman /v3/cloudcredentials delete in the error it returns; Norman takes no DeleteOptions"},
+	"cmd/rancher-credential-vault/vault.go:(*vaultHandler).Erase":                        {1, "HashiCorp Vault's API, not a delete through the cluster client"},
 }
 
 // deleteOptionsConstructors are the functions of apimachinery that return

@@ -20,10 +20,11 @@ const requestSecret = "fake-request-secret-value-0001"
 
 // sentRequest is what the test server saw of one request.
 type sentRequest struct {
-	method string
-	path   string
-	header http.Header
-	body   []byte
+	method  string
+	path    string
+	header  http.Header
+	body    []byte
+	hasBody bool
 }
 
 // norman is a TLS test server that records each request and responds with
@@ -43,7 +44,7 @@ func newNorman(t *testing.T) *norman {
 	n.srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		n.mu.Lock()
-		n.requests = append(n.requests, sentRequest{method: r.Method, path: r.URL.EscapedPath(), header: r.Header.Clone(), body: body})
+		n.requests = append(n.requests, sentRequest{method: r.Method, path: r.URL.EscapedPath(), header: r.Header.Clone(), body: body, hasBody: len(body) > 0})
 		status, answer, lose := n.status, n.answer, n.lose
 		n.mu.Unlock()
 		if lose {
@@ -86,10 +87,11 @@ func clientBody() engine.CloudCredentialBody {
 	})
 }
 
-// TestCloudCredentialClientSendsOneRequestPerCall asserts Create sends one
-// request with the caller's bearer, the JSON headers and the User-Agent, to
-// the collection path, with a JSON body, and returns the id of Rancher's
-// response.
+// TestCloudCredentialClientSendsOneRequestPerCall asserts each method sends
+// one request with the caller's bearer, the JSON headers and the User-Agent,
+// to the collection path (create) or the item path with the id escaped as one
+// segment (update and delete), with a JSON body for create and update only,
+// and returns the id of Rancher's response.
 func TestCloudCredentialClientSendsOneRequestPerCall(t *testing.T) {
 	n := newNorman(t)
 	n.status = http.StatusOK
@@ -99,9 +101,12 @@ func TestCloudCredentialClientSendsOneRequestPerCall(t *testing.T) {
 	id, err := client.Create(t.Context(), clientBody())
 	require.NoError(t, err)
 	assert.Equal(t, "cattle-global-data:cc-abcde", id)
+	n.status, n.answer = http.StatusOK, `{}`
+	require.NoError(t, client.Update(t.Context(), "cattle-global-data:cc-abcde", clientBody()))
+	require.NoError(t, client.Delete(t.Context(), "a/b c"))
 
 	got := n.seen()
-	require.Len(t, got, 1)
+	require.Len(t, got, 3)
 	for _, r := range got {
 		assert.Equal(t, "Bearer token-abc:secret", r.header.Get("Authorization"))
 		assert.Equal(t, "application/json", r.header.Get("Accept"))
@@ -110,14 +115,20 @@ func TestCloudCredentialClientSendsOneRequestPerCall(t *testing.T) {
 	}
 	assert.Equal(t, http.MethodPost, got[0].method)
 	assert.Equal(t, "/v3/cloudcredentials", got[0].path)
+	assert.Equal(t, http.MethodPut, got[1].method)
+	assert.Equal(t, "/v3/cloudCredentials/cattle-global-data:cc-abcde", got[1].path)
+	assert.Equal(t, http.MethodDelete, got[2].method)
+	assert.Equal(t, "/v3/cloudCredentials/a%2Fb%20c", got[2].path)
 
-	for _, r := range got {
+	for _, r := range got[:2] {
 		assert.Equal(t, "application/json", r.header.Get("Content-Type"))
 		var sent map[string]any
 		require.NoError(t, json.Unmarshal(r.body, &sent))
 		assert.Equal(t, "cloudCredential", sent["type"])
 		assert.Equal(t, requestSecret, sent["amazonec2credentialConfig"].(map[string]any)["secretKey"])
 	}
+	assert.False(t, got[2].hasBody)
+	assert.Empty(t, got[2].header.Get("Content-Type"))
 }
 
 // TestCloudCredentialClientResponseClasses asserts a 500, 502 and 504 are an
@@ -141,6 +152,8 @@ func TestCloudCredentialClientResponseClasses(t *testing.T) {
 			client := credentialClientFor(t, n)
 			for name, call := range map[string]func() error{
 				"create": func() error { _, err := client.Create(t.Context(), clientBody()); return err },
+				"update": func() error { return client.Update(t.Context(), "cc-x", clientBody()) },
+				"delete": func() error { return client.Delete(t.Context(), "cc-x") },
 			} {
 				before := len(n.seen())
 				err := call()

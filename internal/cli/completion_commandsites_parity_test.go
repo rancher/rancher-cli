@@ -80,7 +80,10 @@ func machineConfigPrefixes(spelling string) []string {
 // cloud-credential's <driver>, --set and --from-file (the node drivers and
 // the operator setting, the fields of the typed driver, with the network
 // off, for an inactive driver and before a driver); get cloud-credential's
-// <credential>. Each row asserts the exact
+// <credential>; patch cloud-credential's <credential>, --set and --from-file
+// (the fields of the driver the typed credential stores, by id and by display
+// name, with the credential and the node drivers read once each); delete
+// cloud-credential's <credential> and its --timeout ladder. Each row asserts the exact
 // candidates and the exact requests per path. NOT parallel: t.Setenv
 // mutates env globals, setStoredConfig mutates storedConfig.
 func TestCommandSitesFullCallback(t *testing.T) {
@@ -88,6 +91,10 @@ func TestCommandSitesFullCallback(t *testing.T) {
 	globalRoles := []string{"admin:Administrator", "user-base:User-Base"}
 	users := []string{"alice", "bob", "sameid:sameid (Same Id)", "u-alice:alice (Alice Smith)", "u-badname:bad name!", "u-bob:bob"}
 	credentials := []string{"aws-prod", "cc-abc12", "cc-collide", "cc-dup1", "cc-dup2", "cc-hostile", "cc-noannotation", "marker-only"}
+	// The ids a mutation that takes a cloud credential accepts, with the
+	// display name as the description: cc-abc12 is left out, because it is
+	// also the display name of cc-collide.
+	credentialIDs := []string{"cc-collide:cc-abc12", "cc-dup1:dup", "cc-dup2:dup", "cc-hostile:bad name!", "cc-noannotation", "marker-only"}
 	resources := []string{"deployments", "gauges", "ingresses", "nodes", "pods", "services"}
 	groups := []string{"apps", "gateway.example.io", "metrics.example.io", "networking.k8s.io"}
 	podSubresources := []string{"exec", "log", "status"}
@@ -116,8 +123,8 @@ func TestCommandSitesFullCallback(t *testing.T) {
 		{name: "--machine-config unknown kind", words: []string{"create", "cluster", "node-1", "--machine-config"}, cur: "nonesuch/x", hits: map[string]int{}},
 		{name: "--machine-config kind outside the group", words: []string{"create", "cluster", "node-1", "--machine-config"}, cur: "pod/x", hits: map[string]int{}},
 		// create cluster --cloud-credential
-		{name: "--cloud-credential", words: []string{"create", "cluster", "node-1", "--cloud-credential"}, want: credentials, hits: map[string]int{cloudCredsPath: 1}},
-		{name: "--cloud-credential= equals form", words: []string{"create", "cluster", "node-1"}, cur: "--cloud-credential=", want: []string{"--cloud-credential=aws-prod", "--cloud-credential=cc-abc12", "--cloud-credential=cc-collide", "--cloud-credential=cc-dup1", "--cloud-credential=cc-dup2", "--cloud-credential=cc-hostile", "--cloud-credential=cc-noannotation", "--cloud-credential=marker-only"}, hits: map[string]int{cloudCredsPath: 1}},
+		{name: "--cloud-credential", words: []string{"create", "cluster", "node-1", "--cloud-credential"}, want: credentialIDs, hits: map[string]int{cloudCredsPath: 1}},
+		{name: "--cloud-credential= equals form", words: []string{"create", "cluster", "node-1"}, cur: "--cloud-credential=", want: []string{"--cloud-credential=cc-collide:cc-abc12", "--cloud-credential=cc-dup1:dup", "--cloud-credential=cc-dup2:dup", "--cloud-credential=cc-hostile:bad name!", "--cloud-credential=cc-noannotation", "--cloud-credential=marker-only"}, hits: map[string]int{cloudCredsPath: 1}},
 		{name: "--cloud-credential with the network off", words: []string{"create", "cluster", "node-1", "--cloud-credential"}, noNet: true, hits: map[string]int{}},
 		// create cloud-credential and get cloud-credential
 		{name: "create cloud-credential <driver>", words: []string{"create", "cloud-credential"}, want: []string{"amazonec2", "s3"}, hits: map[string]int{nodeDriversPath: 1, kev2OperatorsPath: 1}},
@@ -135,6 +142,30 @@ func TestCommandSitesFullCallback(t *testing.T) {
 		{name: "create cloud-credential offers nothing for the display name", words: []string{"create", "cloud-credential", "amazonec2"}, hits: map[string]int{}},
 		{name: "get cloud-credential <credential>", words: []string{"get", "cloud-credential"}, want: credentials, hits: map[string]int{cloudCredsPath: 1}},
 		{name: "get cloud-credential <credential> with the network off", words: []string{"get", "cloud-credential"}, noNet: true, hits: map[string]int{}},
+		// patch cloud-credential and delete cloud-credential
+		{name: "patch cloud-credential <credential>", words: []string{"patch", "cloud-credential"}, want: credentialIDs, hits: map[string]int{cloudCredsPath: 1}},
+		{name: "patch cloud-credential <credential> with the network off", words: []string{"patch", "cloud-credential"}, noNet: true, hits: map[string]int{}},
+		{name: "patch cloud-credential --set by the prefixed id", words: []string{"patch", "cloud-credential", "cattle-global-data:cc-abc12", "--set"}, want: []string{"accessKey=", "defaultRegion="}, hits: map[string]int{cloudCredsPath: 1, nodeDriversPath: 1}},
+		{name: "patch cloud-credential --set by display name offers none", words: []string{"patch", "cloud-credential", "aws-prod", "--set"}, hits: map[string]int{cloudCredsPath: 1}},
+		{name: "patch cloud-credential --set by an id that is another credential's display name offers none", words: []string{"patch", "cloud-credential", "cc-abc12", "--set"}, hits: map[string]int{cloudCredsPath: 1}},
+		{name: "patch cloud-credential --set= equals form", words: []string{"patch", "cloud-credential", "cattle-global-data:cc-abc12"}, cur: "--set=", want: []string{"--set=accessKey=", "--set=defaultRegion="}, hits: map[string]int{cloudCredsPath: 1, nodeDriversPath: 1}},
+		{name: "patch cloud-credential --set after a typed field", words: []string{"patch", "cloud-credential", "cattle-global-data:cc-abc12", "--set", "accessKey=AKIAEXAMPLE", "--set"}, want: []string{"defaultRegion="}, hits: map[string]int{cloudCredsPath: 1, nodeDriversPath: 1}},
+		{name: "patch cloud-credential --set offers nothing for a value", words: []string{"patch", "cloud-credential", "cattle-global-data:cc-abc12", "--set"}, cur: "accessKey=", hits: map[string]int{}},
+		{name: "patch cloud-credential --from-file", words: []string{"patch", "cloud-credential", "cattle-global-data:cc-abc12", "--from-file"}, want: []string{"secretKey="}, hits: map[string]int{cloudCredsPath: 1, nodeDriversPath: 1}},
+		{name: "patch cloud-credential --from-file offers nothing for a value", words: []string{"patch", "cloud-credential", "cattle-global-data:cc-abc12", "--from-file"}, cur: "secretKey=", hits: map[string]int{}},
+		{name: "patch cloud-credential --set of a driver the server does not offer", words: []string{"patch", "cloud-credential", "marker-only", "--set"}, hits: map[string]int{cloudCredsPath: 1, nodeDriversPath: 1}},
+		{name: "patch cloud-credential --set of a name that is no credential", words: []string{"patch", "cloud-credential", "nonesuch", "--set"}, hits: map[string]int{cloudCredsPath: 1}},
+		{name: "patch cloud-credential --set of a display name on two credentials", words: []string{"patch", "cloud-credential", "dup", "--set"}, hits: map[string]int{cloudCredsPath: 1}},
+		{name: "patch cloud-credential --set before a credential", words: []string{"patch", "cloud-credential", "--set"}, hits: map[string]int{}},
+		{name: "patch cloud-credential --set with the network off", words: []string{"patch", "cloud-credential", "cattle-global-data:cc-abc12", "--set"}, noNet: true, hits: map[string]int{}},
+		{name: "patch cloud-credential offers nothing for the display name", words: []string{"patch", "cloud-credential", "cc-abc12", "--display-name"}, hits: map[string]int{}},
+		{name: "patch cloud-credential offers nothing for the description", words: []string{"patch", "cloud-credential", "cc-abc12", "--description"}, hits: map[string]int{}},
+		{name: "delete cloud-credential <credential>", words: []string{"delete", "cloud-credential"}, want: credentialIDs, hits: map[string]int{cloudCredsPath: 1}},
+		{name: "delete cloud-credential <credential> with the network off", words: []string{"delete", "cloud-credential"}, noNet: true, hits: map[string]int{}},
+		{name: "delete cloud-credential --timeout", words: []string{"delete", "cloud-credential", "cc-abc12", "--timeout"}, want: []string{"10m", "1m", "2m", "30s", "5m"}, hits: map[string]int{}},
+		{name: "delete cloud-credential --wait= offers what every delete offers", words: []string{"delete", "cloud-credential", "cc-abc12"}, cur: "--wait=", hits: map[string]int{}},
+		{name: "delete pod --wait= offers the same", words: []string{"delete", "pod", "x"}, cur: "--wait=", hits: map[string]int{}},
+		{name: "delete cloud-credential --timeout after --wait=false", words: []string{"delete", "cloud-credential", "cc-abc12", "--wait=false", "--timeout"}, hits: map[string]int{}},
 		// the access questions' resource positional
 		{name: "access can resource with a cluster id", words: []string{"access", "can", "get", "--cluster", "c-aaa11"}, want: resources, hits: discovery},
 		{name: "access can resource with a cluster display name resolves it first", words: []string{"access", "can", "get", "--cluster", "prod"}, want: resources, hits: map[string]int{steveClustersPath: 2, discoveryCorePath: 1, discoveryGroupPath: 1}},
@@ -376,6 +407,9 @@ func TestCommandSitesUnderAnExecCredentialOnlyToken(t *testing.T) {
 		{name: "create cloud-credential <driver> is refused", words: []string{"create", "cloud-credential"}, hits: map[string]int{}},
 		{name: "create cloud-credential --set is refused", words: []string{"create", "cloud-credential", "amazonec2", "--set"}, hits: map[string]int{}},
 		{name: "get cloud-credential <credential> is refused", words: []string{"get", "cloud-credential"}, hits: map[string]int{}},
+		{name: "patch cloud-credential <credential> is refused", words: []string{"patch", "cloud-credential"}, hits: map[string]int{}},
+		{name: "patch cloud-credential --set is refused", words: []string{"patch", "cloud-credential", "cattle-global-data:cc-abc12", "--set"}, hits: map[string]int{}},
+		{name: "delete cloud-credential <credential> is refused", words: []string{"delete", "cloud-credential"}, hits: map[string]int{}},
 		{name: "access can resource is refused", words: []string{"access", "can", "get", "--cluster", "c-aaa11"}, hits: map[string]int{}},
 		{name: "access can --group is refused", words: []string{"access", "can", "get", "pods", "--cluster", "c-aaa11", "--group"}, hits: map[string]int{}},
 		{name: "access can --as is refused", words: []string{"access", "can", "get", "pods", "--as"}, hits: map[string]int{}},

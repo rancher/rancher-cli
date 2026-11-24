@@ -192,7 +192,7 @@ func TestWiredCompletersAreDeclaredInCompletePackages(t *testing.T) {
 		"logs", "inspect project", "inspect cluster",
 		"auth login", "auth get-token", "token",
 		"node drain", "node stop-drain", "extension add-repository", "extension install", "extension upgrade", "extension uninstall",
-		"create cloud-credential", "get cloud-credential",
+		"create cloud-credential", "get cloud-credential", "patch cloud-credential", "delete cloud-credential",
 	}, owners)
 	_, err := BuildRoot("v-test")
 	require.NoError(t, err)

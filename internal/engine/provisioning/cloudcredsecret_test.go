@@ -19,6 +19,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 // ccsDrivers is one row per built-in node driver that takes a cloud
@@ -346,6 +347,7 @@ func TestCloudCredentialRefusalsNeverShowASecretValue(t *testing.T) {
 		code    string
 		message string // the whole message of the refusal, asserted when set
 		needles []string
+		patch   bool // run the row through patch of a stored amazonec2 credential
 	}
 	amazon := func(set []string, fromFile ...string) ccwInput {
 		return ccwInput{args: []string{"amazonec2", "prod"}, set: set, fromFile: fromFile}
@@ -405,6 +407,53 @@ func TestCloudCredentialRefusalsNeverShowASecretValue(t *testing.T) {
 			row{name: "a pasted secret ending in one equals sign as a --set argument: " + pasted, in: amazon([]string{word}), code: clierr.CodeValidation, message: message, needles: needles},
 			row{name: "a pasted secret ending in one equals sign as a --from-file argument: " + pasted, in: amazon(nil, word), code: clierr.CodeValidation, message: "the 1st --from-file has an empty path", needles: needles})
 	}
+	// patchOf is a patch of the stored credential with the arguments of in.
+	patchOf := func(set []string, fromFile ...string) ccwInput {
+		in := ccpInputOf()
+		in.set, in.fromFile = set, fromFile
+		return in
+	}
+	patchRows := []row{
+		{name: "a patch with a secret as the field of a --set argument", in: patchOf([]string{secret + "=x"}), code: clierr.CodeValidation},
+		{name: "a patch with a secret ending in equals signs as a --set argument", in: patchOf([]string{secret + "=="}), code: clierr.CodeValidation},
+		{name: "a patch with a secret ending in equals signs as a --from-file argument", in: patchOf(nil, secret+"=="), code: clierr.CodeValidation},
+		{name: "a patch with a secret ending in equals signs given twice", in: patchOf([]string{secret + "==", secret + "=="}), code: clierr.CodeValidation},
+		{name: "a patch with a --set argument with no equals sign", in: patchOf([]string{secret}, "secretKey=secret.txt"), code: clierr.CodeValidation},
+		{name: "a patch with a --from-file argument with no equals sign", in: patchOf(nil, secret), code: clierr.CodeValidation},
+		{name: "a patch with a secret given with --set", in: patchOf([]string{"secretKey=" + secret}), code: clierr.CodeValidation},
+		{name: "a patch with a secret given with --set in another case", in: patchOf([]string{"SECRETKEY=" + secret}), code: clierr.CodeValidation},
+		{name: "a patch with a public field given with --from-file", in: patchOf(nil, "accessKey=secret.txt"), code: clierr.CodeValidation},
+		{name: "a patch with an empty value", in: patchOf([]string{"accessKey="}, "secretKey=secret.txt"), code: clierr.CodeValidation, message: "the 1st --set has an empty value"},
+		{name: "a patch with a line break in a single-line value", in: patchOf(nil, "secretKey=lines.txt"), code: clierr.CodeValidation,
+			files: map[string]string{"lines.txt": lines}, needles: []string{"fake-refusal-line-one-0001", "fake-refusal-line-two-0002"}},
+		{name: "a patch with a line break and a tab in a single-line value", in: patchOf(nil, "secretKey=lines.txt"), code: clierr.CodeValidation,
+			files: map[string]string{"lines.txt": tabLines}, needles: []string{"fake-refusal-line-one-0001", "fake-refusal-line-two\t0002", tabLines}},
+		{name: "a patch with white space at the end of a value", in: patchOf(nil, "secretKey=padded.txt"), code: clierr.CodeValidation,
+			files: map[string]string{"padded.txt": secret + " \n"}},
+		{name: "a patch with a UTF-16 value", in: patchOf(nil, "secretKey=utf16.txt"), code: clierr.CodeValidation,
+			files: map[string]string{"utf16.txt": "\xff\xfe" + "f\x00a\x00k\x00e\x00"}},
+		{name: "a patch with stdin given twice", in: patchOf(nil, "secretKey=-", "accessKey=-"), code: clierr.CodeValidation},
+		{name: "a patch with an unreadable file", in: patchOf(nil, "secretKey=missing.txt"), code: clierr.CodeValidation},
+	}
+	for _, shaped := range []string{"hunter2Secret", "q3XrT9vLm2Pz8KdWb1YcNa"} {
+		word := shaped + "=="
+		needles := []string{shaped, word}
+		patchRows = append(patchRows,
+			row{name: "a patch with a pasted secret shaped like a field name as a --set argument: " + shaped, in: patchOf([]string{word}), code: clierr.CodeValidation, needles: needles},
+			row{name: "a patch with a pasted secret shaped like a field name as a --from-file argument: " + shaped, in: patchOf(nil, word), code: clierr.CodeValidation, needles: needles},
+			row{name: "a patch with a pasted secret shaped like a field name given twice: " + shaped, in: patchOf([]string{word, word}), code: clierr.CodeValidation, needles: needles})
+	}
+	for _, pasted := range []string{"hunter2Secret", "q3XrT9vLm2Pz8KdWb1YcNa0"} {
+		word := pasted + "="
+		needles := []string{pasted, word}
+		patchRows = append(patchRows,
+			row{name: "a patch with a pasted secret ending in one equals sign as a --set argument: " + pasted, in: patchOf([]string{word}), code: clierr.CodeValidation, message: "the 1st --set has an empty value", needles: needles},
+			row{name: "a patch with a pasted secret ending in one equals sign as a --from-file argument: " + pasted, in: patchOf(nil, word), code: clierr.CodeValidation, message: "the 1st --from-file has an empty path", needles: needles})
+	}
+	for _, tc := range patchRows {
+		tc.patch = true
+		rows = append(rows, tc)
+	}
 	for _, tc := range rows {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -415,7 +464,15 @@ func TestCloudCredentialRefusalsNeverShowASecretValue(t *testing.T) {
 				if tc.prep != nil {
 					tc.prep(r)
 				}
-				written, _, ce := ccsExecute(t, r, tc.in, format, false)
+				var written string
+				var ce *clierr.Error
+				if tc.patch {
+					p := newCCPRig(r, "amazonec2")
+					written, _, ce = p.run(t, tc.in, format, false, true)
+					assert.Empty(t, p.norman.updates, "a refusal sends no request")
+				} else {
+					written, _, ce = ccsExecute(t, r, tc.in, format, false)
+				}
 				require.NotNil(t, ce, "the row ends with an error")
 				assert.Equal(t, tc.code, ce.Code, ce.Message)
 				if tc.message != "" {
@@ -424,6 +481,102 @@ func TestCloudCredentialRefusalsNeverShowASecretValue(t *testing.T) {
 				assert.Zero(t, r.norman.creates, "a refusal sends no request")
 				assertNoForms(t, slices.Concat([]string{secret}, tc.needles), written, "what the run wrote")
 				assert.NotContains(t, written, "OS text")
+			}
+		})
+	}
+}
+
+// TestCloudCredentialChangeNeverShowsASecretValue asserts that no secret value
+// of any driver, as typed, JSON-escaped or in base64, no line of a multi-line
+// value, no stored annotation value that the update sends back and no value of
+// the stored Secret's data is in anything a patch writes or returns: on a
+// preview, a patch, a conflict found by the read before the request, and each
+// response a PUT can get, in JSON and in text. Each row also asserts the code it
+// ended with and the number of requests sent.
+func TestCloudCredentialChangeNeverShowsASecretValue(t *testing.T) {
+	t.Parallel()
+	for name, run := range ccsRuns() {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			// sent is what the request carries, so what a response can echo and the
+			// filter hides; the stored data is never kept or shown, so it never shows.
+			sent := slices.Concat(run.needles, []string{ccpAnnotation})
+			needles := slices.Concat(sent, []string{ccpStoredData})
+			echo := func() string {
+				raw, _ := json.Marshal(map[string]string{"type": "error", "code": "X", "message": "bad value " + strings.Join(sent, " | ") + " here"})
+				return string(raw)
+			}
+			harvester := func(tail string) string {
+				raw, _ := json.Marshal(map[string]string{"type": "error", "code": "ServerError", "message": "failed to process harvester cloud credential: " + tail})
+				return string(raw)
+			}
+			input := func() ccwInput {
+				in := ccpInputOf()
+				in.set, in.fromFile = run.in.set, run.in.fromFile
+				in.description = new("a new description")
+				return in
+			}
+			type row struct {
+				name     string
+				err      error
+				code     string
+				requests int
+				conflict bool
+			}
+			rows := []row{
+				{"a patch", nil, "", 1, false},
+				{"a 401", ccsRefused(http.StatusUnauthorized, echo()), clierr.CodeAuth, 1, false},
+				{"a 403", ccsRefused(http.StatusForbidden, echo()), clierr.CodeRBAC, 1, false},
+				{"a 409", ccsRefused(http.StatusConflict, echo()), clierr.CodeConflict, 1, false},
+				{"a 422", ccsRefused(http.StatusUnprocessableEntity, echo()), clierr.CodeValidation, 1, false},
+				{"a 422 field error that quotes every secret", ccsRefused(http.StatusUnprocessableEntity, ccsFieldError(sent)), clierr.CodeValidation, 1, false},
+				{"a 500", ccsUnknown(http.StatusInternalServerError, echo()), clierr.CodeGeneric, 1, false},
+				{"a 502", ccsUnknown(http.StatusBadGateway, echo()), clierr.CodeGeneric, 1, false},
+				{"a 504", ccsUnknown(http.StatusGatewayTimeout, echo()), clierr.CodeGeneric, 1, false},
+				{"a lost response", &engine.ActionOutcomeUnknown{Err: clierr.New(clierr.CodeGeneric, "the connection failed")}, clierr.CodeGeneric, 1, false},
+				{"a change found by the read before the request", nil, clierr.CodeConflict, 0, true},
+			}
+			if name == "harvester" {
+				rows = append(rows,
+					row{"a harvester parser error", ccsUnknown(http.StatusInternalServerError, harvester("failed to get tokens from kubeconfig: yaml: "+strings.Join(sent, " | "))), clierr.CodeValidation, 1, false},
+					row{"a harvester token in use", ccsUnknown(http.StatusInternalServerError, harvester("token kubeconfig-user-x is already in use by secret "+strings.Join(sent, " | "))), clierr.CodeValidation, 1, false})
+			}
+			for _, format := range []string{"json", ""} {
+				t.Run("a preview "+format, func(t *testing.T) {
+					t.Parallel()
+					r := newCCPRig(ccsRig(run.files), name)
+					written, stdout, ce := r.run(t, input(), format, true, false)
+					require.Nil(t, ce)
+					ccsAssertKind(t, format, stdout, "Effect", "cloud-credential")
+					assert.Empty(t, r.norman.updates)
+					assertNoForms(t, needles, written, "the preview")
+				})
+				for _, tc := range rows {
+					t.Run(tc.name+" "+format, func(t *testing.T) {
+						t.Parallel()
+						r := newCCPRig(ccsRig(run.files), name)
+						r.norman.updateErr = tc.err
+						if tc.conflict {
+							r.client.getSecret = func(string) (*unstructured.Unstructured, error) { return ccpStored(name, "8"), nil }
+						}
+						written, stdout, ce := r.run(t, input(), format, false, true)
+						if tc.code == "" {
+							require.Nil(t, ce)
+							ccsAssertKind(t, format, stdout, "CloudCredential", ccpID)
+						} else {
+							require.NotNil(t, ce)
+							assert.Equal(t, tc.code, ce.Code)
+						}
+						require.Len(t, r.norman.updates, tc.requests)
+						if tc.requests > 0 {
+							body := r.sent(t)[name+"credentialConfig"].(map[string]any)
+							for field, want := range run.fields {
+								assert.Equal(t, want, body[field], "the value of "+field+" in the request")
+							}
+						}
+						assertNoForms(t, needles, written, "what the run wrote")
+					})
+				}
 			}
 		})
 	}

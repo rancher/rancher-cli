@@ -112,6 +112,7 @@ func liveSourceCandidates(ctx context.Context, site CompletionSite, d runtime.De
 // the shell-safe charset of a name does not allow.
 var fieldKeyFlags = map[string][]string{
 	"create cloud-credential": {"set", "from-file"},
+	"patch cloud-credential":  {"set", "from-file"},
 }
 
 // fieldKeySite reports whether the site is the value of a flag of

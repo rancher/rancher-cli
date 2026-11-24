@@ -268,9 +268,12 @@ const (
 	// createCloudCredentialLine is a create that the checks of the command line
 	// refuse before any request.
 	createCloudCredentialLine = "create cloud-credential s3 x --dry-run"
-	patchLine                 = "patch configmap app --cluster c-x --namespace default --dry-run"
-	createFileLine            = "create resource --cluster c-x --namespace n2 --dry-run"
-	loginLine                 = "auth login x --url {url} --cacert {pem}"
+	// patchCloudCredentialLine is a patch that the checks of the command line
+	// refuse before any request.
+	patchCloudCredentialLine = "patch cloud-credential cc-abcde --dry-run"
+	patchLine                = "patch configmap app --cluster c-x --namespace default --dry-run"
+	createFileLine           = "create resource --cluster c-x --namespace n2 --dry-run"
+	loginLine                = "auth login x --url {url} --cacert {pem}"
 )
 
 // secretRows is the table: one or more rows for every secret-bearing flag
@@ -292,6 +295,9 @@ func secretRows() []secretRow {
 		secretRow{flag: "from-file", name: "no equals", argv: line(createCloudCredentialLine, "--from-file", c), code: validation, message: "the 1st --from-file must be <field>=<path>"},
 		secretRow{flag: "from-file", name: "empty field", argv: line(createCloudCredentialLine, "--from-file", "="+c), code: validation, message: "the 1st --from-file has an empty field name"},
 		secretRow{flag: "from-file", name: "an extra argument", argv: line(createCloudCredentialLine, "--from-file", "secretKey=f", c), code: validation, message: "unexpected argument at position 3"},
+		secretRow{flag: "from-file", name: "no equals, on patch cloud-credential", argv: line(patchCloudCredentialLine, "--from-file", c), code: validation, message: "the 1st --from-file must be <field>=<path>"},
+		secretRow{flag: "from-file", name: "empty field, on patch cloud-credential", argv: line(patchCloudCredentialLine, "--from-file", "="+c), code: validation, message: "the 1st --from-file has an empty field name"},
+		secretRow{flag: "from-file", name: "an extra argument, on patch cloud-credential", argv: line(patchCloudCredentialLine, "--from-file", "secretKey=f", c), code: validation, message: "unexpected argument at position 2"},
 	)
 
 	bad := map[string]string{
@@ -558,6 +564,7 @@ var secretExempt = map[string]string{
 // secretArgExempt names the positional arguments the pattern matches whose
 // value is never a secret, with the reason.
 var secretArgExempt = map[string]string{
+	"credential":  "the id or display name of a cloud credential, never its content",
 	"secret-name": "the name of an oidc-client secret, never its value",
 }
 

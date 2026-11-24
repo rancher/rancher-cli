@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -90,6 +91,8 @@ var dryRunBespokeEffectCommands = map[string]string{
 	"node drain":                     "internal/engine/nodes/drain_test.go: TestDrainPlanDisplayIdentity asserts DisplayKind/DisplayName (the node name) and that the committed result names the node; TestNormanPathDisplayIdentity asserts the same for the path through Rancher's node action",
 	"create cloud-credential":        "internal/engine/provisioning/cloudcredwrite_test.go: TestCloudCredentialPlanDisplayIdentity asserts DisplayKind/DisplayName (the display name typed) and TestCloudCredentialResultRow asserts the committed result names the credential",
 	"node stop-drain":                "internal/engine/nodes/stopdrain_test.go: TestStopDrainPlanDisplayIdentity asserts DisplayKind/DisplayName (the node name) and that the committed result names the node; TestNormanStopDrainPlanDisplayIdentity asserts the same for the path through Rancher's node action",
+	"patch cloud-credential":         "internal/engine/provisioning/cloudcredwrite_test.go: TestCloudCredentialPlanDisplayIdentity asserts DisplayKind/DisplayName of a patch (the Secret name, the NAME column of get cloud-credential)",
+	"delete cloud-credential":        "internal/engine/provisioning/cloudcredwrite_test.go: TestCloudCredentialPlanDisplayIdentity asserts DisplayKind/DisplayName of a delete (the Secret name, the NAME column of get cloud-credential)",
 }
 
 // dryRunGenericFamilyPrefixes names the two generated command families
@@ -100,15 +103,17 @@ var dryRunGenericFamilyPrefixes = []string{"patch ", "delete "}
 
 // classifyDryRunDisplayIdentity reports whether name is accounted for by
 // the generic-by-construction set (explicit name, or a generated
-// patch/delete family member) or the reviewed bespoke inventory, or
-// neither (unclassified - a conformance failure).
+// patch/delete family member: the prefix names a kind row) or the reviewed
+// bespoke inventory, or neither (unclassified - a conformance failure).
 func classifyDryRunDisplayIdentity(name string) (generic, bespoke bool) {
 	if dryRunDisplayIdentityGenericCommands[name] {
 		return true, false
 	}
 	for _, prefix := range dryRunGenericFamilyPrefixes {
-		if strings.HasPrefix(name, prefix) {
-			return true, false
+		if rest, ok := strings.CutPrefix(name, prefix); ok {
+			if _, isKind := kinds.Lookup(rest); isKind {
+				return true, false
+			}
 		}
 	}
 	_, ok := dryRunBespokeEffectCommands[name]

@@ -1,5 +1,10 @@
 package safety
 
+import (
+	"bytes"
+	"encoding/json"
+)
+
 // Action is the closed verb vocabulary for Effects. A strict superset of
 // rancher-ai-mcp's PlanResource.Type (create|update|delete).
 type Action string
@@ -95,6 +100,39 @@ type DiffEntry struct {
 	Path string `json:"path"`
 	From any    `json:"from"`
 	To   any    `json:"to"`
+	// FromUnread is true when the command did not read the stored value; the
+	// entry then has no `from`. It is not a field of the output.
+	FromUnread bool `json:"-" yaml:"-"`
+}
+
+// MarshalJSON writes {path, from, to} in that order, with `from` null when it
+// is nil, and {path, to} when FromUnread is set. The YAML and template
+// outputs are built from this JSON. It does not escape `<`, `>` and `&`, as
+// the JSON renderer does not.
+func (d DiffEntry) MarshalJSON() ([]byte, error) {
+	if d.FromUnread {
+		return encodeEntry(struct {
+			Path string `json:"path"`
+			To   any    `json:"to"`
+		}{d.Path, d.To})
+	}
+	return encodeEntry(struct {
+		Path string `json:"path"`
+		From any    `json:"from"`
+		To   any    `json:"to"`
+	}{d.Path, d.From, d.To})
+}
+
+// encodeEntry encodes v as JSON with HTML escaping off and without the
+// newline the encoder appends.
+func encodeEntry(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
 }
 
 // Object is one object a multi-object mutation acts on or reports: its kind

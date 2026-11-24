@@ -18,6 +18,7 @@ import (
 // edit, same as kindOverrideTable or derivedOpKinds.
 var capabilityCoverageExtraOps = map[string][]string{
 	"create cloud-credential": {"nodedriver"},
+	"patch cloud-credential":  {"nodedriver"},
 	"create machine-config":   {"amazonec2config", "azureconfig", "digitaloceanconfig", "harvesterconfig", "vmwarevsphereconfig"},
 	"grant":                   {"clusterroletemplatebinding", "projectroletemplatebinding"},
 	"revoke":                  {"clusterroletemplatebinding", "projectroletemplatebinding"},
@@ -78,6 +79,7 @@ var capabilityCoverageAllowlist = map[string]string{
 	"schema":                         "fixed introspection command, no kind row",
 	"completion":                     "fixed shell-completion command, no kind row",
 	"get cloud-credential":           "bespoke discovery read, no kind row",
+	"delete cloud-credential":        "Norman delete of a cloud credential, no kind row",
 	"get kubernetes-versions":        "bespoke discovery read, no kind row",
 	"images":                         "inspect-adjacent discovery read, no kind row",
 	"kubeconfig":                     "top-level kubeconfig read (session identity, not a kind row)",

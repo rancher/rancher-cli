@@ -249,11 +249,15 @@ type Options struct {
 	// V3TokenCreate serves POST /v3/tokens, the Norman cluster-token
 	// create.
 	V3TokenCreate bool
-	// The facade always serves the Norman cloud credential route: create
+	// The facade always serves the Norman cloud credential routes: create
 	// (POST /v3/cloudcredentials), which stores the credential as a Secret
-	// through the fallthrough.
+	// through the fallthrough, update (PUT) and delete (DELETE) of
+	// /v3/cloudCredentials/<id>.
 	// A body with no config object is refused as Rancher's store refuses it,
 	// and a Harvester kubeconfig is checked as Rancher's store checks it.
+	// NormanCloudCredentialsInUse lists the ids whose delete is refused as a
+	// credential a provisioning cluster uses.
+	NormanCloudCredentialsInUse []string
 
 	// V3CreateStatus forces a status on the Norman v3 token create.
 	V3CreateStatus int

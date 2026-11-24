@@ -1,6 +1,6 @@
 {
   "cliVersion": "golden",
-  "commandCount": 273,
+  "commandCount": 275,
   "effectSchema": {
     "actions": [
       "create",
@@ -542,7 +542,13 @@
       ]
     },
     {
-      "desc": "Apply a partial update to a resource from a patch file or stdin. Generated for every kind `rancher schema` lists.",
+      "commands": [
+        {
+          "name": "patch cloud-credential",
+          "usage": "Change the fields, display name or description of a cloud credential"
+        }
+      ],
+      "desc": "Apply a partial update to a resource from a patch file or stdin. Generated for every kind `rancher schema` lists. `rancher patch cloud-credential` is a dedicated command with its own flags.",
       "generated": {
         "count": 73,
         "pattern": "patch <kind>"
@@ -550,7 +556,13 @@
       "name": "patch"
     },
     {
-      "desc": "Delete a resource by name. Generated for kinds that support deletion; some kinds add extra checks or cascade warnings.",
+      "commands": [
+        {
+          "name": "delete cloud-credential",
+          "usage": "Delete a cloud credential"
+        }
+      ],
+      "desc": "Delete a resource by name. Generated for kinds that support deletion; some kinds add extra checks or cascade warnings. `rancher delete cloud-credential` is a dedicated command.",
       "generated": {
         "count": 43,
         "pattern": "delete <kind>"

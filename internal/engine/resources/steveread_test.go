@@ -16,6 +16,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1243,6 +1244,102 @@ func TestEtcdSnapshotsAfterForbiddenReadNothingForARowWithoutTheFlag(t *testing.
 	k8sErr := kubernetesStatus(http.StatusForbidden, false)
 
 	got, err := steveEtcdSnapshots(t.Context(), k, &steveFactory{root: root}, "fleet-default", k8sErr)
+	assert.Nil(t, got)
+	assert.Same(t, k8sErr, err)
+	assert.Empty(t, root.requested())
+}
+
+// TestClusterListsAfterForbiddenReturnTheKubernetesShape asserts the readers of
+// the management clusters and of the provisioning clusters of every namespace
+// list through Steve after a Kubernetes 403 and return each object in the shape
+// the Kubernetes API returns.
+func TestClusterListsAfterForbiddenReturnTheKubernetesShape(t *testing.T) {
+	t.Parallel()
+	provisioningPath := "/v1/provisioning.cattle.io.clusters"
+	root := &steveRoot{serve: func(p string, _ int) (int, any) {
+		switch p {
+		case steveClustersPath:
+			return http.StatusOK, steveCollection(steveClusterItem("c-a", "alpha", "True", nil))
+		case provisioningPath:
+			return http.StatusOK, steveCollection(steveProvisioningCluster("prod", "fleet-default", "True", nil))
+		}
+		return http.StatusForbidden, nil
+	}}
+	f := &steveFactory{root: root}
+	k8sErr := kubernetesStatus(http.StatusForbidden, false)
+
+	management, err := ManagementClustersAfterForbidden(t.Context(), f, k8sErr)
+	require.NoError(t, err)
+	require.Len(t, management, 1)
+	assert.Equal(t, "c-a", management[0].GetName())
+	assert.NotContains(t, management[0].Object, "links")
+	assert.NotContains(t, management[0].Object, "id")
+
+	provisioning, err := ProvisioningClustersAfterForbidden(t.Context(), f, k8sErr)
+	require.NoError(t, err)
+	assert.Equal(t, []unstructured.Unstructured{kubernetesProvisioningCluster("prod", "fleet-default", "True", nil)}, provisioning)
+	assert.Equal(t, []string{steveClustersPath, provisioningPath}, root.requested())
+}
+
+// TestClusterListsAfterForbiddenKeepTheKubernetesError asserts each reader makes
+// no Steve request for a Kubernetes error that is not a 403, returns the
+// Kubernetes error when Steve responds with 403 or 404, and returns an error
+// with the status Steve responded with for any other status.
+func TestClusterListsAfterForbiddenKeepTheKubernetesError(t *testing.T) {
+	t.Parallel()
+	readers := map[string]func(context.Context, engine.RootClientFactory, error) ([]unstructured.Unstructured, error){
+		"management":   ManagementClustersAfterForbidden,
+		"provisioning": ProvisioningClustersAfterForbidden,
+	}
+	for readerName, read := range readers {
+		for name, tc := range map[string]struct {
+			k8sErr      error
+			steve       int
+			wantRequest bool
+			wantK8s     bool
+			wantStatus  int
+		}{
+			"Kubernetes 500": {k8sErr: kubernetesStatus(http.StatusInternalServerError, false), wantK8s: true},
+			"Kubernetes 404": {k8sErr: kubernetesStatus(http.StatusNotFound, false), wantK8s: true},
+			"no status":      {k8sErr: clierr.New(clierr.CodeGeneric, "connection refused"), wantK8s: true},
+			"Steve 403":      {k8sErr: kubernetesStatus(http.StatusForbidden, false), steve: http.StatusForbidden, wantRequest: true, wantK8s: true},
+			"Steve 404":      {k8sErr: kubernetesStatus(http.StatusForbidden, false), steve: http.StatusNotFound, wantRequest: true, wantK8s: true},
+			"Steve 500":      {k8sErr: kubernetesStatus(http.StatusForbidden, false), steve: http.StatusInternalServerError, wantRequest: true, wantStatus: http.StatusInternalServerError},
+		} {
+			t.Run(readerName+" "+name, func(t *testing.T) {
+				t.Parallel()
+				root := &steveRoot{serve: func(string, int) (int, any) { return tc.steve, nil }}
+				got, err := read(t.Context(), &steveFactory{root: root}, tc.k8sErr)
+				assert.Nil(t, got)
+				require.Error(t, err)
+				assert.Equal(t, tc.wantRequest, len(root.requested()) == 1, "the Steve request")
+				if tc.wantK8s {
+					assert.Same(t, tc.k8sErr, err)
+					return
+				}
+				status, ok := clierr.HTTPStatus(err)
+				require.True(t, ok)
+				assert.Equal(t, tc.wantStatus, status)
+			})
+		}
+	}
+}
+
+// TestClusterListsAfterForbiddenReadNothingForARowWithoutTheFlag asserts the
+// readers return the Kubernetes 403 and make no Steve request when the row does
+// not set SteveReadOnForbidden.
+func TestClusterListsAfterForbiddenReadNothingForARowWithoutTheFlag(t *testing.T) {
+	t.Parallel()
+	k := mustKind(t, "managementcluster")
+	require.True(t, k.SteveReadOnForbidden)
+	k.SteveReadOnForbidden = false
+	root := &steveRoot{serve: func(string, int) (int, any) { return http.StatusOK, steveCollection() }}
+	k8sErr := kubernetesStatus(http.StatusForbidden, false)
+
+	got, err := steveListAfterForbidden(k, &steveFactory{root: root}, k8sErr, func(steve.Getter) ([]unstructured.Unstructured, error) {
+		t.Error("the row without the flag read Steve")
+		return nil, nil
+	})
 	assert.Nil(t, got)
 	assert.Same(t, k8sErr, err)
 	assert.Empty(t, root.requested())

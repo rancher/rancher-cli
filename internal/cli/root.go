@@ -186,6 +186,12 @@ func buildEntries() []entry {
 			}})
 		}
 	}
+	entries = append(entries, entry{group: "patch", make: func(d runDeps) runtime.Command {
+		return provisioning.NewPatchCloudCredential(d.clients, d.cloudCreds, d.src)
+	}})
+	entries = append(entries, entry{group: "delete", make: func(d runDeps) runtime.Command {
+		return provisioning.NewDeleteCloudCredential(d.clients, d.roots, d.cloudCreds)
+	}})
 	return entries
 }
 
@@ -1031,8 +1037,8 @@ func buildWiredRegistry(version string) (wiredRegistry, error) {
 			"The authorizer questions are answered through the Rancher proxy by SubjectAccessReview, SelfSubjectAccessReview or SelfSubjectRulesReview; " +
 			"which clusters a subject can reach is the proxy's own answer; the bindings are only read, and the client never evaluates them.",
 		"get":    "Get one resource by name, or list all of a kind. Generated for every kind `rancher schema` lists; `rancher get cloud-credential` and `rancher get kubernetes-versions` are dedicated commands.",
-		"patch":  "Apply a partial update to a resource from a patch file or stdin. Generated for every kind `rancher schema` lists.",
-		"delete": "Delete a resource by name. Generated for kinds that support deletion; some kinds add extra checks or cascade warnings.",
+		"patch":  "Apply a partial update to a resource from a patch file or stdin. Generated for every kind `rancher schema` lists. `rancher patch cloud-credential` is a dedicated command with its own flags.",
+		"delete": "Delete a resource by name. Generated for kinds that support deletion; some kinds add extra checks or cascade warnings. `rancher delete cloud-credential` is a dedicated command.",
 	}
 
 	// The manifest's ordered sections mirror assembleCommands below exactly:

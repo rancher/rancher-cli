@@ -202,6 +202,20 @@ func TestBashCompletionCandidateBoundaries(t *testing.T) {
 			want:       []string{"accessKey=", "defaultRegion="},
 		},
 		{
+			name:       "unique field= token of patch cloud-credential gets no trailing space",
+			words:      []string{"rancher", "patch", "cloud-credential", "prod", "--set", "accessK"},
+			cword:      5,
+			candidates: []string{"accessKey="},
+			want:       []string{"accessKey="},
+		},
+		{
+			name:       "field= tokens of patch cloud-credential stay bare",
+			words:      []string{"rancher", "patch", "cloud-credential", "prod", "--from-file", ""},
+			cword:      5,
+			candidates: []string{"defaultEndpointCA=", "secretKey="},
+			want:       []string{"defaultEndpointCA=", "secretKey="},
+		},
+		{
 			name:       "no candidates after a typed field= leave COMPREPLY empty",
 			words:      []string{"rancher", "create", "cloud-credential", "amazonec2", "--from-file", "secretKey="},
 			cword:      5,

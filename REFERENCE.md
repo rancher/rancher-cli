@@ -652,7 +652,16 @@ operator is active. After a driver, `--set` completes the names of its public
 fields and `--from-file` the names of its secret and multi-line fields, each
 followed by `=`; a field you already typed is left out, and nothing is offered
 after the `=`. `get cloud-credential` completes `<credential>` with the ids and
-the display names that name one credential.
+the display names that name one credential. `patch cloud-credential` and
+`delete cloud-credential` (and `create cluster --cloud-credential`) complete
+the id of each credential, with its display name as the description, and leave
+out an id that is also another credential's display name, because those
+commands refuse it. After a credential, `patch cloud-credential` completes
+`--set` and `--from-file` as `create cloud-credential` does, with the fields of
+the driver the credential stores; it offers no fields when the value is a
+display name, is an id that is also another credential's display name, or
+names no credential; given as `cattle-global-data:<id>`, that id offers the
+fields. `delete cloud-credential` completes `--timeout` as every `delete` does.
 
 `--auth-provider` on `auth login`, `auth get-token` and `token` completes the
 names of the auth configs this CLI can sign in with, from the list of auth
@@ -1260,6 +1269,13 @@ they read. For an imported cluster they also read its management cluster through
 the Steve API; a refusal of that read says `you cannot read cluster <id>` and
 has the hint `rancher access clusters`.
 
+`patch cloud-credential` and `delete cloud-credential` read the credential first
+(by its id, when the list of Secrets is refused or does not have it); the hint is
+`this command reads the cloud-credential first; your role needs permission to
+get secrets as well as update` (patch) or `... as well as delete` (delete). With
+`--apply` they read it again by its id just before they write, and a refusal of
+that read has the same hint.
+
 The hint of a command that reads another object before the one it acts on names
 only `get`. `create secret --project`, and `get`, `patch`, `delete`, `grant` and
 `revoke` with `--project` for a project's role bindings, read the project; the
@@ -1278,9 +1294,12 @@ A create's dry-run lists the fields the command sends, one entry per field,
 with `from` null; it does not list the server's defaults. The fields that
 name the object (`apiVersion`, `kind`, `metadata.name`,
 `metadata.generateName`) are in the headline, not the list, and a create that
-sets nothing past its name has no `diff`. In the default text render a map or
-list value prints as compact JSON. A value that is hidden shows `<redacted>`
-in `from` or `to`, and a side that has no value stays null.
+sets nothing past its name has no `diff`. In the diff of a preview, `from` is
+left out when the CLI did not read the stored value, and is null when the field
+had no value; the default text render shows `(stored value not read)` in place
+of `from` when it is left out. In the default text render a map or list value
+prints as compact JSON. A value that is hidden shows `<redacted>` in `from` or
+`to`, and a side that has no value stays null.
 The `--apply` result of a mutating command in json, yaml and template leaves
 out the same values. The exceptions are the commands that show a secret once on
 purpose: `create token`, `create oidc-client`, `oidc-client add-secret` and
@@ -1325,8 +1344,8 @@ clusters) is documented in the
 Node-driver clusters take a machine config plus a cloud credential. Two
 prerequisites before the example below: a cloud credential must already
 exist (`rancher create cloud-credential` creates one, see
-[Cloud credentials](#cloud-credentials); `rancher get cloud-credentials` lists yours -
-`do-creds` below),
+[Cloud credentials](#cloud-credentials); `rancher get cloud-credentials` lists them,
+and its NAME column is the id, `<credential-id>` below),
 and the Kubernetes version must be one the server accepts
 (`rancher get kubernetes-versions` lists them - substitute it for
 `<supported-version>`):
@@ -1334,7 +1353,7 @@ and the Kubernetes version must be one the server accepts
     rancher create machine-config digitaloceanconfig web-pool \
       --region sfo3 --size s-2vcpu-4gb --image debian-13-x64 --apply
     rancher create cluster web \
-      --machine-config digitaloceanconfig/web-pool --cloud-credential do-creds \
+      --machine-config digitaloceanconfig/web-pool --cloud-credential <credential-id> \
       --k8s-version <supported-version> --etcd --controlplane --worker --apply
     rancher get cluster web --wait --timeout 15m
     rancher kubeconfig --cluster web > web.yaml
@@ -1672,11 +1691,11 @@ The table lists the built-in drivers. For a driver with required fields, `create
   start of a file or of stdin is dropped. A file or stdin that starts with a UTF-16 mark, or has
   a NUL byte, is refused: save it as UTF-8.
 - `--description <text>` sets the description. The display name must not match the display
-  name of an existing cloud credential, because `rancher create cluster --cloud-credential` could not tell the two
+  name of an existing cloud credential, because two credentials with one display name are hard to tell
   apart; Rancher allows duplicates, so the CLI checks.
 - The preview comes from server reads (`previewSource: serverReads`): Rancher checks the
   request only when it is sent, and does not check the values against the provider. The
-  Effect carries no `resourceVersion`, and `conflictDetection` is false.
+  Effect of a create carries no `resourceVersion`, and `conflictDetection` is false.
 - After the create the command waits, up to 30 seconds, until you can read the new
   credential, which is when `rancher create cluster --cloud-credential` finds it.
   `--wait=false` skips the wait.
@@ -1690,6 +1709,39 @@ the Rancher server's default entry and pipe it in, so it never reaches a file:
 ```sh
 rancher create kubeconfig --clusters <cluster-id> --include-default-entry false --apply --yes | rancher create cloud-credential harvester <display-name> --set clusterId=<cluster-id> --from-file kubeconfigContent=- --apply
 ```
+
+`rancher patch cloud-credential <credential>` changes a credential. `<credential>` is its id,
+as the NAME column of `rancher get cloud-credential` shows it (with or without
+`cattle-global-data:`), not its display name. A display name stops with `NOT_FOUND`, and the
+error lists the ids of the credentials with that display name. A value that is the
+id of one credential and the display name of another is refused with `AMBIGUOUS_SELECTION`
+naming every match: give the id as `cattle-global-data:<id>`. `rancher create cluster
+--cloud-credential` and `rancher delete cloud-credential <credential>` select a credential the
+same way. Give at least one of `--set`, `--from-file`, `--display-name` and
+`--description`; fields you do not give keep their values, and a stored secret is kept unless
+`--from-file` names it. The command takes no patch document: `--patch`, `-p`, `--patch-file`
+and `--type` are refused. A patch that replaces a secret value needs `--apply --yes`; any
+other patch needs `--apply`. Rancher refuses a Harvester `kubeconfigContent` whose token
+another credential, or this one, already has: remove the field, or give a newly generated
+kubeconfig.
+
+`rancher delete cloud-credential <credential>` deletes a credential with `--apply --yes` and
+waits until it is gone (`--wait=false` returns once Rancher accepts the request; `--timeout`
+limits how long it waits). The preview refuses while a provisioning cluster uses the
+credential, for the whole cluster or a machine pool, as Rancher does when the request is sent;
+on Rancher v2.13, which does not check machine pools, the preview is stricter than Rancher.
+The preview warns for each hosted cluster (EKS, AKS, GKE, Alibaba ACK) that uses the
+credential and for each provisioning cluster that uses it only for etcd snapshots in S3;
+Rancher does not check these references. When the Kubernetes API of the local cluster and the
+Steve API both refuse to list the provisioning clusters or the management clusters, a warning
+says the provisioning clusters or the hosted clusters were not checked. When the Kubernetes
+API refuses and the Steve API lists them, the list has only the clusters you have permission
+to get, and a warning says only those were checked.
+
+Both are previewed from server reads (`previewSource: serverReads`). The Effect carries the
+`resourceVersion` the preview read and `conflictDetection` false, because Rancher's Norman API
+takes no precondition. `--apply` reads the credential again and stops with `CONFLICT` when it
+changed; a change after that read is not detected.
 
 ### Taking an etcd snapshot of a provisioned cluster
 

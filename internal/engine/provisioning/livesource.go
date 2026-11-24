@@ -47,3 +47,14 @@ func (createCloudCredentialCmd) LiveSource() completion.Source {
 
 // LiveSource completes the <credential> argument; every other site is declined.
 func (*getCloudCredCmd) LiveSource() completion.Source { return complete.GetCloudCredentialSource() }
+
+// LiveSource completes the <credential> argument and the field names after --set
+// and --from-file; every other site is declined.
+func (patchCloudCredentialCmd) LiveSource() completion.Source {
+	return complete.PatchCloudCredentialSource()
+}
+
+// LiveSource completes the <credential> argument; every other site is declined.
+func (deleteCloudCredentialCmd) LiveSource() completion.Source {
+	return complete.DeleteCloudCredentialSource()
+}

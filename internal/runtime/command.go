@@ -161,6 +161,12 @@ func (s OutputShape) String() string {
 	}
 }
 
+// RefusedFlag is a flag name a command refuses: Name has no dashes, and Text is
+// what the refusal says after the flag as typed.
+type RefusedFlag struct {
+	Name, Text string
+}
+
 // Descriptor is a command's self-description (no contract/stability - those come
 // from the resolver at schema-generation time). Args are positional; Flags are
 // named `--flags`. Both feed the schema manifest, and Flags are wired into the
@@ -238,6 +244,13 @@ type Descriptor struct {
 	// and a bool-value refusal hints the command's help instead of the
 	// typed line. Go-only; the manifest does not carry it.
 	SecretInput bool `json:"-"`
+	// RefusedFlags lists flag names the command does not declare and refuses
+	// with a fixed text that points to the flags it takes. A name is matched
+	// as urfave reports it, without dashes, and is never a flag the command or
+	// a parent declares. The refusal comes before any request and before any
+	// value is read. Go-only; the manifest, completion and help do not carry
+	// it.
+	RefusedFlags []RefusedFlag `json:"-"`
 	// PlainText makes the pipeline print the command's text output
 	// (Result.Text, StyledText and WideText) with each remedy command
 	// written without --config and the directory: for a command whose text

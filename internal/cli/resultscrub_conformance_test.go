@@ -1210,6 +1210,18 @@ func handWrittenScrubRows() []scrubRow {
 		{command: "create cloud-credential", variant: "apply", kind: "secret", class: classNames, reason: cloudCredentialResultReason,
 			input: cloudCredentialScrubInput, manifest: cloudCredentialScrubFile, deps: cloudCredentialScrubDeps,
 			setup: cloudCredentialScrubList, extra: cloudCredentialScrubSecrets},
+		{command: "patch cloud-credential", variant: "dry run", kind: "secret", class: classNames, reason: cloudCredentialPatchResultReason, dryRun: true,
+			input: cloudCredentialScrubPatchInput, manifest: cloudCredentialScrubFile, deps: cloudCredentialScrubDeps,
+			setup: cloudCredentialScrubStored, extra: cloudCredentialScrubSecrets},
+		{command: "patch cloud-credential", variant: "apply", kind: "secret", class: classNames, reason: cloudCredentialPatchResultReason,
+			input: cloudCredentialScrubPatchInput, manifest: cloudCredentialScrubFile, deps: cloudCredentialScrubDeps,
+			setup: cloudCredentialScrubStored, extra: cloudCredentialScrubSecrets},
+		{command: "delete cloud-credential", variant: "dry run", kind: "secret", class: classNames, reason: cloudCredentialDeleteResultReason, dryRun: true,
+			input: cloudCredentialScrubDeleteInput, manifest: cloudCredentialScrubFile, deps: cloudCredentialScrubDeps,
+			setup: cloudCredentialScrubStored, extra: cloudCredentialScrubSecrets},
+		{command: "delete cloud-credential", variant: "apply", kind: "secret", class: classNames, reason: cloudCredentialDeleteResultReason,
+			input: cloudCredentialScrubDeleteInput, manifest: cloudCredentialScrubFile, deps: cloudCredentialScrubDeps,
+			setup: cloudCredentialScrubStored, extra: cloudCredentialScrubSecrets},
 		{command: "grant", kind: "globalrolebinding", class: classEcho,
 			input: func(*plantSet) fieldCoverageInput {
 				return fieldCoverageInput{args: []string{"local://u-abc"}, values: map[string]string{"role": "admin"}, bools: map[string]bool{"global": true}}
@@ -1608,6 +1620,20 @@ func (saveScrubRoot) GetJSON(_ context.Context, path string) ([]byte, error) {
 // response's config is never read.
 const cloudCredentialResultReason = "the result is built from the id of Norman's response and the typed display name and driver; the response's config is never read"
 
+// cloudCredentialPatchResultReason is the reason of the patch rows: the result
+// is the credential's row from the Secret's metadata and key names and the typed
+// display name; no stored value is read, and the update returns no response.
+const cloudCredentialPatchResultReason = "the result is built from the metadata and the data key names of the Secret read again and the typed display name; a stored value is never read and the update returns no response"
+
+// cloudCredentialDeleteResultReason is the reason of the delete rows: the
+// result is the credential's row from the metadata and the data key names of the
+// Secret read again; no stored value is read and the delete returns no response.
+const cloudCredentialDeleteResultReason = "the result is built from the metadata and the data key names of the Secret read again; a stored value is never read and the delete returns no response"
+
+func cloudCredentialScrubDeleteInput(*plantSet) fieldCoverageInput {
+	return fieldCoverageInput{args: []string{"cc-scrub"}, bools: map[string]bool{"wait": false}}
+}
+
 // cloudCredentialScrubSecret is the secret value the cloud credential rows
 // send; no output may show it.
 const cloudCredentialScrubSecret = "scrub-cc-secret-value-0001"
@@ -1637,10 +1663,37 @@ type scrubCloudCredentialClient struct{}
 func (scrubCloudCredentialClient) Create(context.Context, engine.CloudCredentialBody) (string, error) {
 	return "cattle-global-data:cc-scrub", nil
 }
+func (scrubCloudCredentialClient) Update(context.Context, string, engine.CloudCredentialBody) error {
+	return nil
+}
+func (scrubCloudCredentialClient) Delete(context.Context, string) error { return nil }
 
 func cloudCredentialScrubDeps(t *testing.T, f *scrubFake, ps *plantSet) runDeps {
 	t.Helper()
 	return runDeps{clients: f, roots: fieldCoverageRoots{}, serverBase: scrubBase{}, cloudCreds: scrubCloudCredentials{}, sessionNamer: scrubNamer{""}, src: fieldCoverageSource{cloudCredentialScrubSecret}}
+}
+
+func cloudCredentialScrubPatchInput(*plantSet) fieldCoverageInput {
+	return fieldCoverageInput{
+		args:   []string{"cc-scrub"},
+		values: map[string]string{"description": "scrub description"},
+		lists:  map[string][]string{"set": {"accessKey=AKIASCRUBEXAMPLE"}},
+	}
+}
+
+// cloudCredentialScrubStored makes the fake list the credential cc-scrub of
+// driver s3, with the secret value planted as a stored data value and in an
+// annotation the update sends back, which no output may show.
+func cloudCredentialScrubStored(f *scrubFake, _ *plantSet) {
+	f.list = func(gvr schema.GroupVersionResource) []unstructured.Unstructured {
+		if gvr.Resource != "secrets" {
+			return nil
+		}
+		obj := f.base(gvr, "cattle-global-data", "cc-scrub")
+		obj.Object["data"] = map[string]any{"s3credentialConfig-secretKey": base64.StdEncoding.EncodeToString([]byte(cloudCredentialScrubSecret))}
+		obj.SetAnnotations(map[string]string{"field.cattle.io/name": "scrub-cc", "e2e/keep": cloudCredentialScrubSecret})
+		return []unstructured.Unstructured{*obj}
+	}
 }
 
 // cloudCredentialScrubList makes the fake list one Secret in cattle-global-data,

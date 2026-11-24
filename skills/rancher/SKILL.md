@@ -376,7 +376,9 @@ rancher delete project web --cluster prod --apply --yes       # 3. destructive e
   it. Its `path` is an RFC 6901 pointer (`~1` for `/`, `~0` for `~`), usable
   verbatim as the `path` of an operation in a `--patch` JSON Patch. A
   create's diff lists the fields the command sends, with `from` null; a
-  create that sets nothing past its name has no `diff`.
+  create that sets nothing past its name has no `diff`. In the diff of a
+  preview, `from` is left out when the CLI did not read the stored value, and
+  is null when the field had no value.
 - A patch preview may carry a warning that a changed field is applied by
   another manager (Flux, Argo CD) which may revert the change on its next
   reconcile; relay it before applying, and suggest changing the source that
@@ -412,9 +414,12 @@ rancher delete project web --cluster prod --apply --yes       # 3. destructive e
   install`, `app upgrade`, `app uninstall`, `extension install`, `extension
   upgrade` and `extension uninstall`, and `node drain` and `node stop-drain` for
   a caller without access to Rancher's local cluster), and the cloud credential
-  writes through Norman (`create cloud-credential`): their Effects have
-  `previewSource: serverReads`, built from server reads, with no
-  `resourceVersion` and `conflictDetection` false. A ResourceQuota, LimitRanger,
+  writes through Norman (`create cloud-credential`, `patch cloud-credential`,
+  `delete cloud-credential`): their Effects have `previewSource: serverReads`,
+  built from server reads, and `conflictDetection` false, with no
+  `resourceVersion` except in the Effects of `patch cloud-credential` and
+  `delete cloud-credential`, which carry the `resourceVersion` the preview read.
+  A ResourceQuota, LimitRanger,
   PodSecurity or ValidatingAdmissionPolicy refusal on dry-run is `VALIDATION`:
   the server refused the object, not your access.
 - A delete by a role that grants `delete` and not `get` still works: its Effect
@@ -437,15 +442,16 @@ rancher delete project web --cluster prod --apply --yes       # 3. destructive e
   read and update its management cluster. `create secret --project` and the
   commands for a project's role bindings with `--project` read the project and
   need `get` on it; `create cluster` reads the Secret of its cloud credential
-  and needs `get` on `secrets`. When your role cannot get the object, the
-  command stops with `RBAC` (exit 6) before any write, and the hint names the
-  missing verb (`patch cluster` keeps its own hint, `rancher inspect cluster
-  <name>`).
+  and needs `get` on `secrets`, as do `patch cloud-credential` and `delete
+  cloud-credential` (they read the credential Secret, and read it again before
+  the write with `--apply`). When your role cannot get the object, the command
+  stops with `RBAC` (exit 6) before any write, and the hint names the missing
+  verb (`patch cluster` keeps its own hint, `rancher inspect cluster <name>`).
 - The dry-run's `resourceVersion`/`conflictDetection` fields describe THAT
-  invocation only. An Effect with `previewSource: serverReads` carries no
-  resourceVersion and no conflict detection at all; for an action `--apply` reads the state
-  again and refuses with `CONFLICT` when it changed (`create cloud-credential` does not
-  read again), and without `--wait` nothing checks after the request. `--apply` re-plans from scratch - fresh read, fresh
+  invocation only. An Effect with `previewSource: serverReads` has no
+  server precondition; for an action and for `patch cloud-credential` and `delete cloud-credential`, `--apply` reads
+  the state again and refuses with `CONFLICT` when it changed (`create cloud-credential` does not
+  read again), and a change after that read is not detected; without `--wait` nothing checks after the request. `--apply` re-plans from scratch - fresh read, fresh
   resourceVersion - and its conflict check spans its own plan-to-execute
   window, not the gap since your dry-run. If the object may have changed
   since the preview, re-run `--dry-run` and re-read the diff before applying.
@@ -460,8 +466,8 @@ reference it from the cluster:
 ```
 rancher create machine-config digitaloceanconfig web-pool --region nyc3 --size s-2vcpu-4gb --dry-run -o json
 rancher create machine-config digitaloceanconfig web-pool --region nyc3 --size s-2vcpu-4gb --apply
-rancher create cluster do-1 --machine-config digitaloceanconfig/web-pool --cloud-credential do-prod --k8s-version v1.30.5+rke2r1 --etcd --controlplane --worker --dry-run -o json
-rancher create cluster do-1 --machine-config digitaloceanconfig/web-pool --cloud-credential do-prod --k8s-version v1.30.5+rke2r1 --etcd --controlplane --worker --apply
+rancher create cluster do-1 --machine-config digitaloceanconfig/web-pool --cloud-credential cc-abc12 --k8s-version v1.30.5+rke2r1 --etcd --controlplane --worker --dry-run -o json
+rancher create cluster do-1 --machine-config digitaloceanconfig/web-pool --cloud-credential cc-abc12 --k8s-version v1.30.5+rke2r1 --etcd --controlplane --worker --apply
 ```
 
 `create cluster` sets less than the Rancher UI cluster form does for a custom or
@@ -477,7 +483,14 @@ members; add them with `rancher grant` afterwards. A cloud credential must
 already exist: `rancher create cloud-credential <driver> <display-name>` creates one
 (run it with `--dry-run` first; give a secret field only with
 `--from-file <field>=<path>`, or `--from-file <field>=-` for stdin, never as a `--set` value),
-and `rancher get cloud-credentials` lists the ones that exist. The CLI has
+and `rancher get cloud-credentials` lists the ones that exist; its NAME column is the credential id.
+`--cloud-credential` and the `<credential>` of `patch` and `delete cloud-credential` take that id (with or without
+`cattle-global-data:`), never a display name; a value that is the id of one credential and the display name of another
+is refused with `AMBIGUOUS_SELECTION`: give the id as `cattle-global-data:<id>`.
+`rancher patch cloud-credential <credential>` changes one (`--set`, `--from-file`,
+`--display-name`, `--description`; fields not given keep their values; `--yes` when it
+replaces a secret value) and `rancher delete cloud-credential <credential>` deletes one
+(`--apply --yes`; refused while a provisioning cluster uses it); run each with `--dry-run` first. The CLI has
 no command or flag for hosted clusters (EKS, AKS, GKE). Rancher creates the
 management cluster, its default and system projects and the registration token
 `default-token`; for a cluster created without the

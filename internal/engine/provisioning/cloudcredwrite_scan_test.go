@@ -1179,8 +1179,9 @@ func TestFormBuilderGuardFindsEachUse(t *testing.T) {
 // typed or piped.
 var planReadCalls = []string{"readFieldFlags", "checkFieldFlags", "readWords"}
 
-// planReceiver is the type whose Plan method is guarded.
-const planReceiver = "createCloudCredentialCmd"
+// planReceivers are the types whose Plan method is guarded: the commands that
+// read a typed or piped value.
+var planReceivers = []string{"createCloudCredentialCmd", "patchCloudCredentialCmd"}
 
 // calleeName returns the name of the function a call calls: the identifier, or
 // the member of a selector.
@@ -1255,23 +1256,48 @@ func guardedCall(assign *ast.AssignStmt, ifStmt *ast.IfStmt) string {
 }
 
 // unguardedReadCalls returns what is wrong with the references to the functions
-// of calls in the method plan of the type recv: a call that is missing or given
-// twice, a call whose error does not leave through read.refuse, any reference
-// that is not such a call (an alias, a function passed as an argument, an
-// assignment), and any reference in another function or method of any file of
-// the package. Several methods of the package are named plan; the one whose
-// receiver is recv is the one checked, and every other declaration is searched
-// for references, whatever its name.
-func unguardedReadCalls(ps parsedSource, plan, recv string, calls []string) []string {
-	var fn *ast.FuncDecl
-	for _, d := range ps.decls {
-		if d.Name.Name == plan && receiverIs(d, recv) {
-			fn = d
+// of calls in the method plan of each type of recvs: a call that is missing or
+// given twice, a call whose error does not leave through read.refuse, any
+// reference that is not such a call (an alias, a function passed as an
+// argument, an assignment), and any reference in another function or method of
+// any file of the package. Several methods of the package are named plan; the
+// ones whose receiver is in recvs are the ones checked, and every other
+// declaration is searched for references, whatever its name.
+func unguardedReadCalls(ps parsedSource, plan string, recvs, calls []string) []string {
+	var problems []string
+	guarded := map[*ast.FuncDecl]bool{}
+	for _, recv := range recvs {
+		var fn *ast.FuncDecl
+		for _, d := range ps.decls {
+			if d.Name.Name == plan && receiverIs(d, recv) {
+				fn = d
+			}
 		}
+		if fn == nil {
+			problems = append(problems, "the method "+plan+" of "+recv+" is not declared")
+			continue
+		}
+		guarded[fn] = true
+		problems = append(problems, unguardedPlanCalls(ps, fn, calls)...)
 	}
-	if fn == nil {
-		return []string{"the method " + plan + " of " + recv + " is not declared"}
+	for _, other := range ps.decls {
+		if guarded[other] || other.Body == nil {
+			continue
+		}
+		ast.Inspect(other.Body, func(n ast.Node) bool {
+			if id, ok := n.(*ast.Ident); ok && slices.Contains(calls, id.Name) {
+				problems = append(problems, fmt.Sprintf("%s: %s refers to %s", ps.fset.Position(id.Pos()), other.Name.Name, id.Name))
+			}
+			return true
+		})
 	}
+	return problems
+}
+
+// unguardedPlanCalls returns what is wrong with the references to the functions
+// of calls in the body of the guarded method fn.
+func unguardedPlanCalls(ps parsedSource, fn *ast.FuncDecl, calls []string) []string {
+	plan := fn.Name.Name
 	var problems []string
 	structured := map[*ast.CallExpr]string{}
 	check := func(assign *ast.AssignStmt, ifStmt *ast.IfStmt) {
@@ -1337,17 +1363,6 @@ func unguardedReadCalls(ps parsedSource, plan, recv string, calls []string) []st
 			problems = append(problems, fmt.Sprintf("%s refers to %s %d times, not once", plan, name, seen[name]))
 		}
 	}
-	for _, other := range ps.decls {
-		if other == fn || other.Body == nil {
-			continue
-		}
-		ast.Inspect(other.Body, func(n ast.Node) bool {
-			if id, ok := n.(*ast.Ident); ok && slices.Contains(calls, id.Name) {
-				problems = append(problems, fmt.Sprintf("%s: %s refers to %s", ps.fset.Position(id.Pos()), other.Name.Name, id.Name))
-			}
-			return true
-		})
-	}
 	return problems
 }
 
@@ -1355,13 +1370,13 @@ func unguardedReadCalls(ps parsedSource, plan, recv string, calls []string) []st
 // the three calls of Plan that read the command line (readFieldFlags,
 // checkFieldFlags and readWords) leaves Plan only as the argument of
 // read.refuse, in an if statement that returns nothing else, that each of the
-// three names is referenced once in Plan of the cloud credential command, as
-// that call, and that no other function or method of any file of the package
-// refers to them. A refusal of those functions can then not skip the
+// three names is referenced once in Plan of the create and the patch cloud
+// credential command, as that call, and that no other function or method of
+// any file of the package refers to them. A refusal of those functions can then not skip the
 // filter, whether through a call, an alias or a function value.
 func TestPlanReturnsReadErrorsOnlyThroughTheFilter(t *testing.T) {
 	ps := parseSources(t, packageSources(t))
-	assert.Empty(t, unguardedReadCalls(ps, "Plan", planReceiver, planReadCalls))
+	assert.Empty(t, unguardedReadCalls(ps, "Plan", planReceivers, planReadCalls))
 }
 
 // TestPlanGuardFindsEachBypass asserts the guard of Plan passes the wrapped
@@ -1375,14 +1390,14 @@ func TestPlanGuardFindsEachBypass(t *testing.T) {
 			"\tvar read readTexts\n" +
 			"\tsets, files, err := readFieldFlags(in)\n" + first + "\n" +
 			"\tif err := checkFieldFlags(driver, sets, files); err != nil {\n" + second + "\n\t}\n" +
-			"\tvalues, warnings, err := c.readWords(driver, sets, files, read.record)\n" + third + "\n}\n"
+			"\tvalues, warnings, err := readWords(c.src, driver, sets, files, read.record)\n" + third + "\n}\n"
 	}
 	const wrapped = "\treturn safety.Effect{}, nil, read.refuse(err)"
 	ifWrapped := func(body string) string { return "\tif err != nil {\n" + body + "\n\t}" }
 	good := plan(ifWrapped(wrapped), wrapped, ifWrapped(wrapped))
 	calls := planReadCalls
 	guard := func(src string) []string {
-		return unguardedReadCalls(parseSource(t, []byte(src)), "Plan", "cmd", calls)
+		return unguardedReadCalls(parseSource(t, []byte(src)), "Plan", []string{"cmd"}, calls)
 	}
 	t.Run("every error wrapped", func(t *testing.T) {
 		assert.Empty(t, guard(good))
@@ -1424,7 +1439,7 @@ func TestPlanGuardFindsEachBypass(t *testing.T) {
 		assert.NotEmpty(t, guard(good+"func other(c *cmd) { again := c.readWords; _ = again }\n"))
 	})
 	t.Run("a function that is not declared", func(t *testing.T) {
-		assert.NotEmpty(t, unguardedReadCalls(parseSource(t, []byte(good)), "Gone", "cmd", calls))
+		assert.NotEmpty(t, unguardedReadCalls(parseSource(t, []byte(good)), "Gone", []string{"cmd"}, calls))
 	})
 	t.Run("files of a package with other Plan methods", func(t *testing.T) {
 		guardFiles := func(files ...string) []string {
@@ -1432,7 +1447,7 @@ func TestPlanGuardFindsEachBypass(t *testing.T) {
 			for k, src := range files {
 				sources = append(sources, sourceFile{name: fmt.Sprintf("file%d.go", k), src: []byte(src)})
 			}
-			return unguardedReadCalls(parseSources(t, sources), "Plan", "cmd", calls)
+			return unguardedReadCalls(parseSources(t, sources), "Plan", []string{"cmd"}, calls)
 		}
 		const other = "package p\nfunc (o *other) Plan() { run() }\n"
 		assert.Empty(t, guardFiles(good, other), "the Plan of the type is the one checked, after others")
@@ -1440,6 +1455,18 @@ func TestPlanGuardFindsEachBypass(t *testing.T) {
 		assert.NotEmpty(t, guardFiles(other), "no Plan of the type")
 		assert.NotEmpty(t, guardFiles(good, "package p\nfunc (c *cmd) again(d, s, f any) { c.readWords(d, s, f, nil) }\n"), "a method of another file calls readWords")
 		assert.NotEmpty(t, guardFiles(good, "package p\nfunc (o *other) Plan() { run(readFieldFlags) }\n"), "a Plan of another type refers to a guarded function")
+		both := func(files ...string) []string {
+			var sources []sourceFile
+			for k, src := range files {
+				sources = append(sources, sourceFile{name: fmt.Sprintf("file%d.go", k), src: []byte(src)})
+			}
+			return unguardedReadCalls(parseSources(t, sources), "Plan", []string{"cmd", "second"}, calls)
+		}
+		second := strings.Replace(good, "(c *cmd)", "(c *second)", 1)
+		assert.Empty(t, both(good, second), "a second guarded type passes, and its references are not another function's")
+		assert.NotEmpty(t, both(good), "a guarded type without its Plan")
+		assert.NotEmpty(t, both(good, strings.Replace(second, "read.refuse(err)", "err", 1)), "a second guarded type with an error returned as it is")
+		assert.NotEmpty(t, both(good, second, "package p\nfunc (o *third) Plan() { run(readFieldFlags) }\n"), "an unguarded type refers to a guarded function")
 		assert.NotEmpty(t, guardFiles(good, "package p\nfunc dup() {}\n", "package p\nfunc dup() { run(readFieldFlags) }\n"), "a name declared twice is searched too")
 	})
 }

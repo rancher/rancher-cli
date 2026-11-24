@@ -255,3 +255,61 @@ func steveEtcdSnapshots(ctx context.Context, k kinds.Kind, roots engine.RootClie
 	}
 	return out, nil
 }
+
+// ManagementClustersAfterForbidden lists the management clusters through
+// Steve, as the caller, after the Kubernetes List of them failed with k8sErr,
+// and returns them in the shape the Kubernetes API returns them: a caller who
+// cannot list the clusters through the Kubernetes API lists the ones its role
+// lets it read. It reads only when k8sErr is a 403 from the Kubernetes API and
+// the managementcluster row sets SteveReadOnForbidden. In every other case,
+// and when Steve responds with 403 or 404, the result is k8sErr; any other
+// error is that of steve.ClusterObjects.
+func ManagementClustersAfterForbidden(ctx context.Context, roots engine.RootClientFactory, k8sErr error) ([]unstructured.Unstructured, error) {
+	k, ok := kinds.ByKey("managementcluster")
+	if !ok {
+		return nil, clierr.New(clierr.CodeGeneric, "internal error: the cluster kind is missing; report this as a defect in rancher-cli")
+	}
+	return steveListAfterForbidden(k, roots, k8sErr, func(get steve.Getter) ([]unstructured.Unstructured, error) {
+		return steve.ClusterObjects(ctx, get)
+	})
+}
+
+// ProvisioningClustersAfterForbidden lists the provisioning clusters of every
+// namespace through Steve, as the caller, after the Kubernetes List of them
+// failed with k8sErr, under the conditions and with the results of
+// ManagementClustersAfterForbidden; any other error is that of
+// steve.TypeObjects.
+func ProvisioningClustersAfterForbidden(ctx context.Context, roots engine.RootClientFactory, k8sErr error) ([]unstructured.Unstructured, error) {
+	k, ok := kinds.ByKey("provisioningcluster")
+	if !ok {
+		return nil, clierr.New(clierr.CodeGeneric, "internal error: the provisioning-cluster kind is missing; report this as a defect in rancher-cli")
+	}
+	return steveListAfterForbidden(k, roots, k8sErr, func(get steve.Getter) ([]unstructured.Unstructured, error) {
+		return steve.TypeObjects(ctx, get, k.SteveType(), "")
+	})
+}
+
+// steveListAfterForbidden is the common part of the readers above for the row
+// k: it calls read with the Steve getter only after a Kubernetes 403 and while
+// the row sets SteveReadOnForbidden, and returns the objects in the Kubernetes
+// shape.
+func steveListAfterForbidden(k kinds.Kind, roots engine.RootClientFactory, k8sErr error, read func(steve.Getter) ([]unstructured.Unstructured, error)) ([]unstructured.Unstructured, error) {
+	if !k.SteveReadOnForbidden {
+		return nil, k8sErr
+	}
+	if st, ok := clierr.HTTPStatus(k8sErr); !ok || st != http.StatusForbidden {
+		return nil, k8sErr
+	}
+	items, err := read(steve.RootFactoryGetter(roots))
+	if err != nil {
+		if steveRefused(err) {
+			return nil, k8sErr
+		}
+		return nil, err
+	}
+	out := make([]unstructured.Unstructured, 0, len(items))
+	for _, item := range items {
+		out = append(out, unstructured.Unstructured{Object: steve.KubernetesObject(item.Object)})
+	}
+	return out, nil
+}

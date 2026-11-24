@@ -18,9 +18,9 @@ jsonquery stdout data.spec.rkeConfig '{}'
 
 # node-driver: full --apply (no rancher webhook in this harness, so the
 # create succeeds even though the referenced machine config object does not
-# exist), resolving --cloud-credential by display name against the fixture
+# exist), selecting --cloud-credential by id against the fixture
 # seeded once globally in cattle-global-data (test/e2e/harness_test.go).
-exec rancher create cluster node-1 --machine-config amazonec2config/mycfg --cloud-credential e2e-cred --k8s-version v1.30.5+rke2r1 --etcd --controlplane --worker --apply
+exec rancher create cluster node-1 --machine-config amazonec2config/mycfg --cloud-credential cc-e2etest --k8s-version v1.30.5+rke2r1 --etcd --controlplane --worker --apply
 stderr 'creatorId annotation not set'
 exec rancher get provisioning-cluster node-1 -o json
 jsonquery stdout data.spec.cloudCredentialSecretName cattle-global-data:cc-e2etest
@@ -31,10 +31,10 @@ jsonquery stdout data.spec.rkeConfig.machinePools.0.machineConfigRef.name mycfg
 ! exec rancher create cluster bad-1 --import --custom
 stderr 'error \(VALIDATION\):'
 
-! exec rancher create cluster bad-2 --import --cloud-credential e2e-cred
+! exec rancher create cluster bad-2 --import --cloud-credential cc-e2etest
 stderr 'error \(VALIDATION\):'
 
-! exec rancher create cluster bad-3 --machine-config amazonec2config/mycfg --cloud-credential e2e-cred --k8s-version v1.30.5+rke2r1
+! exec rancher create cluster bad-3 --machine-config amazonec2config/mycfg --cloud-credential cc-e2etest --k8s-version v1.30.5+rke2r1
 stderr 'error \(VALIDATION\):'
 stderr 'at least one role'
 

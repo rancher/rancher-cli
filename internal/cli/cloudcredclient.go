@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptrace"
+	"net/url"
+	"strings"
 	"sync/atomic"
 
 	"github.com/rancher/rancher-cli/internal/client/tlstrust"
@@ -21,6 +23,13 @@ import (
 // so this file is the one place the CLI sends a request to it; a source scan
 // limits every Norman path to a short list.
 const normanCloudCredentialsPath = "/v3/cloudcredentials"
+
+// cloudCredentialItemPath is the Norman URL of one cloud credential: the
+// collection path with the type name in the camel case Norman's item URLs use,
+// and the id escaped as one path segment.
+func cloudCredentialItemPath(id string) string {
+	return strings.Replace(normanCloudCredentialsPath, "cloudcredentials", "cloudCredentials", 1) + "/" + url.PathEscape(id)
+}
 
 // CloudCredentials resolves the memoized engine.CloudCredentialClient for this
 // invocation: the root client's server, credential and transport (its TLS
@@ -71,17 +80,30 @@ func (c *cloudCredentialClient) Create(ctx context.Context, body engine.CloudCre
 	return created.ID, nil
 }
 
+func (c *cloudCredentialClient) Update(ctx context.Context, id string, body engine.CloudCredentialBody) error {
+	_, err := c.send(ctx, http.MethodPut, cloudCredentialItemPath(id), body)
+	return err
+}
+
+func (c *cloudCredentialClient) Delete(ctx context.Context, id string) error {
+	_, err := c.send(ctx, http.MethodDelete, cloudCredentialItemPath(id), engine.CloudCredentialBody{})
+	return err
+}
+
 // send sends one request and classifies the response. A 2xx response returns its
 // body. A 500, a 502, a 504 and an error once the request was written are an
 // *engine.ActionOutcomeUnknown; any other non-2xx response is an
 // *engine.ActionRefused. Each error's Err has the HTTP status and a fixed
 // text, never the response's text; the response is only in Body.
 func (c *cloudCredentialClient) send(ctx context.Context, method, path string, body engine.CloudCredentialBody) ([]byte, error) {
-	raw, err := body.RequestJSON()
-	if err != nil {
-		return nil, clierr.New(clierr.CodeGeneric, "internal error: the cloud credential request body cannot be encoded")
+	var payload io.Reader
+	if method != http.MethodDelete {
+		raw, err := body.RequestJSON()
+		if err != nil {
+			return nil, clierr.New(clierr.CodeGeneric, "internal error: the cloud credential request body cannot be encoded")
+		}
+		payload = bytes.NewReader(raw)
 	}
-	payload := bytes.NewReader(raw)
 	// written records that the transport wrote the request, its body
 	// included: an error after that may come after the server ran it, so its
 	// outcome is unknown.
@@ -97,7 +119,9 @@ func (c *cloudCredentialClient) send(ctx context.Context, method, path string, b
 		req.Header.Set("Authorization", "Bearer "+c.token)
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Content-Type", "application/json")
+	if payload != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	prefix := method + " " + path + " on the Rancher server"
 	resp, respBody, err := doBounded(c.hc, req)
 	if err != nil {

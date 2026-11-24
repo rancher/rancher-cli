@@ -131,7 +131,9 @@ var refusalArgs = map[string][]string{
 	"cluster set-upgrade-strategy": {"--worker-concurrency", "2"},
 	"create cluster":               {"--machine-config", "amazonec2config/x", "--cloud-credential", "cc", "--k8s-version", "v1.33.1+rke2r1", "--etcd", "--controlplane", "--worker"},
 	"grant":                        {"--global"},
-	"revoke":                       {"--global"},
+	// A patch with no field flag is refused before its first request.
+	"patch cloud-credential": {"--description", "x"},
+	"revoke":                 {"--global"},
 }
 
 // refusalServer answers every request with one status and body and counts

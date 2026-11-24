@@ -482,13 +482,23 @@ func registeredRows(rows []dwRow) int {
 	return n
 }
 
-// dwRows is every entry whose command name starts with "delete ".
+// dedicatedDeletes are the delete commands that have no kind row, each with
+// the reason the table skips it.
+var dedicatedDeletes = map[string]string{
+	"delete cloud-credential": "a dedicated command with no kind row; its wait is asserted by TestCloudCredentialDeleteWait",
+}
+
+// dwRows is every entry whose command name starts with "delete " and that has
+// a kind row.
 func dwRows(t *testing.T) []dwRow {
 	t.Helper()
 	var rows []dwRow
 	for _, e := range buildEntries() {
 		d := e.make(runDeps{}).Describe()
 		if !strings.HasPrefix(d.Name, "delete ") {
+			continue
+		}
+		if _, skipped := dedicatedDeletes[d.Name]; skipped {
 			continue
 		}
 		k, ok := kinds.Lookup(strings.TrimPrefix(d.Name, "delete "))
@@ -683,8 +693,10 @@ func TestEveryDeleteWaitsUntilTheObjectIsGone(t *testing.T) {
 	rows := dwRows(t)
 	var registered int
 	for _, c := range wr.reg.Commands() {
-		if strings.HasPrefix(c.Describe().Name, "delete ") {
-			registered++
+		if name := c.Describe().Name; strings.HasPrefix(name, "delete ") {
+			if _, skipped := dedicatedDeletes[name]; !skipped {
+				registered++
+			}
 		}
 	}
 	require.Equal(t, registered, registeredRows(rows), "one row per registered delete command")

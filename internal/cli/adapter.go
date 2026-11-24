@@ -647,6 +647,13 @@ func (e usageError) text() string {
 func usageErrorText(c *Command, ue usageError) string {
 	msg := ue.text()
 	d, described := commandDescriptor(c)
+	if described {
+		if name, isUnknown := strings.CutPrefix(msg, "flag provided but not defined: -"); isUnknown {
+			if text, refused := refusedFlagText(d, name, rawArgv); refused {
+				return text
+			}
+		}
+	}
 	if described && !d.SecretInput {
 		return msg
 	}
@@ -678,20 +685,83 @@ func invalidValueText(ue usageError) string {
 	return out + ": the value must be true or false"
 }
 
-// unknownFlagTextAt is the text for the undefined flag name that the root
-// or a group reports, as the command line argv is typed. The flag's command
-// is the leaf the rest of the command line names (see leafOfLine). It is msg,
-// the text that names the flag as typed, when that leaf has a descriptor that
-// takes no secret input: the flag as typed helps a user find a typo there. In
-// every other case, when the leaf takes a secret input, is not found, or has
-// no descriptor, it is the position text, which names no flag.
+// unknownFlagTextAt is the text for the undefined flag name that the root or a
+// group reports, as the command line argv is typed. The flag's command is the
+// leaf the rest of the command line names (see leafOfLine, and
+// leafOfRefusedFlagLine when the flag is typed before the leaf with a value).
+// The text is the leaf's refusal text when that leaf refuses the flag.
+// Otherwise it is msg, the text that names the flag as typed, when that leaf
+// has a descriptor that takes no secret input: the flag as typed helps a user
+// find a typo there. In every other case, when the leaf takes a secret input,
+// is not found, or has no descriptor, it is the position text, which names no
+// flag.
 func unknownFlagTextAt(root *Command, name string, argv []string, msg string) string {
-	if leaf := leafOfLine(root, argv); leaf != nil {
-		if d, described := commandDescriptor(leaf); described && !d.SecretInput {
-			return msg
+	leaf := leafOfLine(root, argv)
+	if leaf == nil {
+		leaf = leafOfRefusedFlagLine(root, name, argv)
+	}
+	if leaf != nil {
+		if d, described := commandDescriptor(leaf); described {
+			if text, refused := refusedFlagText(d, name, argv); refused {
+				return text
+			}
+			if !d.SecretInput {
+				return msg
+			}
 		}
 	}
 	return unknownFlagText(name, argv)
+}
+
+// refusedFlagText is the refusal of the flag name that d refuses: the flag as
+// typed in argv, up to any "=", then the command's text. The flag in the text
+// has no value: it is cut at any "=".
+func refusedFlagText(d runtime.Descriptor, name string, argv []string) (string, bool) {
+	i := slices.IndexFunc(d.RefusedFlags, func(r runtime.RefusedFlag) bool { return r.Name == name })
+	if i < 0 {
+		return "", false
+	}
+	typed := "--" + name
+	if len(name) == 1 {
+		typed = "-" + name
+	}
+	if at := flagWordIndex(name, argv); at >= 0 {
+		typed, _, _ = strings.Cut(argv[at], "=")
+	}
+	return typed + ": " + d.RefusedFlags[i].Text, true
+}
+
+// flagWordIndex is the index in argv of the first argument that starts with "-"
+// and whose text up to any "=" is name with its dashes, or -1.
+func flagWordIndex(name string, argv []string) int {
+	for i, w := range argv {
+		if !strings.HasPrefix(w, "-") {
+			continue
+		}
+		if flag, _, _ := strings.Cut(strings.TrimLeft(w, "-"), "="); flag == name {
+			return i
+		}
+	}
+	return -1
+}
+
+// leafOfRefusedFlagLine finds the leaf of a line whose undefined flag is typed
+// before the leaf with its value as the next argument, which leafOfLine reads as
+// the next command name. It reads the line again without the flag and that
+// argument, and accepts the leaf only when its command refuses name.
+func leafOfRefusedFlagLine(root *Command, name string, argv []string) *Command {
+	at := flagWordIndex(name, argv)
+	if at < 0 || strings.Contains(argv[at], "=") {
+		return nil
+	}
+	leaf := leafOfLine(root, slices.Delete(slices.Clone(argv), at, min(at+2, len(argv))))
+	if leaf == nil {
+		return nil
+	}
+	if d, described := commandDescriptor(leaf); described && slices.ContainsFunc(d.RefusedFlags, func(r runtime.RefusedFlag) bool { return r.Name == name }) {
+		return leaf
+	}
+	return nil
 }
 
 // leafOfLine returns the leaf command the line argv names on root's tree, or

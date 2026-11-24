@@ -8,6 +8,7 @@ COMMANDS:
    amazonec2config, amazonec2configs:                                          Delete the amazonec2config
    azureconfig, azureconfigs:                                                  Delete the azureconfig
    certificate-rotation, certificaterotations, certificate-rotations:          Delete the certificate-rotation
+   cloud-credential:                                                           Delete a cloud credential
    clusterroletemplatebinding, clusterroletemplatebindings, crtb:              Delete the clusterroletemplatebinding
    configmap, configmaps, cm:                                                  Delete the configmap
    cronjob, cronjobs:                                                          Delete the cronjob

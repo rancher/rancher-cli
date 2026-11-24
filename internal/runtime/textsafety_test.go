@@ -206,6 +206,13 @@ func TestDryRunTextWritesHiddenCharactersAsEscapes(t *testing.T) {
 			want: "create project/web\n" + `  /spec/description:  -> "a\nb\x1b[2J"` + "\n" + gate,
 		},
 		{
+			name: "an unread diff entry with an escape sequence and a newline in the value",
+			set: func(e *safety.Effect) {
+				e.Diff = []safety.DiffEntry{{Path: "/spec/description", To: "a\nb\x1b[2J", FromUnread: true}}
+			},
+			want: "create project/web\n" + `  /spec/description: (stored value not read) -> "a\nb\x1b[2J"` + "\n" + gate,
+		},
+		{
 			name: "a diff path with an invalid byte",
 			set: func(e *safety.Effect) {
 				e.Diff = []safety.DiffEntry{{Path: "/metadata/labels/a\xffb", From: nil, To: "v"}}

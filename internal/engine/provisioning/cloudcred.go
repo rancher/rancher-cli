@@ -3,6 +3,8 @@ package provisioning
 import (
 	"context"
 	"errors"
+	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -26,6 +28,8 @@ const (
 	// displayNameAnnotation carries the user-facing name (rancher
 	// credentialmapper.go:15-25); backfilled from the object name when absent.
 	displayNameAnnotation = "field.cattle.io/name"
+	// descriptionAnnotation carries the credential's description.
+	descriptionAnnotation = "field.cattle.io/description"
 	// credentialConfigMarker is the fixed substring every driver's data key
 	// carries before its own config block (rancher credentialmapper.go:36-51;
 	// literals validator.go:435, aks/handler.go:247, vsphere/handler.go:55,
@@ -46,19 +50,31 @@ type CloudCredRef struct {
 	Driver      string `json:"driver"`      // derived from the <driver>credentialConfig- data-key prefix; "" if unidentifiable
 }
 
-// ResolveCloudCredential resolves nameOrID, a credential id (with or
-// without the "cattle-global-data:" prefix) or display name, to exactly one
-// credential with the shared match rule: an id wins over another
-// credential's display name, and warning names the others; two display-name
-// matches are AMBIGUOUS_SELECTION; no match is NOT_FOUND with candidates,
-// after one GET by id for a credential the List did not carry. When the List
-// is refused with RBAC, a value that is a Secret name resolves through that
-// GET alone, with no warning. Reads Secret objects but retains ONLY key
-// names + metadata - never a data value. The Kubernetes authorizer's refusal
-// of the GET by id gets the hint that names get on secrets: the command reads
-// the credential before it writes the object that uses it.
-func ResolveCloudCredential(ctx context.Context, clients engine.ClusterClientFactory, nameOrID string) (CloudCredRef, string, error) {
-	obj, warning, err := resolveCredentialObj(ctx, clients, nameOrID, "--cloud-credential")
+// credentialLookup says how a command selects a cloud credential from the
+// value the user typed. A function that resolves a credential takes it as an
+// explicit parameter, so no call falls back to a default.
+type credentialLookup int
+
+const (
+	// lookupForRead is the lookup of a command that only reads: the value is a
+	// credential id or a display name.
+	lookupForRead credentialLookup = iota + 1
+	// lookupForChange is the lookup of a mutation that takes a cloud
+	// credential: the value is a credential id only, the Secret name with or
+	// without "cattle-global-data:".
+	lookupForChange
+)
+
+// ResolveCloudCredential resolves nameOrID to exactly one credential for the
+// command that calls it. With lookupForRead the value is an id (with or
+// without the "cattle-global-data:" prefix) or a display name under the
+// shared match rule; with lookupForChange it is an id only (see
+// resolveCredentialObj). Reads Secret objects but retains ONLY key names +
+// metadata - never a data value. The Kubernetes authorizer's refusal of the
+// GET by id gets the hint that names get on secrets: the command reads the
+// credential before it writes the object that uses it.
+func ResolveCloudCredential(ctx context.Context, clients engine.ClusterClientFactory, nameOrID string, lookup credentialLookup) (CloudCredRef, string, error) {
+	obj, warning, err := resolveCredentialObj(ctx, clients, nameOrID, "--cloud-credential", lookup)
 	if err != nil {
 		return CloudCredRef{}, "", engine.WithMissingGetHint(err, "command", "cloud-credential", secretsGVR, cloudCredNamespace, credentialSecretName(nameOrID), "")
 	}
@@ -77,14 +93,35 @@ func credentialSecretName(nameOrID string) string {
 // the raw Secret so the read command can also derive Age from
 // creationTimestamp without a second resolve pass; flag is "" for a
 // positional value. Every value pays one List: an id carries no type
-// signal, and the id-wins warning needs every credential's display name.
+// signal, and the match needs every credential's display name.
+//
+// With lookupForRead, an id takes precedence over another credential's display
+// name and the warning names the others; two display-name matches are
+// AMBIGUOUS_SELECTION; no match is NOT_FOUND with candidates, after one GET
+// by id for a credential the List did not carry.
+//
+// With lookupForChange the value selects a credential only by id and the
+// result has no warning. A value that is only a display name is NOT_FOUND,
+// with the credentials of that display name as candidates. A value typed
+// without "cattle-global-data:" that is the id of one credential and the
+// display name of another is AMBIGUOUS_SELECTION naming every one; the
+// prefixed form selects the Secret of that name. Candidates are written
+// with the prefix, which never resolves as ambiguous.
+//
+// Any other lookup, the zero value included, is an error before any request.
+//
 // Rancher grants a credential's creator its own Secret by name only, so a
 // List refused with RBAC falls back to the GET by id when the value is a
-// Secret name: a credential is the result, with no warning (the caller can
-// read no other credential to warn about); a 404 or a Secret that is not a
-// credential is NOT_FOUND with no candidates; any other GET error is
+// Secret name: a credential is the result, with no warning (the caller has no
+// permission to list other credentials to compare with); a 404 or a Secret that
+// is not a credential is NOT_FOUND with no candidates; any other GET error is
 // returned. Never inspects `data` values - see the package doc.
-func resolveCredentialObj(ctx context.Context, clients engine.ClusterClientFactory, nameOrID string, flag clierr.CommandWord) (*unstructured.Unstructured, string, error) {
+func resolveCredentialObj(ctx context.Context, clients engine.ClusterClientFactory, nameOrID string, flag clierr.CommandWord, lookup credentialLookup) (*unstructured.Unstructured, string, error) {
+	switch lookup {
+	case lookupForRead, lookupForChange:
+	default:
+		return nil, "", clierr.New(clierr.CodeGeneric, "internal error: this command did not say how to select a cloud credential")
+	}
 	client, err := clients.Cluster(ctx, engine.LocalCluster)
 	if err != nil {
 		return nil, "", err
@@ -102,6 +139,10 @@ func resolveCredentialObj(ctx context.Context, clients engine.ClusterClientFacto
 		return obj, "", gerr
 	}
 	candidates := credentialObjects(list)
+	if lookup == lookupForChange {
+		obj, err := selectCredentialByID(ctx, client, nameOrID, name, candidates, t)
+		return obj, "", err
+	}
 
 	ids := make([]string, 0, len(candidates))
 	displayByID := map[string]string{}
@@ -128,6 +169,63 @@ func resolveCredentialObj(ctx context.Context, clients engine.ClusterClientFacto
 	return obj, "", gerr
 }
 
+// selectCredentialByID is resolveCredentialObj's lookupForChange: typed is
+// the value as typed and name the Secret name it has after the optional
+// prefix. The credential is the Secret named name, from candidates or, when
+// the List did not carry it yet, from one GET. A value typed without the
+// prefix that is also another credential's display name (compared exactly) is
+// AMBIGUOUS_SELECTION: a credential's display name is its own Secret name
+// when it has no annotation, which is no collision.
+func selectCredentialByID(ctx context.Context, client engine.ClusterClient, typed, name string, candidates []*unstructured.Unstructured, t engine.MatchText) (*unstructured.Unstructured, error) {
+	var byID *unstructured.Unstructured
+	var sameDisplay []*unstructured.Unstructured
+	for _, obj := range candidates {
+		switch {
+		case obj.GetName() == name:
+			byID = obj
+		case displayNameOf(obj) == name:
+			sameDisplay = append(sameDisplay, obj)
+		}
+	}
+	if byID == nil {
+		notFound := clierr.New(clierr.CodeNotFound, t.NotFound).
+			WithCandidates(prefixedCandidates(candidates)).WithHintCommand(t.NotFoundHint)
+		if len(sameDisplay) > 0 {
+			isDisplayName := name + " is a display name"
+			notFound = clierr.New(clierr.CodeNotFound, t.NotFound+"; the command takes the credential id, and "+isDisplayName).
+				WithCandidates(prefixedCandidates(sameDisplay)).WithHintCommand(t.NotFoundHint)
+		}
+		if len(validation.IsDNS1123Subdomain(name)) > 0 {
+			return nil, notFound
+		}
+		// A credential the List did not carry yet: one GET by id.
+		obj, err := getCredential(ctx, client, name, notFound)
+		if err != nil {
+			return nil, err
+		}
+		byID = obj
+	}
+	if typed != name || len(sameDisplay) == 0 {
+		return byID, nil
+	}
+	matches := append([]*unstructured.Unstructured{byID}, sameDisplay...)
+	return nil, clierr.New(clierr.CodeAmbiguousSelection,
+		fmt.Sprintf("%d %s match %s: one has it as its id and the others have it as their display name; to use one, give its id as %s<id>",
+			len(matches), t.Plural, clierr.ShellQuote(typed), cloudCredNamespace+":")).
+		WithCandidates(prefixedCandidates(matches))
+}
+
+// prefixedCandidates lists objs as candidates, sorted by id, each id written
+// with "cattle-global-data:" so a candidate can be passed as typed.
+func prefixedCandidates(objs []*unstructured.Unstructured) []clierr.Candidate {
+	out := make([]clierr.Candidate, 0, len(objs))
+	for _, obj := range objs {
+		out = append(out, clierr.Candidate{ID: cloudCredNamespace + ":" + obj.GetName(), Name: displayNameOf(obj)})
+	}
+	slices.SortFunc(out, func(a, b clierr.Candidate) int { return strings.Compare(a.ID, b.ID) })
+	return out
+}
+
 // getCredential reads the Secret name by id. A missing Secret, or one that
 // is not a credential, is notFound, which never names the Secret behind the
 // credential; any other GET error is returned as is.
@@ -144,9 +242,40 @@ func getCredential(ctx context.Context, client engine.ClusterClient, name string
 	return obj, nil
 }
 
-// credentialObjects filters list to credential-shaped secrets: named cc-*,
-// or carrying a *credentialConfig-* data key (the cattle.io/creator=norman
-// label is corroborating in real Rancher data, not required here).
+// storedCredential is the Secret readStoredCredential reads for patch and delete: the
+// reference and the metadata the write needs. The annotations go only into the
+// body of an update and, for the name and the description, the preview's diff;
+// no `data` value is kept.
+type storedCredential struct {
+	ref             CloudCredRef
+	resourceVersion string
+	uid             string
+	annotations     map[string]string
+}
+
+// readStoredCredential resolves nameOrID as ResolveCloudCredential does under
+// lookup, and returns the Secret's resourceVersion, uid and annotations with
+// the reference. It reads key names and metadata only. The result has no
+// warning: patch and delete select a credential by id only. verb is the verb
+// of the write, in the hint of a refused GET.
+func readStoredCredential(ctx context.Context, clients engine.ClusterClientFactory, nameOrID, verb string, lookup credentialLookup) (storedCredential, error) {
+	obj, _, err := resolveCredentialObj(ctx, clients, nameOrID, "", lookup)
+	if err != nil {
+		return storedCredential{}, engine.WithMissingGetHint(err, "command", "cloud-credential", secretsGVR, cloudCredNamespace, credentialSecretName(nameOrID), verb)
+	}
+	return storedCredential{
+		ref:             refFrom(obj),
+		resourceVersion: obj.GetResourceVersion(),
+		uid:             string(obj.GetUID()),
+		annotations:     obj.GetAnnotations(),
+	}, nil
+}
+
+// credentialObjects filters list to credential-shaped secrets: named with the
+// cc- prefix, or whose first data key in sorted order that contains
+// credentialConfig- has a driver name in front of it (the
+// cattle.io/creator=norman label is corroborating in real Rancher data, not
+// required here).
 func credentialObjects(list *unstructured.UnstructuredList) []*unstructured.Unstructured {
 	var out []*unstructured.Unstructured
 	for i := range list.Items {
@@ -278,7 +407,7 @@ func (c *getCloudCredCmd) Describe() runtime.Descriptor {
 
 func (c *getCloudCredCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	if len(in.Args()) > 0 && in.Args()[0] != "" {
-		obj, warning, err := resolveCredentialObj(ctx, c.clients, in.Args()[0], "")
+		obj, warning, err := resolveCredentialObj(ctx, c.clients, in.Args()[0], "", lookupForRead)
 		if err != nil {
 			return runtime.Result{}, err
 		}

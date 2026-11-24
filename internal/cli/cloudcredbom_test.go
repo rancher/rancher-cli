@@ -18,6 +18,7 @@ import (
 // below, and a row for a command without the flag fails it too.
 var fromFileCommandRows = map[string]string{
 	"create cloud-credential": "TestEveryFromFileFieldDropsLeadingByteOrderMarks",
+	"patch cloud-credential":  "TestEveryFromFileFieldDropsLeadingByteOrderMarks",
 }
 
 // ccSecretFieldRow is one secret field of the driver table with the other
@@ -138,6 +139,59 @@ func TestEveryFromFileFieldDropsLeadingByteOrderMarks(t *testing.T) {
 					assert.Contains(t, stdout+stderr, "UTF-16")
 				})
 			}
+		}
+	}
+}
+
+// TestPatchReadsFromFileValuesAsCreateDoes asserts patch cloud-credential reads
+// the secret field it replaces, from stdin and from a file, through the reader
+// create uses: marks are dropped, a mark after the first byte stays, and a
+// UTF-16 mark or a NUL byte is refused before any request. It is the patch rows
+// of TestEveryFromFileFieldDropsLeadingByteOrderMarks. Not parallel: it sets
+// the environment.
+func TestPatchReadsFromFileValuesAsCreateDoes(t *testing.T) {
+	restoreRawArgv(t)
+	const mark = "\xef\xbb\xbf"
+	want := ccFieldValue("secretKey")
+	for _, source := range []string{"stdin", "file"} {
+		argvFor := func(t *testing.T, content string) ([]string, string) {
+			t.Helper()
+			argv := []string{"patch", "cloud-credential", "cc-abcde", "--apply", "--yes"}
+			if source == "stdin" {
+				return append(argv, "--from-file", "secretKey=-"), content
+			}
+			path := filepath.Join(t.TempDir(), "value.txt")
+			require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+			return append(argv, "--from-file", "secretKey="+path), ""
+		}
+		for _, v := range []struct{ name, content, want string }{
+			{"no mark", want + "\n", want},
+			{"one mark", mark + want + "\r\n", want},
+			{"two marks", mark + mark + want + "\n", want},
+			{"a mark after the first byte", "x" + mark + want + "\n", "x" + mark + want},
+		} {
+			t.Run(source+" "+v.name, func(t *testing.T) {
+				argv, stdin := argvFor(t, v.content)
+				var posts []string
+				stdout, stderr, code, _ := ccRun(t, ccStubWith(ccOptions{stored: true}, ccNorman{status: 200, body: `{"id":"cattle-global-data:cc-abcde"}`}, &posts, false), argv, stdin)
+				require.Zero(t, code, stdout+stderr)
+				assert.Equal(t, v.want, ccPostedValue(t, posts, "amazonec2", "secretKey"))
+			})
+		}
+		for _, v := range []struct{ name, content string }{
+			{"UTF-16 little endian mark", "\xff\xfea\x00b\x00"},
+			{"UTF-16 big endian mark", "\xfe\xff\x00a\x00b"},
+			{"a NUL byte", "ab\x00cd"},
+			{"a UTF-16 mark before a UTF-8 mark", "\xff\xfe" + mark + "ab"},
+		} {
+			t.Run(source+" "+v.name, func(t *testing.T) {
+				argv, stdin := argvFor(t, v.content)
+				var posts []string
+				stdout, stderr, _, _ := ccRun(t, ccStubWith(ccOptions{stored: true}, ccNorman{status: 200, body: `{"id":"x"}`}, &posts, false), argv, stdin)
+				assert.Empty(t, posts, "a refused value sends no request")
+				assert.Contains(t, stdout+stderr, "VALIDATION")
+				assert.Contains(t, stdout+stderr, "UTF-16")
+			})
 		}
 	}
 }

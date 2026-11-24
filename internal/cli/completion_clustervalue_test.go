@@ -275,6 +275,8 @@ var clusterValueWiringsWithoutSites = map[string]string{
 	"command cluster set-upgrade-strategy": "the command takes no --cluster",
 	"command create cloud-credential":      "the command takes no --cluster",
 	"command get cloud-credential":         "the command takes no --cluster",
+	"command patch cloud-credential":       "the command takes no --cluster",
+	"command delete cloud-credential":      "the command takes no --cluster",
 	"command oidc-client rotate-secret":    "the command takes no --cluster",
 	"command oidc-client remove-secret":    "the command takes no --cluster",
 	"command extension add-repository":     "the command takes no --cluster",

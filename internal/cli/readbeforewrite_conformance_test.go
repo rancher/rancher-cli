@@ -71,6 +71,9 @@ var dedicatedReadsBeforeWrite = map[string]readBeforeWrite{
 	// The project that --project names is read for its backing namespace
 	// before the binding is read.
 	"patch projectroletemplatebinding (--project)": {word: "command"},
+	// The Secret of the credential is read by its id when the list of Secrets
+	// does not have it. The row that lists the credential sends no GET.
+	"patch cloud-credential (id not listed)": {word: "command", kind: "cloud-credential", verb: "update"},
 }
 
 // readBeforeWriteLiteralHints are the hints of one row of each kind of
@@ -84,6 +87,7 @@ var readBeforeWriteLiteralHints = map[string]string{
 	"create secret (project)":                      "this command reads the project first; your role needs permission to get projects.management.cattle.io",
 	"create cluster":                               "this command reads the cloud-credential first; your role needs permission to get secrets",
 	"patch projectroletemplatebinding (--project)": "this command reads the project first; your role needs permission to get projects.management.cattle.io",
+	"patch cloud-credential (id not listed)":       "this command reads the cloud-credential first; your role needs permission to get secrets as well as update",
 }
 
 // readsNotRunHere are the mutating commands whose rows run against their own
@@ -110,13 +114,18 @@ var readsThroughSteve = map[string]string{
 }
 
 // readBeforeWriteExtraRows are rows the result table does not have: a patch
-// with --project, which reads the project before the object.
+// with --project, which reads the project before the object, and a patch of a
+// cloud credential that the list of Secrets does not have, which reads the
+// Secret by its id.
 func readBeforeWriteExtraRows() []scrubRow {
 	return []scrubRow{{
 		command: "patch projectroletemplatebinding", variant: "--project", kind: "projectroletemplatebinding", class: classEcho,
 		input: in([]string{scrubObjectName}, map[string]string{
 			"project": scrubProjectID, "cluster": scrubCluster, "type": "merge", "patch": `{"metadata":{"labels":{"scrub":"1"}}}`,
 		}),
+	}, {
+		command: "patch cloud-credential", variant: "id not listed", kind: "secret", class: classNames, reason: cloudCredentialPatchResultReason,
+		input: cloudCredentialScrubPatchInput, manifest: cloudCredentialScrubFile, deps: cloudCredentialScrubDeps,
 	}}
 }
 

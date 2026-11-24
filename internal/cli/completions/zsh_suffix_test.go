@@ -113,7 +113,7 @@ func TestZshContinuationCandidatesGetEmptySuffix(t *testing.T) {
 	}
 }
 
-// TestZshCloudCredentialFieldTokens asserts the zsh side of create
+// TestZshCloudCredentialFieldTokens asserts the zsh side of create and patch
 // cloud-credential's field completion: a `<field>=` token is added with the
 // empty compadd suffix, so the value is typed in the same word; after a typed
 // `<field>=` the source returns nothing and the script offers no candidate of
@@ -128,13 +128,25 @@ func TestZshCloudCredentialFieldTokens(t *testing.T) {
 		}
 	}
 
-	got = zshDescribeGroups(t, []string{"rancher", "create", "cloud-credential", "amazonec2", "--from-file", "secretKey="}, nil)
-	if !containsExact(got, "FILES") {
-		t.Errorf("a typed field= word must call the file completion; got=%q", got)
+	got = zshDescribeGroups(t, []string{"rancher", "patch", "cloud-credential", "prod", "--set", ""}, []string{"accessKey=", "defaultRegion="})
+	for _, w := range []string{"GROUP:empty:accessKey=", "GROUP:empty:defaultRegion="} {
+		if !containsExact(got, w) {
+			t.Errorf("patch: missing %q in _describe groups; got=%q", w, got)
+		}
 	}
-	for _, line := range got {
-		if strings.HasPrefix(line, "GROUP:") {
-			t.Errorf("a typed field= word must add no candidate; got=%q", got)
+
+	for _, words := range [][]string{
+		{"rancher", "create", "cloud-credential", "amazonec2", "--from-file", "secretKey="},
+		{"rancher", "patch", "cloud-credential", "prod", "--from-file", "secretKey="},
+	} {
+		got = zshDescribeGroups(t, words, nil)
+		if !containsExact(got, "FILES") {
+			t.Errorf("a typed field= word must call the file completion; got=%q", got)
+		}
+		for _, line := range got {
+			if strings.HasPrefix(line, "GROUP:") {
+				t.Errorf("a typed field= word must add no candidate; got=%q", got)
+			}
 		}
 	}
 }

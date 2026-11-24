@@ -342,6 +342,10 @@ type CloudCredentialClient interface {
 	// the id from the response and nothing else: the response may have decoded
 	// config values.
 	Create(ctx context.Context, body CloudCredentialBody) (id string, err error)
+	// Update sends an update of the credential id.
+	Update(ctx context.Context, id string, body CloudCredentialBody) error
+	// Delete sends a delete of the credential id.
+	Delete(ctx context.Context, id string) error
 }
 
 // CloudCredentialClientFactory hands out the cloud credential client at call

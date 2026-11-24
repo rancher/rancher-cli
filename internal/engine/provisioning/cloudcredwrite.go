@@ -9,6 +9,7 @@
 package provisioning
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -23,6 +24,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/provisioning/cloudcredfields"
+	"github.com/rancher/rancher-cli/internal/engine/resources"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -34,6 +36,8 @@ import (
 var (
 	nodeDriverGVR = kindGVR("nodedriver")
 	settingGVR    = kindGVR("setting")
+
+	managementClusterGVR = kindGVR("managementcluster")
 )
 
 func kindGVR(name string) schema.GroupVersionResource {
@@ -45,7 +49,9 @@ const (
 	flagSet         = "set"
 	flagFromFile    = "from-file"
 	flagDescription = "description"
+	flagDisplayName = "display-name"
 	flagWait        = "wait"
+	flagTimeout     = "timeout"
 
 	// driverAnnotation is the annotation Rancher's UI reads to list a credential
 	// in its cluster forms.
@@ -57,6 +63,9 @@ const (
 	// harvesterParserMarker is the text in the tail of that message that comes
 	// before the parser's error, which can quote a fragment of the kubeconfig.
 	harvesterParserMarker = "tokens from kubeconfig:"
+	// harvesterTokenInUse ends the message of a token that another credential,
+	// or the one an update changes, already has.
+	harvesterTokenInUse = "is already in use by secret"
 
 	// kev2OperatorsSetting has the state of Rancher's KEv2 operators.
 	kev2OperatorsSetting = "kev2-operators"
@@ -135,8 +144,8 @@ func (createCloudCredentialCmd) Describe() runtime.Descriptor {
 			{Name: "display-name", Type: "string", Required: true},
 		},
 		Flags: []runtime.ArgSpec{
-			{Name: flagSet, Type: "stringSlice", Desc: "a public field of the driver, as `field=value`; repeat the flag for more fields"},
-			{Name: flagFromFile, Type: "stringSlice", Desc: "a secret or multi-line field of the driver and the file that has its value, as `field=path`; a path of - reads stdin once; repeat the flag for more fields"},
+			{Name: flagSet, Type: "stringSlice", Desc: setFlagDesc},
+			{Name: flagFromFile, Type: "stringSlice", Desc: fromFileFlagDesc},
 			{Name: flagDescription, Type: "string", Desc: "the credential's `description`"},
 			{Name: flagWait, Type: "bool", Desc: "wait until you can read the new credential (default true; --wait=false returns as soon as Rancher accepts the request)"},
 		},
@@ -150,6 +159,15 @@ func (createCloudCredentialCmd) Describe() runtime.Descriptor {
 		SecretInput: true,
 	}
 }
+
+// serverReadsWarning is the first warning of every cloud credential write.
+const serverReadsWarning = "previewed from server reads: Rancher checks the request only when it is sent; it does not check the values against the provider"
+
+// The descriptions of --set and --from-file, which create and patch share.
+const (
+	setFlagDesc      = "a public field of the driver, as `field=value`; repeat the flag for more fields"
+	fromFileFlagDesc = "a secret or multi-line field of the driver and the file that has its value, as `field=path`; a path of - reads stdin once; repeat the flag for more fields"
+)
 
 // createdCredentialRows is the result: the row `get cloud-credential` shows
 // for the credential, without its age.
@@ -256,7 +274,7 @@ func (c *createCloudCredentialCmd) Plan(ctx context.Context, in runtime.Input) (
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
-	driver, err := resolveCredentialDriver(ctx, client, driverName)
+	driver, err := resolveCredentialDriver(ctx, client, driverName, unknownDriverError)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
@@ -268,24 +286,18 @@ func (c *createCloudCredentialCmd) Plan(ctx context.Context, in runtime.Input) (
 		return safety.Effect{}, nil, err
 	}
 
-	values, warnings, err := c.readWords(driver, sets, files, read.record)
+	values, warnings, err := readWords(c.src, driver, sets, files, read.record)
 	if err != nil {
 		return safety.Effect{}, nil, read.refuse(err)
 	}
 
-	names, listRefused, err := CredentialNames(ctx, client)
+	nameWarning, err := checkDisplayName(ctx, client, displayName, "")
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
-	if listRefused {
-		warnings = append(warnings, "the display name was not checked against the existing cloud credentials because you cannot list them; Rancher allows two credentials with one display name")
-	} else if other, ok := nameInUse(names, displayName); ok {
-		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("a cloud credential with the display name %s exists (%s); choose another display name, because --cloud-credential of create cluster could not tell the two apart",
-				strconv.Quote(displayName), other)).WithHintCommand(clierr.NewCommand("get cloud-credential"))
-	}
+	warnings = append(warnings, nameWarning...)
 
-	if allowed, reviewed := canCreateCredentialSecrets(ctx, client); reviewed && !allowed {
+	if allowed, reviewed := reviewCredentialSecrets(ctx, client, "create", ""); reviewed && !allowed {
 		return safety.Effect{}, nil, clierr.New(clierr.CodeRBAC,
 			"you cannot create cloud credentials: Rancher lets the User and Create Clusters roles create secrets in cattle-global-data")
 	} else if !reviewed {
@@ -299,7 +311,7 @@ func (c *createCloudCredentialCmd) Plan(ctx context.Context, in runtime.Input) (
 	label := cloudcredfields.Label(driver.Prefix)
 
 	effectWarnings := []string{
-		"previewed from server reads: Rancher checks the request only when it is sent; it does not check the values against the provider",
+		serverReadsWarning,
 	}
 	if driver.Prefix == "harvester" {
 		effectWarnings = append(effectWarnings, "Rancher checks the tokens of the kubeconfig when the request is sent")
@@ -361,8 +373,9 @@ func readFieldFlags(in runtime.Input) (sets, files []fieldWord, err error) {
 
 // resolveCredentialDriver finds the credential config of driverName: a static
 // row for s3, alibaba while its operator is active, or the node driver whose
-// spec.displayName it is.
-func resolveCredentialDriver(ctx context.Context, client engine.ClusterClient, driverName string) (cloudcredfields.Driver, error) {
+// spec.displayName it is. gone returns the refusal when the server has no such
+// driver; it gets the drivers the server has and whether alibaba is active.
+func resolveCredentialDriver(ctx context.Context, client engine.ClusterClient, driverName string, gone func(driverName string, drivers []cloudcredfields.NodeDriver, alibabaActive bool) error) (cloudcredfields.Driver, error) {
 	if driverName == "s3" {
 		d, _ := cloudcredfields.Static("s3")
 		return d, nil
@@ -407,7 +420,13 @@ func resolveCredentialDriver(ctx context.Context, client engine.ClusterClient, d
 	if err != nil {
 		alibabaActive = false
 	}
-	return cloudcredfields.Driver{}, clierr.New(clierr.CodeValidation,
+	return cloudcredfields.Driver{}, gone(driverName, drivers, alibabaActive)
+}
+
+// unknownDriverError is the refusal of a create for a driver the server does
+// not have.
+func unknownDriverError(driverName string, drivers []cloudcredfields.NodeDriver, alibabaActive bool) error {
+	return clierr.New(clierr.CodeValidation,
 		fmt.Sprintf("unknown cloud credential driver %s; drivers with a credential on this server: %s",
 			strconv.Quote(driverName), strings.Join(cloudcredfields.OfferedPrefixes(drivers, alibabaActive), ", ")))
 }
@@ -542,7 +561,7 @@ func redactionForms(value string) []string {
 // the form exists, before any check that can refuse the value: the bytes as
 // read, the text after the byte order marks are dropped, and the cleaned
 // value.
-func (c *createCloudCredentialCmd) readWords(d cloudcredfields.Driver, sets, files []fieldWord, record func(texts ...string)) ([]credentialValue, []string, error) {
+func readWords(src engine.FileSource, d cloudcredfields.Driver, sets, files []fieldWord, record func(texts ...string)) ([]credentialValue, []string, error) {
 	var out []credentialValue
 	var warnings []string
 	for _, w := range sets {
@@ -567,7 +586,7 @@ func (c *createCloudCredentialCmd) readWords(d cloudcredfields.Driver, sets, fil
 		f, _ := d.Field(w.field)
 		hidden := f.Secret || f.Multiline
 		path := w.value
-		raw, err := c.src.Read(path)
+		raw, err := src.Read(path)
 		if err != nil {
 			return nil, nil, clierr.New(clierr.CodeValidation, "cannot read the --from-file file "+path)
 		}
@@ -688,9 +707,9 @@ func requestDocument(d cloudcredfields.Driver, displayName, description string, 
 }
 
 // responseFilter returns the function that hides the secret values the request
-// carried in a text of the server.
-func responseFilter(values []credentialValue) func(string) string {
-	return engine.NewTextFilter(redactionTexts(secretTexts(values)), true)
+// carried, and the extra texts it sent along, in a text of the server.
+func responseFilter(values []credentialValue, extra ...string) func(string) string {
+	return engine.NewTextFilter(redactionTexts(append(secretTexts(values), extra...)), true)
 }
 
 // secretTexts lists the values the error filter hides: every secret field's.
@@ -726,6 +745,26 @@ func CredentialNames(ctx context.Context, client engine.ClusterClient) (names []
 	return names, false, nil
 }
 
+// checkDisplayName refuses a display name another credential has, and returns
+// the warning for a List that was refused. exceptID is the Secret name of a
+// credential that may keep the name, or "".
+func checkDisplayName(ctx context.Context, client engine.ClusterClient, displayName, exceptID string) ([]string, error) {
+	names, listRefused, err := CredentialNames(ctx, client)
+	if err != nil {
+		return nil, err
+	}
+	if listRefused {
+		return []string{"the display name was not checked against the existing cloud credentials because you cannot list them; Rancher allows two credentials with one display name"}, nil
+	}
+	names = slices.DeleteFunc(names, func(n CredentialName) bool { return exceptID != "" && n.ID == exceptID })
+	if other, ok := nameInUse(names, displayName); ok {
+		return nil, clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("a cloud credential with the display name %s exists (%s); choose another display name, because two credentials with one display name are hard to tell apart",
+				strconv.Quote(displayName), other)).WithHintCommand(clierr.NewCommand("get cloud-credential"))
+	}
+	return nil, nil
+}
+
 // nameInUse finds a credential with this display name and returns the text that
 // names it, "id <id>".
 func nameInUse(names []CredentialName, displayName string) (string, bool) {
@@ -737,19 +776,23 @@ func nameInUse(names []CredentialName, displayName string) (string, bool) {
 	return "", false
 }
 
-// canCreateCredentialSecrets asks the cluster whether the caller may create
-// Secrets in cattle-global-data. A failed request has no response: reviewed is
-// false.
-func canCreateCredentialSecrets(ctx context.Context, client engine.ClusterClient) (allowed, reviewed bool) {
+// reviewCredentialSecrets asks the cluster whether the caller may do verb on
+// Secrets in cattle-global-data: on the Secret name when it is not empty, else
+// on any. A failed request has no response: reviewed is false.
+func reviewCredentialSecrets(ctx context.Context, client engine.ClusterClient, verb, name string) (allowed, reviewed bool) {
 	gvk, ok := engine.ReviewGVK(engine.ReviewSelfSubjectAccess)
 	if !ok {
 		return false, false
 	}
+	attributes := map[string]any{
+		"verb": verb, "group": "", "resource": secretsGVR.Resource, "namespace": cloudCredNamespace,
+	}
+	if name != "" {
+		attributes["name"] = name
+	}
 	review := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": gvk.Group + "/" + gvk.Version, "kind": gvk.Kind,
-		"spec": map[string]any{"resourceAttributes": map[string]any{
-			"verb": "create", "group": "", "resource": secretsGVR.Resource, "namespace": cloudCredNamespace,
-		}},
+		"spec": map[string]any{"resourceAttributes": attributes},
 	}}
 	resp, err := client.PostReview(ctx, engine.ReviewRequest{Kind: engine.ReviewSelfSubjectAccess, Object: review})
 	if err != nil || resp.Status < 200 || resp.Status > 299 || resp.Object == nil {
@@ -768,7 +811,8 @@ func (c *createCloudCredentialCmd) execute(ctx context.Context, body engine.Clou
 	}
 	id, err := client.Create(ctx, body)
 	if err != nil {
-		return runtime.Result{}, createError(err, filter, displayName)
+		return runtime.Result{}, credentialError(err, filter, credentialRequest{
+			method: http.MethodPost, subject: "cloud credentials", done: "created", checkArg: displayName})
 	}
 	name := strings.TrimPrefix(id, cloudCredNamespace+":")
 	ref := CloudCredRef{ID: cloudCredNamespace + ":" + name, SecretName: name, DisplayName: displayName, Driver: prefix}
@@ -821,16 +865,39 @@ func notReadableWarning(name string) string {
 		clierr.Lead("; read it with: "), clierr.NewCommand("get cloud-credential").Arg(name))
 }
 
-// createError turns an error of the Norman client into the command's error,
-// with the values the request carried hidden in every text of the server.
-func createError(err error, filter func(string) string, displayName string) error {
+// credentialRequest names the Norman request an error is about: its method, how
+// the refusal names it, the verb of the outcome that is not known and the
+// argument of the hint that checks the credential.
+type credentialRequest struct {
+	method  string
+	subject string
+	// done is the verb of the unknown outcome: "created", "changed" or
+	// "deleted".
+	done     string
+	checkArg string
+	// existing is true for a request about a credential that exists: its 404
+	// points to the list of credentials.
+	existing bool
+	// resendsKubeconfig is true when the body carries the kubeconfigContent
+	// of a Harvester credential.
+	resendsKubeconfig bool
+}
+
+// credentialError turns an error of the Norman client into the command's
+// error, with the values the request carried hidden in every text of the
+// server.
+func credentialError(err error, filter func(string) string, req credentialRequest) error {
 	if r, ok := errors.AsType[*engine.ActionRefused](err); ok {
-		return engine.RefusedError(http.MethodPost, "cloud credentials", r, filter)
+		refused := engine.RefusedError(req.method, req.subject, r, filter)
+		if ce, ok := errors.AsType[*clierr.Error](refused); ok && req.existing && ce.Code == clierr.CodeNotFound {
+			return ce.WithHintCommand(clierr.NewCommand("get cloud-credential"))
+		}
+		return refused
 	}
 	if u, ok := errors.AsType[*engine.ActionOutcomeUnknown](err); ok {
 		said := clierr.FilteredServerMessage(u.Body, filter)
 		if tail, ok := strings.CutPrefix(said, harvesterRefusalPrefix); ok {
-			return harvesterRefusal(tail)
+			return harvesterRefusal(tail, req.resendsKubeconfig)
 		}
 		cause := "no response arrived"
 		if status, ok := clierr.HTTPStatus(u.Err); ok {
@@ -840,9 +907,9 @@ func createError(err error, filter func(string) string, displayName string) erro
 			cause += ": " + said
 		}
 		return clierr.New(clierr.CodeGeneric, clierr.Text(
-			"the request was sent, but the response did not say whether Rancher created the cloud credential ("+cause+")",
+			"the request was sent, but the response did not say whether Rancher "+req.done+" the cloud credential ("+cause+")",
 			clierr.Lead("; before you try again, check with: "),
-			clierr.NewCommand("get cloud-credential").Arg(displayName))).WithRetryable(false)
+			clierr.NewCommand("get cloud-credential").Arg(req.checkArg))).WithRetryable(false)
 	}
 	return engine.FilterError(err, filter)
 }
@@ -851,12 +918,522 @@ func createError(err error, filter func(string) string, displayName string) erro
 // prefix Rancher wraps its Harvester kubeconfig checks in: nothing was
 // written. tail is Rancher's message after that prefix, already filtered. The
 // parser's own error can quote a fragment of the kubeconfig, so a fixed text
-// replaces it.
-func harvesterRefusal(tail string) error {
+// replaces it. A kubeconfig that a request sends again is refused when its
+// token is in use; the text then gives the remedy.
+func harvesterRefusal(tail string, resendsKubeconfig bool) error {
 	if strings.Contains(tail, harvesterParserMarker) {
 		return clierr.New(clierr.CodeValidation, "Rancher could not read the tokens in the kubeconfig given for kubeconfigContent; check that it is a kubeconfig of the Harvester cluster")
 	}
-	return clierr.New(clierr.CodeValidation, "Rancher refused the kubeconfig: "+tail)
+	msg := "Rancher refused the kubeconfig: " + tail
+	if resendsKubeconfig && strings.Contains(tail, harvesterTokenInUse) {
+		msg += "; remove --from-file kubeconfigContent to keep the stored kubeconfig, or give a newly generated one"
+	}
+	return clierr.New(clierr.CodeValidation, msg)
 }
 
+// patchDocumentText is what the refusal of a patch document flag says after
+// the flag as typed.
+const patchDocumentText = "this command takes no patch document; give fields with --set <field>=<value>, secret values with --from-file <field>=<path>, and --display-name or --description"
+
+type patchCloudCredentialCmd struct {
+	clients engine.ClusterClientFactory
+	creds   engine.CloudCredentialClientFactory
+	src     engine.FileSource
+}
+
+// NewPatchCloudCredential builds `patch cloud-credential <credential>`
+// (mutating).
+func NewPatchCloudCredential(clients engine.ClusterClientFactory, creds engine.CloudCredentialClientFactory, src engine.FileSource) runtime.Command {
+	return &patchCloudCredentialCmd{clients: clients, creds: creds, src: src}
+}
+
+func (patchCloudCredentialCmd) Describe() runtime.Descriptor {
+	refused := make([]runtime.RefusedFlag, 0, 4)
+	for _, name := range []string{"patch", "p", "patch-file", "type"} {
+		refused = append(refused, runtime.RefusedFlag{Name: name, Text: patchDocumentText})
+	}
+	return runtime.Descriptor{
+		Name:  "patch cloud-credential",
+		Usage: "Change the fields, display name or description of a cloud credential",
+		Desc: "Changes a cloud credential through Rancher's Norman API, the one API that runs " +
+			"Rancher's credential checks. <credential> is the credential's id, as `rancher get cloud-credential` " +
+			"shows it (with or without cattle-global-data:), not its display name. A value that is " +
+			"the id of one credential and the display name of another is refused: give the id as " +
+			"cattle-global-data:<id>. Give at least one of --set <field>=<value> (a public field), " +
+			"--from-file <field>=<path> (a secret or multi-line field; a <path> of - reads stdin, once), " +
+			"--display-name and --description; fields not given keep their values. " +
+			"The command takes no patch document: --patch, -p, --patch-file and --type are refused. " +
+			"Replacing a secret value needs --yes. The command is previewed from server reads: " +
+			"--apply reads the cloud credential again and stops if it changed, and a change after " +
+			"that read is not detected, because Rancher's Norman API takes no precondition. " +
+			"In the diff of a preview, `from` is left out when the CLI did not read the stored " +
+			"value, and is null when the field had no value.",
+		CommandType: runtime.Mutating,
+		Args:        []runtime.ArgSpec{{Name: "credential", Type: "string", Required: true}},
+		Flags: []runtime.ArgSpec{
+			{Name: flagSet, Type: "stringSlice", Desc: setFlagDesc},
+			{Name: flagFromFile, Type: "stringSlice", Desc: fromFileFlagDesc},
+			{Name: flagDisplayName, Type: "string", Desc: "the credential's new display `name`"},
+			{Name: flagDescription, Type: "string", Desc: "the credential's new `description`"},
+		},
+		Examples: []string{
+			"rancher patch cloud-credential cc-abc12 --from-file secretKey=./secret-key.txt --dry-run",
+			"rancher patch cloud-credential cc-abc12 --description 'production account' --dry-run",
+		},
+		Destructive:  "dependsOnInput",
+		Auth:         true,
+		Shape:        runtime.ShapeTabular,
+		SecretInput:  true,
+		RefusedFlags: refused,
+	}
+}
+
+// patchRun is what a patch's Execute needs from its Plan.
+type patchRun struct {
+	typed             string
+	secretName        string
+	resourceVersion   string
+	displayName       string
+	body              engine.CloudCredentialBody
+	filter            func(string) string
+	resendsKubeconfig bool
+}
+
+func (c *patchCloudCredentialCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
+	typed := in.Args()[0]
+
+	// Every error of readFieldFlags, checkFieldFlags and readWords leaves
+	// through read.refuse, which hides the --set values and the values read so
+	// far; until readWords runs, only the --set values are known.
+	var read readTexts
+	read.recordSetWords(in.Strings(flagSet))
+	sets, files, err := readFieldFlags(in)
+	if err != nil {
+		return safety.Effect{}, nil, read.refuse(err)
+	}
+	displayGiven, descriptionGiven := in.IsSet(flagDisplayName), in.IsSet(flagDescription)
+	displayName, description := in.String(flagDisplayName), in.String(flagDescription)
+	if len(sets)+len(files) == 0 && !displayGiven && !descriptionGiven {
+		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, "give at least one of --set, --from-file, --display-name or --description")
+	}
+
+	stored, err := readStoredCredential(ctx, c.clients, typed, "update", lookupForChange)
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
+	if stored.ref.Driver == "" {
+		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("the cloud credential %s has no fields of a node driver; the CLI cannot tell which driver it belongs to", stored.ref.SecretName))
+	}
+
+	client, err := c.clients.Cluster(ctx, engine.LocalCluster)
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
+	driver, err := resolveCredentialDriver(ctx, client, stored.ref.Driver, func(driverName string, _ []cloudcredfields.NodeDriver, _ bool) error {
+		return clierr.New(clierr.CodeValidation, fmt.Sprintf(
+			"the node driver %s of cloud credential %s is not on this server; Rancher cannot change a credential of a driver it does not have",
+			driverName, stored.ref.SecretName))
+	})
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
+	if err := checkFieldFlags(driver, sets, files); err != nil {
+		return safety.Effect{}, nil, read.refuse(err)
+	}
+
+	values, valueWarnings, err := readWords(c.src, driver, sets, files, read.record)
+	if err != nil {
+		return safety.Effect{}, nil, read.refuse(err)
+	}
+	if displayGiven {
+		nameWarning, err := checkDisplayName(ctx, client, displayName, stored.ref.SecretName)
+		if err != nil {
+			return safety.Effect{}, nil, err
+		}
+		valueWarnings = append(valueWarnings, nameWarning...)
+	}
+
+	var reviewWarnings []string
+	if allowed, reviewed := reviewCredentialSecrets(ctx, client, "update", stored.ref.SecretName); reviewed && !allowed {
+		return safety.Effect{}, nil, clierr.New(clierr.CodeRBAC, fmt.Sprintf(
+			"you do not have permission to update cloud credential %s: Rancher gives that permission to the user who created it", stored.ref.SecretName))
+	} else if !reviewed {
+		reviewWarnings = append(reviewWarnings, "whether you have permission to update the cloud credential was not checked; Rancher checks it when the request is sent")
+	}
+
+	doc, diff := updateDocument(driver, stored, values, displayName, displayGiven, description, descriptionGiven)
+	var annotationTexts []string
+	if annotations, ok := doc["annotations"].(map[string]any); ok {
+		for _, v := range annotations {
+			if text, ok := v.(string); ok {
+				annotationTexts = append(annotationTexts, text)
+			}
+		}
+	}
+	replacesSecret := slices.ContainsFunc(files, func(w fieldWord) bool {
+		f, _ := driver.Field(w.field)
+		return f.Secret
+	})
+	resends := slices.ContainsFunc(files, func(w fieldWord) bool { return driver.Prefix == "harvester" && w.field == "kubeconfigContent" })
+
+	warnings := []string{serverReadsWarning, "fields not given keep their values", readsAgainWarning}
+	warnings = append(warnings, valueWarnings...)
+	warnings = append(warnings, reviewWarnings...)
+
+	eff := safety.Effect{
+		Action:          safety.ActionUpdate,
+		Target:          "cloudcredentials",
+		DisplayKind:     "cloud-credential",
+		DisplayName:     stored.ref.SecretName,
+		PreviewSource:   safety.PreviewServerReads,
+		Cluster:         engine.LocalCluster,
+		Diff:            diff,
+		ResourceVersion: stored.resourceVersion,
+		Destructive:     replacesSecret,
+		Warnings:        warnings,
+	}
+	run := patchRun{
+		typed:             typed,
+		secretName:        stored.ref.SecretName,
+		resourceVersion:   stored.resourceVersion,
+		displayName:       displayName,
+		body:              engine.NewCloudCredentialBody(doc),
+		filter:            responseFilter(values, annotationTexts...),
+		resendsKubeconfig: resends,
+	}
+	return eff, func(ctx context.Context) (runtime.Result, error) { return c.execute(ctx, run) }, nil
+}
+
+// readsAgainWarning says what a patch or a delete checks before it writes and
+// what it cannot check.
+const readsAgainWarning = "--apply reads the cloud credential again and stops if it changed; a change after that read is not detected"
+
+// updateDocument builds the body of an update and the preview's diff. The
+// config object is always present, empty when no config field is given.
+// With a new name or description the body also carries the stored annotations
+// Rancher would remove when the body leaves them out, except the ones whose
+// key has cattle.io/, which it protects.
+func updateDocument(d cloudcredfields.Driver, stored storedCredential, values []credentialValue, displayName string, displayGiven bool, description string, descriptionGiven bool) (map[string]any, []safety.DiffEntry) {
+	configKey := d.Prefix + "credentialConfig"
+	config := map[string]any{}
+	doc := map[string]any{configKey: config}
+	var diff []safety.DiffEntry
+	if displayGiven {
+		doc["name"] = displayName
+		diff = append(diff, safety.DiffEntry{Path: "/name", From: stored.ref.DisplayName, To: displayName})
+	}
+	if descriptionGiven {
+		doc["description"] = description
+		var from any
+		if old, ok := stored.annotations[descriptionAnnotation]; ok {
+			from = old
+		}
+		diff = append(diff, safety.DiffEntry{Path: "/description", From: from, To: description})
+	}
+	if displayGiven || descriptionGiven {
+		kept := map[string]any{}
+		for key, value := range stored.annotations {
+			if !strings.Contains(key, "cattle.io/") {
+				kept[key] = value
+			}
+		}
+		doc["annotations"] = kept
+	}
+	for _, v := range values {
+		config[v.field.Name] = v.value
+		shown := any(v.value)
+		if v.field.Secret {
+			shown = engine.Redacted
+		}
+		diff = append(diff, safety.DiffEntry{Path: engine.PointerFor([]string{configKey, v.field.Name}), To: shown, FromUnread: true})
+	}
+	return doc, diff
+}
+
+// execute reads the Secret again, stops when it changed since the preview, and
+// sends the update once. A change after that read is not detected: Norman's
+// update takes no precondition.
+func (c *patchCloudCredentialCmd) execute(ctx context.Context, run patchRun) (runtime.Result, error) {
+	ref, err := readAgain(ctx, c.clients, run.typed, run.secretName, "update", run.resourceVersion)
+	if err != nil {
+		return runtime.Result{}, err
+	}
+	client, err := c.creds.CloudCredentials()
+	if err != nil {
+		return runtime.Result{}, err
+	}
+	if err := client.Update(ctx, cloudCredNamespace+":"+run.secretName, run.body); err != nil {
+		return runtime.Result{}, credentialError(err, run.filter, credentialRequest{
+			method: http.MethodPut, subject: "cloud credentials", done: "changed", checkArg: run.secretName,
+			existing: true, resendsKubeconfig: run.resendsKubeconfig})
+	}
+	if run.displayName != "" {
+		ref.DisplayName = run.displayName
+	}
+	return runtime.Result{Kind: "CloudCredential", Data: createdCredentialRows{ref}}, nil
+}
+
+// readAgain reads the credential's Secret by name and refuses when its
+// resourceVersion differs from the one the preview read: a patch or a delete
+// stops, and nothing is sent. typed is the credential as the user typed it. verb
+// is the verb of the write, in the hint of a refused read. It returns the
+// credential's row.
+func readAgain(ctx context.Context, clients engine.ClusterClientFactory, typed, name, verb, resourceVersion string) (CloudCredRef, error) {
+	client, err := clients.Cluster(ctx, engine.LocalCluster)
+	if err != nil {
+		return CloudCredRef{}, err
+	}
+	obj, err := client.Get(ctx, secretsGVR, cloudCredNamespace, name)
+	switch {
+	case clierr.IsNotFound(err):
+		return CloudCredRef{}, clierr.New(clierr.CodeNotFound, "cloud credential not found: "+typed).WithHintCommand(clierr.NewCommand("get cloud-credential"))
+	case err != nil:
+		return CloudCredRef{}, engine.WithMissingGetHint(err, "command", "cloud-credential", secretsGVR, cloudCredNamespace, name, verb)
+	case obj.GetResourceVersion() != resourceVersion:
+		return CloudCredRef{}, clierr.New(clierr.CodeConflict, "the cloud credential changed since the preview; try again").WithRetryable(true)
+	}
+	return refFrom(obj), nil
+}
+
+var _ runtime.MutatingCommand = (*patchCloudCredentialCmd)(nil)
+
 var _ runtime.MutatingCommand = (*createCloudCredentialCmd)(nil)
+
+// deleteServerReadsWarning is the preview warning of a delete: no provider
+// check applies to it.
+const deleteServerReadsWarning = "previewed from server reads: Rancher checks the request only when it is sent"
+
+// hostedClusterFields are the paths of the fields of a management cluster that
+// name a cloud credential for a hosted cluster. Rancher does not check them
+// when it deletes a credential.
+var hostedClusterFields = [][]string{
+	{"spec", "eksConfig", "amazonCredentialSecret"},
+	{"spec", "aksConfig", "azureCredentialSecret"},
+	{"spec", "gkeConfig", "googleCredentialSecret"},
+	{"spec", "aliConfig", "alibabaCredentialSecret"},
+}
+
+const etcdS3Field = "spec.rkeConfig.etcd.s3.cloudCredentialName"
+
+type deleteCloudCredentialCmd struct {
+	clients engine.ClusterClientFactory
+	roots   engine.RootClientFactory
+	creds   engine.CloudCredentialClientFactory
+}
+
+// NewDeleteCloudCredential builds `delete cloud-credential <credential>`
+// (mutating). roots may be nil: a caller who cannot list the clusters through
+// the Kubernetes API then gets the warnings for clusters that were not
+// checked.
+func NewDeleteCloudCredential(clients engine.ClusterClientFactory, roots engine.RootClientFactory, creds engine.CloudCredentialClientFactory) runtime.Command {
+	return &deleteCloudCredentialCmd{clients: clients, roots: roots, creds: creds}
+}
+
+func (deleteCloudCredentialCmd) Describe() runtime.Descriptor {
+	return runtime.Descriptor{
+		Name:  "delete cloud-credential",
+		Usage: "Delete a cloud credential",
+		Desc: "Deletes a cloud credential through Rancher's Norman API, which refuses the delete while a " +
+			"provisioning cluster uses the credential. <credential> is the credential's id, as " +
+			"`rancher get cloud-credential` shows it (with or without cattle-global-data:), not its " +
+			"display name. A value that is the id of one credential and the display name of another is " +
+			"refused: give the id as cattle-global-data:<id>. The preview refuses when a provisioning " +
+			"cluster uses the credential. It warns for each hosted cluster that uses it and for each " +
+			"provisioning cluster that uses it only for etcd snapshots in S3; Rancher does not check " +
+			"these references. The command is previewed from server reads: " +
+			"--apply reads the cloud credential again and stops if it changed, and a change after that " +
+			"read is not detected. Without --wait=false the command waits until the credential is gone.",
+		CommandType: runtime.Mutating,
+		Args:        []runtime.ArgSpec{{Name: "credential", Type: "string", Required: true}},
+		Flags: []runtime.ArgSpec{
+			{Name: flagWait, Type: "bool", Desc: "wait until the cloud credential is gone before returning (default true; --wait=false returns once the server accepts the request)"},
+			{Name: flagTimeout, Type: "string", Desc: "wait `timeout`, a positive duration, e.g. 10m (default 5m)"},
+		},
+		Examples:    []string{"rancher delete cloud-credential cc-abc12 --dry-run"},
+		Destructive: "true",
+		Auth:        true,
+		Shape:       runtime.ShapeTabular,
+	}
+}
+
+// deleteRun is what a delete's Execute needs from its Plan.
+type deleteRun struct {
+	typed           string
+	secretName      string
+	resourceVersion string
+	uid             string
+	wait            resources.DeleteWait
+}
+
+func (c *deleteCloudCredentialCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
+	typed := in.Args()[0]
+	wait, err := resources.ParseDeleteWait(in)
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
+	stored, err := readStoredCredential(ctx, c.clients, typed, "delete", lookupForChange)
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
+	client, err := c.clients.Cluster(ctx, engine.LocalCluster)
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
+	name := stored.ref.SecretName
+
+	provisioning, provisioningRefused, provisioningSteve, err := c.listClusters(ctx, client, provisioningClusterGVR, resources.ProvisioningClustersAfterForbidden)
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
+	slices.SortFunc(provisioning, func(a, b unstructured.Unstructured) int {
+		return cmp.Or(strings.Compare(a.GetNamespace(), b.GetNamespace()), strings.Compare(a.GetName(), b.GetName()))
+	})
+	var etcdWarnings []string
+	for _, cluster := range provisioning {
+		if usesCredential(cluster, name) {
+			return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, fmt.Sprintf(
+				"Cloud credential is currently referenced by provisioning cluster %s (namespace %s)",
+				cluster.GetName(), cluster.GetNamespace()))
+		}
+		if value, _, _ := unstructured.NestedString(cluster.Object, "spec", "rkeConfig", "etcd", "s3", "cloudCredentialName"); namesCredential(value, name) {
+			etcdWarnings = append(etcdWarnings, fmt.Sprintf(
+				"provisioning cluster %s in namespace %s uses this cloud credential for etcd snapshots in S3 (%s); Rancher does not check that reference and deletes the credential",
+				cluster.GetName(), cluster.GetNamespace(), etcdS3Field))
+		}
+	}
+
+	management, managementRefused, managementSteve, err := c.listClusters(ctx, client, managementClusterGVR, resources.ManagementClustersAfterForbidden)
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
+	slices.SortFunc(management, func(a, b unstructured.Unstructured) int { return strings.Compare(a.GetName(), b.GetName()) })
+	var hostedWarnings []string
+	for _, cluster := range management {
+		shown, _, _ := unstructured.NestedString(cluster.Object, "spec", "displayName")
+		if shown == "" {
+			shown = cluster.GetName()
+		}
+		for _, field := range hostedClusterFields {
+			if value, _, _ := unstructured.NestedString(cluster.Object, field...); namesCredential(value, name) {
+				hostedWarnings = append(hostedWarnings, fmt.Sprintf(
+					"cluster %s (%s) uses this cloud credential in %s; Rancher does not check that reference and deletes the credential",
+					shown, cluster.GetName(), strings.Join(field, ".")))
+			}
+		}
+	}
+
+	warnings := []string{deleteServerReadsWarning, readsAgainWarning}
+	warnings = append(warnings, hostedWarnings...)
+	warnings = append(warnings, etcdWarnings...)
+	if provisioningRefused {
+		warnings = append(warnings, "the provisioning clusters were not checked for references to this cloud credential because you do not have permission to list them; Rancher refuses the delete when a provisioning cluster uses it")
+	}
+	if managementRefused {
+		warnings = append(warnings, "the hosted clusters (EKS, AKS, GKE and Alibaba ACK) were not checked for references to this cloud credential because you do not have permission to list the management clusters")
+	}
+	if provisioningSteve {
+		warnings = append(warnings, fmt.Sprintf(readableOnlyWarning, "provisioning clusters"))
+	}
+	if managementSteve {
+		warnings = append(warnings, fmt.Sprintf(readableOnlyWarning, "management clusters"))
+	}
+
+	eff := safety.Effect{
+		Action:          safety.ActionDelete,
+		Target:          "cloudcredentials",
+		DisplayKind:     "cloud-credential",
+		DisplayName:     name,
+		PreviewSource:   safety.PreviewServerReads,
+		Cluster:         engine.LocalCluster,
+		ResourceVersion: stored.resourceVersion,
+		Destructive:     true,
+		Warnings:        warnings,
+	}
+	run := deleteRun{typed: typed, secretName: name, resourceVersion: stored.resourceVersion, uid: stored.uid, wait: wait}
+	return eff, func(ctx context.Context) (runtime.Result, error) { return c.execute(ctx, run) }, nil
+}
+
+// readableOnlyWarning says that a list the Steve API returns has only what the
+// caller has permission to get; its argument is the plain name of the list.
+const readableOnlyWarning = "only the %s you have permission to get were checked for references to this cloud credential"
+
+// listClusters lists the clusters of gvr in every namespace through the
+// Kubernetes API and, when that responds with 403, through the Steve read given. A
+// List that stays refused is no error: refused is true and the caller says so.
+// steve is true when Steve responded, so the items are the clusters the
+// caller has permission to get.
+func (c *deleteCloudCredentialCmd) listClusters(ctx context.Context, client engine.ClusterClient, gvr schema.GroupVersionResource,
+	steveRead func(context.Context, engine.RootClientFactory, error) ([]unstructured.Unstructured, error)) (items []unstructured.Unstructured, refused, steve bool, err error) {
+	list, err := client.List(ctx, gvr, "", "")
+	if err == nil {
+		return list.Items, false, false, nil
+	}
+	if ce, ok := errors.AsType[*clierr.Error](err); !ok || ce.Code != clierr.CodeRBAC {
+		return nil, false, false, err
+	}
+	if c.roots == nil {
+		return nil, true, false, nil
+	}
+	items, err = steveRead(ctx, c.roots, err)
+	if ce, ok := errors.AsType[*clierr.Error](err); ok && ce.Code == clierr.CodeRBAC {
+		return nil, true, false, nil
+	}
+	return items, false, err == nil, err
+}
+
+// usesCredential reports whether the provisioning cluster names the credential,
+// for the whole cluster or a machine pool, as cattle-global-data:<name>: the
+// exact form Rancher's check compares.
+func usesCredential(cluster unstructured.Unstructured, name string) bool {
+	want := cloudCredNamespace + ":" + name
+	if value, _, _ := unstructured.NestedString(cluster.Object, "spec", "cloudCredentialSecretName"); value == want {
+		return true
+	}
+	pools, _, _ := unstructured.NestedSlice(cluster.Object, "spec", "rkeConfig", "machinePools")
+	for _, pool := range pools {
+		if m, ok := pool.(map[string]any); ok {
+			if value, _ := m["cloudCredentialSecretName"].(string); value == want {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// namesCredential reports whether a reference Rancher does not check names the
+// credential, with its namespace or without it.
+func namesCredential(value, name string) bool {
+	return value != "" && (value == cloudCredNamespace+":"+name || value == name)
+}
+
+// execute reads the Secret again, stops when it changed since the preview,
+// sends the delete once and, unless --wait=false, waits until the Secret is
+// gone. A change after the read is not detected: Norman's delete takes no
+// precondition.
+func (c *deleteCloudCredentialCmd) execute(ctx context.Context, run deleteRun) (runtime.Result, error) {
+	ref, err := readAgain(ctx, c.clients, run.typed, run.secretName, "delete", run.resourceVersion)
+	if err != nil {
+		return runtime.Result{}, err
+	}
+	creds, err := c.creds.CloudCredentials()
+	if err != nil {
+		return runtime.Result{}, err
+	}
+	if err := creds.Delete(ctx, cloudCredNamespace+":"+run.secretName); err != nil {
+		return runtime.Result{}, credentialError(err, engine.NewTextFilter(nil, true), credentialRequest{
+			method: http.MethodDelete, subject: "cloud credentials", done: "deleted", checkArg: run.secretName, existing: true})
+	}
+	res := runtime.Result{Kind: "CloudCredential", Data: createdCredentialRows{ref}}
+	client, err := c.clients.Cluster(ctx, engine.LocalCluster)
+	if err != nil {
+		return runtime.Result{}, err
+	}
+	res.Warnings, err = resources.WaitCloudCredentialDeleted(ctx, client, run.wait, run.secretName, run.uid)
+	if err != nil {
+		return runtime.Result{}, err
+	}
+	return res, nil
+}
+
+var _ runtime.MutatingCommand = (*deleteCloudCredentialCmd)(nil)
