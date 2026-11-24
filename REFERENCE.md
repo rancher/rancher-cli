@@ -316,12 +316,12 @@ with none of them the system roots verify the server.
 
 | Command | Connects with | Saves |
 |---|---|---|
-| `auth get-token`, `rancher token` | `--cacert` (`--cacerts`), then `RANCHER_CLI_CACERT`, then the CA of the server entry the call identifies or whose URL matches, then system roots; `rancher token --skip-verify` uses none | nothing |
+| `auth get-token`, `rancher token` | `--cacert` (`--cacerts`), then `RANCHER_CLI_CACERT`, then the CA of the server entry the call identifies or whose URL matches, then system roots. `rancher token --skip-verify` sends a stored login only over a connection that verifies the server with the first of them that applies. The exception is a plugin login entry with `signedInWithSkipVerify` and no saved CA (below): for that entry the command sends the login without verifying the server. A new sign-in does not verify the server, except the sign-in that follows when the server rejects (HTTP 401) a stored login sent over a connection that verifies the server. | nothing |
 | ordinary commands | `RANCHER_CLI_CACERT`, then the current server entry's CA (dropped when `RANCHER_CLI_URL` names another server), then system roots | nothing |
 | `auth login` (with or without `--url`) | `--cacert` (with `--url` only), then `RANCHER_CLI_CACERT`, then the entry's saved CA, then system roots | `--cacert` (with `--url`, unless the entry's saved CA already holds the same certificates), or a certificate accepted at the trust prompt; never the variable (an entry left without a CA after a login that used it carries `caFromEnvironment: true`) |
 | `auth logout`, `auth delete-token`, `config delete-server` (revokes) | the entry's saved CA; `RANCHER_CLI_CACERT` only for an entry `auth login` saved without a CA because that variable supplied it; otherwise system roots | nothing |
 | `config add-server`, `config update-server` | `--cacert`, else (`update-server`) the saved CA it keeps; the variable is not read | `--cacert` (`add-server` on an existing entry: unless the saved CA already holds the same certificates) |
-| the exec plugin's own sign-in (token reuse on) | the same order as `auth get-token` | the CA it connected with, the variable's included (none under `--skip-verify`), in its `exec-login-*` entry |
+| the exec plugin's own sign-in (token reuse on) | the same order as `auth get-token`, the system roots when no CA applies; under `rancher token --skip-verify` it does not verify the server, except after the server rejects (HTTP 401) a stored login sent over a connection that verifies the server (see the first row of this table) | the CA it connected with, the variable's included, in its `exec-login-*` entry; under `--skip-verify` none, and the entry records `signedInWithSkipVerify: true`, except after that rejection, when it saves the CA as usual and clears `signedInWithSkipVerify` |
 
 `config add-server` and `auth login --url` on an entry that already has a CA
 accept a `--cacert` whose certificates are the same as the saved CA's (a copy
@@ -355,7 +355,37 @@ The exec plugin's own sign-in saves the CA it connected with because later
 `kubectl` calls may run without the variable. Revokes use the variable only
 for an entry with `caFromEnvironment: true`: a variable set for one server must
 not stop revokes on others, and an entry with no saved CA and no
-`caFromEnvironment` names a server the system roots verify.
+`caFromEnvironment` names a server the system roots verify, unless it has
+`signedInWithSkipVerify`.
+
+`signedInWithSkipVerify` is a field of a server entry in `config.yaml`. It is
+`true` on a plugin login entry (`exec-login-*`) whose current login came from a
+sign-in by `rancher token --skip-verify` that did not verify the server; that
+sign-in saves no CA. Only the login of such an entry, with no saved CA, is sent
+without verifying the server, and only by a call that passes `--skip-verify`.
+Each time a login is written to the entry, the field is set or cleared. A CA
+change (`config update-server --cacert`, `--clear-cacert`) does not change it.
+After `--clear-cacert` the entry's login is again sent without verifying the
+server under `--skip-verify`. Revokes do not use the field: `auth logout`,
+`config delete-server` and the retirement of superseded tokens verify such an
+entry's server with the system roots and fail on a self-signed server; `config
+delete-server` still removes the entry and lists the token it could not revoke.
+Any other stored login is sent only over a connection that verifies the server.
+That connection uses the CA from `--cacert` (`--cacerts`), then from
+`RANCHER_CLI_CACERT`, then from the server entry. When no CA applies, it uses
+the system roots. When the server's certificate does not verify, the call fails
+with `TLS_TRUST`. Under `--skip-verify` the `TLS_TRUST` message starts by
+naming the server entry of the stored login. When the server's certificate is
+signed by an unknown authority, the message also gives these remedies. The
+message gives `rancher config update-server <entry> --cacert <file>`, which
+saves the CA on the server entry whose CA the call reads. When `--cacerts` gave
+the CA, the message says to remove `--cacerts` from the command, and to unset
+`RANCHER_CLI_CACERT` as well when that variable is set. When
+`RANCHER_CLI_CACERT` gave the CA, the message says that the variable overrides
+a CA saved on a server entry while the variable is set. For a plugin login
+entry without `signedInWithSkipVerify` the message also gives `rancher config
+delete-server <entry>`, then says to run kubectl again to sign in with
+`--skip-verify`.
 
 ## Install internals
 
@@ -4612,10 +4642,16 @@ proxy is not a `TLS_TRUST` error: it keeps the transport error's text.
 There is no skip-verify flag anywhere in the native surface, ever: a
 self-signed or private-CA server is used by pinning its CA (`--cacert`,
 `RANCHER_CLI_CACERT` or the stored server entry's CA), never by turning verification off. The one
-exception is the legacy `rancher token` shim, whose `--skip-verify` exists
-only because Rancher-generated kubeconfigs pass it verbatim - legacy
-compatibility, not an endorsement; kubeconfigs produced by this CLI never
-emit it.
+exception is the flag `--skip-verify` of the legacy `rancher token` shim. The
+legacy CLI defined it, and `exec` blocks written by hand or by scripts may pass
+it. It exists for compatibility, not as an endorsement. Kubeconfigs that
+Rancher or this CLI writes never pass it. It skips verifying the server for a
+new sign-in only. A stored login is sent only over a connection that verifies
+the server, except for a plugin login entry that has no saved CA and whose
+login came from a sign-in that did not verify the server. See
+[Which CA a command trusts](#which-ca-a-command-trusts) for
+`signedInWithSkipVerify` and for the sign-in after the server rejects (HTTP
+401) a stored login.
 
 Proxying is environment-only - there is no `--proxy` flag, matching
 kubectl's posture. Three variables control it, each also honored in

@@ -256,6 +256,14 @@ type Server struct {
 	// write that replaces or clears CA, and records only that fact, never
 	// the variable's value. Revokes use the variable for such an entry.
 	CAFromEnvironment bool `json:"caFromEnvironment,omitempty"`
+	// SignedInWithSkipVerify is true on an exec plugin login entry whose
+	// current login was signed in with rancher token --skip-verify and that
+	// saves no CA. The plugin reuses that login without verifying the
+	// server, and only for a call that passes --skip-verify. It describes
+	// the entry's current login: every login write sets or clears it. A CA
+	// write does not change it; while the entry has a CA the field is not
+	// read.
+	SignedInWithSkipVerify bool `json:"signedInWithSkipVerify,omitempty"`
 	// Provenance says who created the stored login credential and therefore
 	// who may revoke it. Absent on entries written before provenance was
 	// persisted; those read as user entries.

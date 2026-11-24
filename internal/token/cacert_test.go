@@ -50,7 +50,7 @@ func TestResolveConnCAOrderWithTheVariable(t *testing.T) {
 	variable := caVar
 	cases := []struct {
 		name, server, wantName, cacert, rancherURL string
-		shim, skipVerify, noServer                 bool
+		shim, noServer                             bool
 		withVariable, withoutVariable              string
 		fromWith, fromWithout                      config.CASource
 		wantCode                                   string
@@ -71,7 +71,7 @@ func TestResolveConnCAOrderWithTheVariable(t *testing.T) {
 			withoutVariable: caFlag, fromWithout: config.CASource{Kind: config.CASourceFlag}},
 		{name: "the shim reads the variable", shim: true, wantName: "prod-eu", withVariable: caVar, fromWith: config.CASource{Kind: config.CASourceVariable},
 			withoutVariable: caProd, fromWithout: entryFrom("prod")},
-		{name: "the shim with --skip-verify does not read it", shim: true, skipVerify: true, wantName: "prod-eu", withVariable: caProd, fromWith: entryFrom("prod"),
+		{name: "the shim with --skip-verify reads it like a call without the flag", shim: true, wantName: "prod-eu", withVariable: caVar, fromWith: config.CASource{Kind: config.CASourceVariable},
 			withoutVariable: caProd, fromWithout: entryFrom("prod")},
 		{name: "RANCHER_CLI_URL names this server", rancherURL: "https://r.ex/", withVariable: caVar, fromWith: config.CASource{Kind: config.CASourceVariable},
 			withoutVariable: caProd, fromWithout: entryFrom("prod")},
@@ -95,7 +95,7 @@ func TestResolveConnCAOrderWithTheVariable(t *testing.T) {
 				t.Helper()
 				t.Setenv(config.EnvCACert, v)
 				cmd := tokenCmd{dir: dir, store: config.NewFileStore(dir)}
-				_, _, _, source, from, choice, err = cmd.resolveConnWithCA(server, "c-1", tc.cacert, tc.wantName, "", tc.shim, tc.skipVerify)
+				_, _, _, source, from, choice, err = cmd.resolveConnWithCA(server, "c-1", tc.cacert, tc.wantName, "", tc.shim)
 				return source, from, choice, err
 			}
 			withSource, withFrom, withChoice, err := call(t, variable)
@@ -136,7 +136,7 @@ func TestResolveConnCAReadsTheVariableAsAPathOrAPEM(t *testing.T) {
 	for name, v := range map[string]string{"a path": path, "a PEM": ca} {
 		t.Run(name, func(t *testing.T) {
 			t.Setenv(config.EnvCACert, v)
-			_, pemOut, _, source, _, _, err := tokenCmd{dir: dir, store: config.NewFileStore(dir)}.resolveConnWithCA("https://r.ex", "c-1", "", "", "", false, false)
+			_, pemOut, _, source, _, _, err := tokenCmd{dir: dir, store: config.NewFileStore(dir)}.resolveConnWithCA("https://r.ex", "c-1", "", "", "", false)
 			require.NoError(t, err)
 			assert.Equal(t, v, source)
 			assert.Equal(t, ca, pemOut)
@@ -170,7 +170,7 @@ func TestResolveConnCANamesTheSourceOfAnUnreadableCA(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv(config.EnvCACert, tc.variable)
-			_, _, _, _, _, _, err := tokenCmd{dir: dir, store: config.NewFileStore(dir)}.resolveConnWithCA(tc.server, "c-1", tc.cacert, "", "", tc.shim, false)
+			_, _, _, _, _, _, err := tokenCmd{dir: dir, store: config.NewFileStore(dir)}.resolveConnWithCA(tc.server, "c-1", tc.cacert, "", "", tc.shim)
 			ce, ok := clierrOf(err)
 			require.True(t, ok, "%v", err)
 			assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -199,7 +199,7 @@ func TestTheChosenCAIsTheOneTheConnectionTrusts(t *testing.T) {
 		cfg.SetPath(config.FilePath(dir))
 		require.NoError(t, cfg.Write())
 		t.Setenv(config.EnvCACert, variable)
-		_, caPEM, _, _, _, _, err := tokenCmd{dir: dir, store: config.NewFileStore(dir)}.resolveConnWithCA(srv.URL, "c-1", "", "", "", false, false)
+		_, caPEM, _, _, _, _, err := tokenCmd{dir: dir, store: config.NewFileStore(dir)}.resolveConnWithCA(srv.URL, "c-1", "", "", "", false)
 		require.NoError(t, err)
 		client, err := httpx.New(httpx.Options{CACert: caPEM, Timeout: httpx.DefaultTimeout})
 		require.NoError(t, err)
@@ -240,10 +240,10 @@ func TestAResolvedPathHitWithTheVariableSetIsServedFromTheCache(t *testing.T) {
 		restore := config.SetIdentityObserverForTest(func(op string) { ops[op]++ })
 		defer restore()
 		cmd := tokenCmd{dir: dir, store: store, anchor: anchor,
-			newClient: func(httpx.Options) (*http.Client, error) {
+			newClient: recordedClients(newClientRecorder(t, dir, store), func(httpx.Options) (*http.Client, error) {
 				require.Fail(t, "a cache hit builds no client")
 				return nil, nil
-			}}
+			})}
 		res, err := cmd.Execute(t.Context(), tin{s: map[string]string{"server": "https://r.ex", "name": "prod", "cluster": "c-1"}}, ui.Discard())
 		return ops, res, err
 	}

@@ -159,7 +159,7 @@ func refusedHostLogin(t *testing.T, host string) (string, *requestCounter, error
 	cmd := tokenCmd{dir: dir, store: config.NewFileStore(dir), anchor: anchorFor(dir),
 		user: userCheck{clusterID: "c-test", serverID: serverID}}
 	_, _, err := cmd.pluginLogin(t.Context(), pluginLoginInput{
-		server: server, serverID: serverID, clusterID: "c-test", client: &http.Client{Transport: tr},
+		server: server, serverID: serverID, clusterID: "c-test", clients: clientsOver(&http.Client{Transport: tr}),
 	}, noTerminal())
 	return dir, tr, err
 }
@@ -272,7 +272,7 @@ func TestPluginLoginRefusesTheSuffixedNameWhenAnotherServerHoldsTheDerivedOne(t 
 	cmd := tokenCmd{dir: dir, store: config.NewFileStore(dir), anchor: anchorFor(dir),
 		user: userCheck{clusterID: "c-test", serverID: serverID}}
 	_, _, err := cmd.pluginLogin(t.Context(), pluginLoginInput{
-		server: server, serverID: serverID, clusterID: "c-test", client: &http.Client{Transport: tr},
+		server: server, serverID: serverID, clusterID: "c-test", clients: clientsOver(&http.Client{Transport: tr}),
 		newIdPClient: func() *http.Client { return &http.Client{Transport: tr} },
 	}, noTerminal())
 	ce, msg := refusal(t, err)

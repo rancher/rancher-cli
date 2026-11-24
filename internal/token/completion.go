@@ -29,8 +29,8 @@ func (legacyTokenCmd) LiveSource() completion.Source { return tokencomplete.Auth
 
 // CompletionTarget is the server and CA the legacy token command would
 // connect with for the line being completed: --server, which it requires,
-// never the current server entry, and --cacerts. It gives none with
-// --skip-verify, with which the command does not verify the server.
+// never the current server entry, and --cacerts. It gives none when the line
+// has --skip-verify: completion offers nothing there.
 func (legacyTokenCmd) CompletionTarget(cfg *config.Config, req completion.Request) (server, caPEM string, ok bool) {
 	if tailBool(req.Tail, legacyTokenCmd{}.Describe().Flags, "skip-verify") {
 		return "", "", false
@@ -42,7 +42,7 @@ func (legacyTokenCmd) CompletionTarget(cfg *config.Config, req completion.Reques
 // connectionTarget, the choice the commands themselves make.
 func completionTarget(cfg *config.Config, req completion.Request, caFlag string, legacy bool) (server, caPEM string, ok bool) {
 	server, ca, _, _, err := connectionTarget(cfg, strings.TrimSpace(completion.TailFlag(req.Tail, "server")), completion.TailFlag(req.Tail, "cluster"),
-		strings.TrimSpace(completion.TailFlag(req.Tail, caFlag)), completion.TailFlag(req.Tail, "name"), legacy, false)
+		strings.TrimSpace(completion.TailFlag(req.Tail, caFlag)), completion.TailFlag(req.Tail, "name"), legacy)
 	if err != nil {
 		return "", "", false
 	}

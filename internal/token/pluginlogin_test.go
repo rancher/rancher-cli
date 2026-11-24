@@ -43,6 +43,10 @@ type pluginFixture struct {
 	direct *directEndpoint
 	dir    string
 	store  config.CredStore
+	// t and rec record the clients the command builds on the in-memory
+	// network (see recordedClients).
+	t   *testing.T
+	rec *clientRecorder
 }
 
 func newPluginFixture(t *testing.T, reuse bool, opts testrancher.Options) *pluginFixture {
@@ -66,6 +70,7 @@ func newInMemoryPluginFixture(t *testing.T, reuse bool, opts testrancher.Options
 
 func (x *pluginFixture) init(t *testing.T, reuse bool) {
 	t.Helper()
+	x.t = t
 	x.dir = t.TempDir()
 	// The policy lives in the config, not the environment, so a test can
 	// change it mid-flight and the revalidation sees the change.
@@ -98,7 +103,7 @@ func (x *pluginFixture) client() *http.Client {
 func (x *pluginFixture) command(store config.CredStore) tokenCmd {
 	cmd := tokenCmd{dir: x.dir, store: store, anchor: anchorFor(x.dir)}
 	if x.rt != nil {
-		cmd.newClient = func(httpx.Options) (*http.Client, error) { return x.rt.client(), nil }
+		cmd.newClient = recordedClients(x.recorder(), func(httpx.Options) (*http.Client, error) { return x.rt.client(), nil })
 		if x.direct != nil {
 			cmd.newDirectClient = x.rt.directClient()
 		}

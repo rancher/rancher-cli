@@ -187,7 +187,7 @@ func TestAPluginOAuthDeviceSignInDisclosesBeforeItsCode(t *testing.T) {
 	cmd := tokenCmd{dir: dir, store: config.NewFileStore(dir), anchor: anchorFor(dir)}
 	p := newEventPrompter(interactivePrompter())
 	_, _, err := cmd.pluginLogin(t.Context(), pluginLoginInput{
-		server: so.rancherURL, serverID: config.CanonicalServerIdentity(so.rancherURL), clusterID: "c-1", client: so.rancherClient,
+		server: so.rancherURL, serverID: config.CanonicalServerIdentity(so.rancherURL), clusterID: "c-1", clients: clientsOver(so.rancherClient),
 		authProvider: "azureADProvider", authFlow: deviceAuthFlow, wantName: "n",
 		newIdPClient: func() *http.Client { return so.idpClient },
 	}, runtime.Prompter(p))

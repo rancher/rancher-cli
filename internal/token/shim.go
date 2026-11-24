@@ -61,7 +61,14 @@ func (legacyTokenCmd) Describe() runtime.Descriptor {
 			"entry for the server that has a login, else the plugin's own " +
 			"login entry while token reuse is on. It fails when several user " +
 			"entries have a login, and when no user entry has one and the " +
-			"server has more than one plugin login entry.",
+			"server has more than one plugin login entry. " +
+			"--skip-verify applies to a new sign-in and to the reuse of a " +
+			"plugin login entry that has no saved CA and whose login came " +
+			"from a sign-in that did not verify the server. Any other " +
+			"stored login is sent only over a connection that verifies the " +
+			"server. After the server rejects (HTTP 401) a stored login " +
+			"sent over a connection that verifies the server, the sign-in " +
+			"that follows verifies the server too.",
 		CommandType: runtime.Local,
 		Flags: []runtime.ArgSpec{
 			{Name: "server", Type: "string", Required: true, Desc: "Rancher server `url` (https assumed when schemeless)"},
@@ -70,7 +77,7 @@ func (legacyTokenCmd) Describe() runtime.Descriptor {
 			{Name: "auth-provider", Type: "string", Desc: "auth config `name` to sign in with (for example corp-ldap); a provider name or type such as openldap also works; with several matches the CLI asks, or lists them in the error"},
 			{Name: "auth-flow", Type: "string", Enum: AuthFlowValues(), Desc: "identity-provider `flow`", Env: []string{config.EnvOAuthAuthFlow, config.EnvLegacyOAuthAuthFlow}},
 			{Name: "cacerts", Type: "string", Desc: "PEM CA bundle `path` (legacy spelling of --cacert)", Env: []string{config.EnvCACert}},
-			{Name: "skip-verify", Type: "bool", Desc: "skip TLS verification (insecure)"},
+			{Name: "skip-verify", Type: "bool", Desc: "skip TLS verification for a new sign-in and for reuse of the plugin login entry it saves (insecure)"},
 		},
 		ServerAccess: runtime.ServerAccessWrite,
 		Auth:         true,

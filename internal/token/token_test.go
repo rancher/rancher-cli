@@ -1611,7 +1611,7 @@ func TestResolveConnConfigFallback(t *testing.T) {
 	})
 
 	t.Run("empty cluster with a user id is no error on the native path", func(t *testing.T) {
-		server, _, cluster, _, _, _, err := cmd.resolveConnWithCA("https://config.example", "", "", "", "u-a", false, false)
+		server, _, cluster, _, _, _, err := cmd.resolveConnWithCA("https://config.example", "", "", "", "u-a", false)
 		require.NoError(t, err)
 		assert.Equal(t, "https://config.example", server)
 		assert.Empty(t, cluster)
@@ -3024,7 +3024,7 @@ func TestStoredCredTokenClassifiesRejections(t *testing.T) {
 			base := f.LoginCount()
 			var notices bytes.Buffer
 			p := ui.New(&notices, newLineReader(), true, false)
-			_, _, _, err := tokenCmd{dir: dir, store: store}.storedCredToken(t.Context(), srv.Client(), srv.URL, tc.cluster, "e", false, p)
+			_, _, _, err := tokenCmd{dir: dir, store: store}.storedCredToken(t.Context(), clientsOver(srv.Client()), srv.URL, tc.cluster, "e", false, p)
 			switch tc.want {
 			case "rejected":
 				require.ErrorIs(t, err, errStoredCredentialRejected)
@@ -3075,7 +3075,7 @@ func TestStoredCredTokenPluginLaneFailsClosed(t *testing.T) {
 			dir := t.TempDir()
 			store := config.NewFileStore(dir)
 			seedEntry(t, dir, store, "e", config.Server{URL: srv.URL, Provenance: tc.provenance}, cred.Token, true)
-			tok, _, _, err := tokenCmd{dir: dir, store: store}.storedCredToken(t.Context(), srv.Client(), srv.URL, "c-test", "e", false, ui.Discard())
+			tok, _, _, err := tokenCmd{dir: dir, store: store}.storedCredToken(t.Context(), clientsOver(srv.Client()), srv.URL, "c-test", "e", false, ui.Discard())
 			if tc.wantErr != nil {
 				require.ErrorIs(t, err, tc.wantErr)
 				assert.Empty(t, tok.Token)
@@ -3106,14 +3106,14 @@ func TestStoredCredTokenMetadataNeverDrivesServing(t *testing.T) {
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
 	seedEntry(t, dir, store, "e", config.Server{URL: srv.URL, Provenance: clierr.ProvenanceDerived, TokenRef: cred.Ref, CredentialExpiresAt: "2000-01-01T00:00:00Z"}, cred.Token, true)
-	tok, _, _, err := tokenCmd{dir: dir, store: store}.storedCredToken(t.Context(), srv.Client(), srv.URL, "c-test", "e", false, ui.Discard())
+	tok, _, _, err := tokenCmd{dir: dir, store: store}.storedCredToken(t.Context(), clientsOver(srv.Client()), srv.URL, "c-test", "e", false, ui.Discard())
 	require.NoError(t, err, "expired-looking metadata never blocks a valid credential")
 	assert.NotEmpty(t, tok.Token)
 
 	dir2 := t.TempDir()
 	store2 := config.NewFileStore(dir2)
 	seedEntry(t, dir2, store2, "e", config.Server{URL: srv.URL, Provenance: clierr.ProvenanceDerived, TokenRef: cred.Ref, CredentialExpiresAt: "2999-01-01T00:00:00Z"}, "ext/stale:s", true)
-	_, _, _, err = tokenCmd{dir: dir2, store: store2}.storedCredToken(t.Context(), srv.Client(), srv.URL, "c-test", "e", false, ui.Discard())
+	_, _, _, err = tokenCmd{dir: dir2, store: store2}.storedCredToken(t.Context(), clientsOver(srv.Client()), srv.URL, "c-test", "e", false, ui.Discard())
 	require.ErrorIs(t, err, errStoredCredentialRejected, "live-looking metadata never rescues a rejected credential")
 }
 

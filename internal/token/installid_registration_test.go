@@ -99,7 +99,7 @@ func TestACacheMissThatFoundTheLoginAnotherCallStoredRegistersItWithoutTheSkip(t
 	login, err := x.store.GetToken(config.ServerRef{Name: x.entryName(), URL: x.url})
 	require.NoError(t, err)
 
-	tok, _, err := x.command(x.store).pluginLogin(t.Context(), x.command(x.store).pluginInput(x.url, x.url, "", "c-test", x.client(),
+	tok, _, err := x.command(x.store).pluginLogin(t.Context(), x.command(x.store).pluginInput(x.url, x.url, "", "c-test", clientsOver(x.client()),
 		runParams{Name: "n", AuthProvider: "localProvider"}), ui.Discard())
 	require.NoError(t, err)
 	assert.Equal(t, login, tok.loginToken, "the waiter's token carries the login it found")

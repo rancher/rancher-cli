@@ -239,6 +239,26 @@ func execPluginRemedyTexts(t *testing.T) map[string]string {
 	texts["a stored login rejected"] = strings.TrimSuffix(rejected.String(), "\n")
 	st := LoginStates{Commit: &config.CommitOutcome{Backend: clierr.BackendKeyring, State: config.CommitPossiblyCommitted}}
 	texts["the local credential"] = credentialRecoveryFor(st, "prod").Command
+	userCred := storedCredential{name: "prod", entry: cfg.Servers["prod"]}
+	pluginCred := storedCredential{name: "exec-login-r.ex", entry: cfg.Servers["exec-login-r.ex"]}
+	variable, flag := config.CASource{Kind: config.CASourceVariable}, config.CASource{Kind: config.CASourceFlag}
+	for name, c := range map[string]struct {
+		sc      storedCredential
+		from    config.CASource
+		caEntry string
+	}{
+		"a user entry for a server whose certificate does not verify":                                         {userCred, config.CASource{}, ""},
+		"a user entry for a server whose certificate does not verify, the CA from RANCHER_CLI_CACERT":         {userCred, variable, ""},
+		"a user entry for a server whose certificate does not verify, the CA from --cacerts":                  {userCred, flag, ""},
+		"a user entry for a server whose certificate does not verify, the CA of another entry":                {userCred, config.CASource{Kind: config.CASourceEntry, Entry: "staging"}, ""},
+		"a user entry for a server whose certificate does not verify, another entry read with no CA":          {userCred, config.CASource{}, "staging"},
+		"a plugin login entry for a server whose certificate does not verify":                                 {pluginCred, config.CASource{}, ""},
+		"a plugin login entry for a server whose certificate does not verify, the CA from RANCHER_CLI_CACERT": {pluginCred, variable, ""},
+		"a plugin login entry for a server whose certificate does not verify, the CA from --cacerts":          {pluginCred, flag, ""},
+	} {
+		lead, r := (&callClients{caFrom: c.from, shim: true, skipVerify: true}).storedLoginRefusal(c.sc, c.caEntry)
+		add(name, withLead(clierr.New(clierr.CodeTLSTrust, tlstrust.Message(tlstrust.Details{Kind: tlstrust.KindUnknownAuthority}, "r.example.com", r)), lead))
+	}
 	return texts
 }
 
@@ -297,6 +317,12 @@ func DashedNameRemediesForTest(t *testing.T) map[string][]string {
 	u := userCheck{userID: "u-abc12", clusterID: "c-1", serverID: url}
 	relogin, _ := u.relogin(owned, dashed, true)
 
+	refusals := &callClients{shim: true, skipVerify: true}
+	_, userRefusal := refusals.storedLoginRefusal(storedCredential{name: dashed, entry: config.Server{URL: url}}, "")
+	_, pluginRefusal := refusals.storedLoginRefusal(storedCredential{name: dashed, entry: config.Server{URL: url, Provenance: clierr.ProvenanceExecLogin}}, "")
+	_, variableRefusal := (&callClients{caFrom: config.CASource{Kind: config.CASourceVariable}, shim: true, skipVerify: true}).storedLoginRefusal(storedCredential{name: dashed, entry: config.Server{URL: url}}, "")
+	_, flagRefusal := (&callClients{caFrom: config.CASource{Kind: config.CASourceFlag}, shim: true, skipVerify: true}).storedLoginRefusal(storedCredential{name: dashed, entry: config.Server{URL: url}}, dashed)
+
 	dashedLogin, _ := config.LoginHintFor(dashed)
 	return map[string][]string{
 		dashedLogin.String():                  {"auth login"},
@@ -309,6 +335,10 @@ func DashedNameRemediesForTest(t *testing.T) map[string][]string {
 		deleteToken:           {"delete token"},
 		deleteManagementToken: {"delete management-token"},
 		v3AdminRemedy(v3, ""): {"delete management-token"},
+		userRefusal.CA:        {"config update-server"},
+		pluginRefusal.CA:      {"config update-server", "config delete-server"},
+		variableRefusal.CA:    {"config update-server"},
+		flagRefusal.CA:        {"config update-server"},
 	}
 }
 
@@ -326,8 +356,12 @@ func ExecPluginRemedyTextsForTest(t *testing.T) map[string]string {
 // entry (or that chose it by its recorded owner) when the entry holds
 // another user's login, or one made through another auth config than the
 // call's: the entry cannot answer the call, and removing it is the way to
-// the call's own. Every other remedy leaves a plugin login entry alone,
-// since it may be another user's login that their kubeconfigs use.
+// the call's own. A plugin login entry whose login cannot be sent over a
+// connection that verifies the server, and whose login did not come from a
+// sign-in that skipped verification, cannot answer a call with --skip-verify
+// either; removing it is the way to a new sign-in. Every other remedy leaves
+// a plugin login entry alone, since it may be another user's login that
+// their kubeconfigs use.
 func TestPluginLoginEntryRemediesNeverLogInAndRemoveOnlyALoginThatCannotAnswer(t *testing.T) {
 	t.Parallel()
 	loginRE := regexp.MustCompile(`rancher auth login '?` + regexp.QuoteMeta(config.ExecLoginPrefix))
@@ -335,7 +369,8 @@ func TestPluginLoginEntryRemediesNeverLogInAndRemoveOnlyALoginThatCannotAnswer(t
 	removes := func(name string) bool {
 		return strings.HasPrefix(name, "another owner") || strings.HasPrefix(name, "another auth config") ||
 			strings.HasPrefix(name, "a created token of another owner, from a plugin login entry") ||
-			strings.HasPrefix(name, "a created token of another auth config, from a plugin login entry")
+			strings.HasPrefix(name, "a created token of another auth config, from a plugin login entry") ||
+			strings.HasPrefix(name, "a plugin login entry for a server whose certificate does not verify")
 	}
 	for name, s := range execPluginRemedyTexts(t) {
 		expanded := clierr.ExpandRemedies(s, "")

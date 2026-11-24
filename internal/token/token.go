@@ -99,7 +99,6 @@ type loginInput struct {
 	// notice, when set, is said once, right before the sign-in's first
 	// prompt or notice that asks someone to act (see signInStarts).
 	notice          clierr.Filtered
-	skipVerify      bool
 	authFlow        string
 	usernameDefault string
 	// caFlag is the CA flag of the command that runs the sign-in, with its
@@ -180,8 +179,11 @@ func (in *loginInput) authConfigName() string {
 //   - legacy cache slots: a config.LegacyCachePrefix Name passes
 //     runWithParams's reservation guard; every other caller is blocked.
 //
-// SkipVerify disables TLS verification. Only the legacy token shim sets it -
-// Rancher-generated kubeconfigs pass --skip-verify verbatim. The native
+// SkipVerify is the legacy token shim's --skip-verify, which only the shim
+// sets: a new sign-in does not verify the server, and a stored login is
+// still sent only over a connection that verifies the server, except for a
+// plugin login entry that has no saved CA and whose login came from a
+// sign-in that did not verify the server (see callClients). The native
 // surface has no skip-verify flag anywhere; pin the CA instead.
 type runParams struct {
 	Server, Name, Cluster, AuthProvider, AuthFlow, CACert string
@@ -491,7 +493,7 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 
 	// Full resolution (config + CA disk I/O): required to authenticate on a miss
 	// and to build the definitive cache key when --server was not provided.
-	server, caPEM, clusterID, caSource, caFrom, choice, err := t.resolveConnWithCA(params.Server, params.Cluster, params.CACert, params.Name, params.UserID, params.legacyShim, params.SkipVerify)
+	server, caPEM, clusterID, caSource, caFrom, choice, err := t.resolveConnWithCA(params.Server, params.Cluster, params.CACert, params.Name, params.UserID, params.legacyShim)
 	if err != nil {
 		return runtime.Result{}, err
 	}
@@ -550,25 +552,25 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		server:          server,
 		authProvider:    params.AuthProvider,
 		exactAuthConfig: params.exactAuthConfig(),
-		skipVerify:      params.SkipVerify,
 		authFlow:        params.AuthFlow,
 		usernameDefault: params.UsernameDefault,
 		caFlag:          caFlagName(params.legacyShim),
 	}
 
-	client, err := t.clientFor(httpx.Options{
-		CACert:        caPEM,
-		Insecure:      input.skipVerify,
-		Timeout:       httpx.DefaultTimeout,
-		WrapTransport: tlstrust.WrapTransportFor(server, tlsRemedyFor(caFrom, params.legacyShim)),
-	})
+	clients := t.callClients(server, caPEM, caFrom, params)
+	// The sign-in client is built here, before the stored login is read, as
+	// the call's client always was. For a call without --skip-verify it is the
+	// verified client, so a CA that does not parse fails the call before any
+	// request; with --skip-verify it reads no CA, and a CA that does not parse
+	// fails only the verified client of a stored login.
+	signInHTTPClient, err := clients.signInClient()
 	if err != nil {
 		return runtime.Result{}, err
 	}
 
 	t.resolved = choice
 	t.user = userCheck{userID: params.UserID, authConfig: params.authConfigOfCall(), clusterID: clusterID, serverID: serverID, caSource: caSource, caFrom: caFrom}
-	rancherToken, reuseOn, binding, err := t.storedCredToken(ctx, client, server, clusterID, params.Name, params.legacyShim, p)
+	rancherToken, reuseOn, binding, err := t.storedCredToken(ctx, clients, server, clusterID, params.Name, params.legacyShim, p)
 	// The plugin-created login runs for an invocation that names a cluster
 	// or a user, whose token it checks. The legacy shim without --cluster
 	// keeps creating the unscoped kubeconfig token from the sign-in.
@@ -585,21 +587,22 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		// off while it waited for the flock, which the switch below then
 		// handles as today's scoped interactive login.
 		var pluginWarnings []string
-		rancherToken, pluginWarnings, err = t.pluginLogin(ctx, t.pluginInput(server, serverID, caPEM, clusterID, client, params), p)
+		rancherToken, pluginWarnings, err = t.pluginLogin(ctx, t.pluginInput(server, serverID, caPEM, clusterID, clients, params), p)
 		loginWarnings = append(loginWarnings, pluginWarnings...)
 	}
 	if rej, ok := errors.AsType[*pluginCredentialRejected](err); ok {
 		if pluginLane {
 			// A rejected plugin-created login: one refresh under the flock.
-			in := t.pluginInput(server, serverID, caPEM, clusterID, client, params)
+			in := t.pluginInput(server, serverID, caPEM, clusterID, clients, params)
 			in.refreshEntry = rej.name
+			in.rejectedOverVerified = isRejectedOverVerified(err)
 			var pluginWarnings []string
 			rancherToken, pluginWarnings, err = t.pluginLogin(ctx, in, p)
 			loginWarnings = append(loginWarnings, pluginWarnings...)
 		} else {
 			// No cluster to scope a refreshed login to: this invocation
 			// takes the interactive login the rejection always falls back to.
-			err = errStoredCredentialRejected
+			err = markRejection(errStoredCredentialRejected, isRejectedOverVerified(err))
 		}
 	}
 	switch {
@@ -608,6 +611,15 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		// path, the steady state under kubectl's exec plugin, never dials
 		// an identity provider.
 		input.idpClient = httpx.NewExternal(httpx.DefaultTimeout)
+		client := signInHTTPClient
+		if isRejectedOverVerified(err) {
+			// The server rejected a stored login sent over a verified
+			// connection: the sign-in verifies the server too.
+			var cerr error
+			if client, cerr = clients.verified(clients.callRemedy()); cerr != nil {
+				return runtime.Result{}, cerr
+			}
+		}
 		// This lane is taken only when the plugin-created login is not,
 		// so a sign-in here keeps no login credential.
 		call := noTerminalCall{name: params.Name, clusterID: clusterID, serverURL: serverID, caCert: caSource, caFrom: caFrom, shim: params.legacyShim, userID: params.UserID, authConfig: params.authConfigOfCall()}
@@ -641,7 +653,7 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		// The interactive login's token has no parent bearer: it deletes
 		// itself if the wait below is cancelled.
 		fresh := newFreshToken(res.Create, client, kube.BaseURL(server), res.Create.Bearer)
-		rancherToken = Token{Token: res.Create.Bearer, ExpiresAt: res.Create.ExpiresAt, fresh: fresh, binding: binding, loginToken: res.Create.Bearer, loginIsNew: true}
+		rancherToken = Token{Token: res.Create.Bearer, ExpiresAt: res.Create.ExpiresAt, fresh: fresh, binding: binding, loginToken: res.Create.Bearer, loginClient: client, loginIsNew: true}
 	case err != nil:
 		// The plugin-created login reaches the same sign-in prompts.
 		return runtime.Result{}, t.withNoTerminalRemedies(err, noTerminalCall{name: params.Name, clusterID: clusterID, serverURL: serverID, caCert: caSource, caFrom: caFrom, shim: params.legacyShim, keepsLogin: pluginLane, userID: params.UserID, authConfig: params.authConfigOfCall()})
@@ -728,12 +740,12 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 			loginWarnings = append(loginWarnings, w)
 		}
 	}
-	if rancherToken.loginToken != "" {
+	if rancherToken.loginToken != "" && rancherToken.loginClient != nil {
 		// The call got its credential: the install id request after the
 		// run carries the login token the call holds, never the token
-		// handed to kubectl.
+		// handed to kubectl, over the client that token may be sent over.
 		origin := kube.BaseURL(server)
-		httpx.RegisterInstallIDFetcher(origin, provider.InstallIDFetch(client, origin, rancherToken.loginToken), rancherToken.loginIsNew)
+		httpx.RegisterInstallIDFetcher(origin, provider.InstallIDFetch(rancherToken.loginClient, origin, rancherToken.loginToken), rancherToken.loginIsNew)
 	}
 	return runtime.Result{Raw: true, Kind: "ExecCredential", Warnings: loginWarnings, Data: newExecCredential(rancherToken.Token, tokenExpiry)}, nil
 }
@@ -1692,7 +1704,7 @@ func generateKey() (string, error) {
 // as plain strings rather than a runtime.Input, so callers (runWithParams)
 // can pass runParams fields directly without an adapter wrapper.
 func (t tokenCmd) resolveConn(flagServer, flagCluster, caIn string, ignoreCurrentContext bool) (server, caPEM, cluster string, err error) {
-	server, caPEM, cluster, _, _, _, err = t.resolveConnWithCA(flagServer, flagCluster, caIn, "", "", ignoreCurrentContext, false)
+	server, caPEM, cluster, _, _, _, err = t.resolveConnWithCA(flagServer, flagCluster, caIn, "", "", ignoreCurrentContext)
 	return server, caPEM, cluster, err
 }
 
@@ -1701,9 +1713,8 @@ func (t tokenCmd) resolveConn(flagServer, flagCluster, caIn string, ignoreCurren
 // from, and the identification the CA was chosen under when config.yaml was
 // read to make it. config.yaml is read, and the entry identified, whatever
 // supplies the CA: the identification decides which credential and cache
-// record the call uses. skipVerify is the shim's --skip-verify, with which
-// no CA is used and RANCHER_CLI_CACERT is not read.
-func (t tokenCmd) resolveConnWithCA(flagServer, flagCluster, caIn, wantName, userID string, ignoreCurrentContext, skipVerify bool) (server, caPEM, cluster, caSource string, from config.CASource, choice entryChoice, err error) {
+// record the call uses.
+func (t tokenCmd) resolveConnWithCA(flagServer, flagCluster, caIn, wantName, userID string, ignoreCurrentContext bool) (server, caPEM, cluster, caSource string, from config.CASource, choice entryChoice, err error) {
 	cluster = flagCluster
 	if flagServer == "" && ignoreCurrentContext {
 		return "", "", "", "", config.CASource{}, entryChoice{}, serverRequiredError()
@@ -1727,7 +1738,7 @@ func (t tokenCmd) resolveConnWithCA(flagServer, flagCluster, caIn, wantName, use
 		}
 		cfg = loaded
 	}
-	server, caSource, from, choice, err = connectionTarget(cfg, flagServer, cluster, caIn, wantName, ignoreCurrentContext, skipVerify)
+	server, caSource, from, choice, err = connectionTarget(cfg, flagServer, cluster, caIn, wantName, ignoreCurrentContext)
 	if err != nil {
 		return "", "", "", "", config.CASource{}, entryChoice{}, err
 	}
@@ -1754,7 +1765,7 @@ func serverRequiredError() *clierr.Error {
 // was read to choose the CA. cfg may be nil only when flagServer and caIn
 // are both set. The exec plugin's completion of --auth-provider asks it the
 // same question the call itself would answer.
-func connectionTarget(cfg *config.Config, flagServer, cluster, caIn, wantName string, ignoreCurrentContext, skipVerify bool) (server, ca string, from config.CASource, choice entryChoice, err error) {
+func connectionTarget(cfg *config.Config, flagServer, cluster, caIn, wantName string, ignoreCurrentContext bool) (server, ca string, from config.CASource, choice entryChoice, err error) {
 	var origin config.ServerURLOrigin
 	server = flagServer
 	explicitServer := server != ""
@@ -1814,10 +1825,7 @@ func connectionTarget(cfg *config.Config, flagServer, cluster, caIn, wantName st
 				return "", "", config.CASource{}, entryChoice{}, ierr
 			}
 			choice = entryChoice{known: true, name: identified}
-			variable := ""
-			if !skipVerify {
-				variable = config.EnvCACertFor(server)
-			}
+			variable := config.EnvCACertFor(server)
 			switch {
 			case variable != "":
 				caIn, from = variable, config.CASource{Kind: config.CASourceVariable}
@@ -2387,7 +2395,13 @@ const legacyTokenTTL = 15 * time.Minute
 // identified entry alone when its own credential answered, and otherwise
 // what the lookup for this call reads (config.CacheBindingForLookup),
 // which also binds the record of an interactive sign-in that follows.
-func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, server, clusterID, wantName string, ignoreCurrentContext bool, p runtime.Prompter) (Token, bool, config.CacheBinding, error) {
+// storedCredToken sends every request with the stored login over one client
+// from clients: one that verifies the server, except for a plugin login
+// entry that has no saved CA and whose login came from a sign-in that did
+// not verify the server, when the call passes --skip-verify. A 401 over the
+// client that verifies the server is marked (rejectedOverVerified), and the
+// sign-in that follows verifies the server too.
+func (t tokenCmd) storedCredToken(ctx context.Context, clients *callClients, server, clusterID, wantName string, ignoreCurrentContext bool, p runtime.Prompter) (Token, bool, config.CacheBinding, error) {
 	cfg, err := config.Load(config.FilePath(t.dir))
 	if err != nil {
 		p.Notice(fmt.Sprintf("config unreadable: %v - skipping token creation from the stored credential", err))
@@ -2419,11 +2433,33 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 	// own credential binds the record to that entry alone, and so does a
 	// sign-in after the server rejects it.
 	binding = config.CacheBindingForLookup(t.cacheDir(), cfg, server, identified, sc.name, t.user.userID, t.user.authConfig, ignoreCurrentContext).ReadFrom(t.store)
+	// The one stored login reused without verifying the server: a plugin
+	// login entry that was signed in with --skip-verify and saves no CA, by a
+	// call that passes --skip-verify. Every other goes over a verified client,
+	// whose refusal under --skip-verify names the entry and its remedies.
+	var client *http.Client
+	lead := ""
+	verified := !clients.skipVerify || sc.entry.Provenance != clierr.ProvenanceExecLogin || !sc.entry.SignedInWithSkipVerify || sc.entry.CA != ""
+	if verified {
+		remedy := clients.callRemedy()
+		if clients.skipVerify {
+			// The entry whose CA the call reads from config.yaml: the save
+			// names it when the CA did not come from an entry.
+			_, caEntry := caForServer(cfg, server, identified, ignoreCurrentContext)
+			lead, remedy = clients.storedLoginRefusal(sc, caEntry)
+		}
+		client, err = clients.verified(remedy)
+	} else {
+		client, err = clients.signInClient()
+	}
+	if err != nil {
+		return Token{}, cfg.TokenReuse, binding, err
+	}
 	stored, ref := sc.token, sc.ref
 	base := kube.BaseURL(server)
 	resolvedCluster, warning, rerr := resolveClusterIDForCreate(ctx, client, base, stored, clusterID)
 	if rerr != nil {
-		return Token{}, cfg.TokenReuse, binding, t.classifyRejection(rerr, sc, clusterID, true, p)
+		return Token{}, cfg.TokenReuse, binding, withLead(markRejection(t.classifyRejection(rerr, sc, clusterID, true, p), verified), lead)
 	}
 	if warning != "" {
 		p.Notice(warning)
@@ -2469,11 +2505,11 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 			} else {
 				p.Notice(fmt.Sprintf("this Rancher does not serve ext.cattle.io; caching the stored login token for %s", legacyTokenTTL))
 			}
-			return Token{Token: stored, ExpiresAt: expiry.UTC().Format(time.RFC3339), noDiskCache: noDiskCache, binding: binding, loginToken: stored}, cfg.TokenReuse, binding, nil
+			return Token{Token: stored, ExpiresAt: expiry.UTC().Format(time.RFC3339), noDiskCache: noDiskCache, binding: binding, loginToken: stored, loginClient: client}, cfg.TokenReuse, binding, nil
 		case errors.Is(err, errCredentialUnauthorized), errors.Is(err, errCredentialForbidden):
-			return Token{}, cfg.TokenReuse, binding, t.classifyRejection(err, sc, resolvedCluster, created.Kind == TokenKindExt, p)
+			return Token{}, cfg.TokenReuse, binding, markRejection(t.classifyRejection(err, sc, resolvedCluster, created.Kind == TokenKindExt, p), verified)
 		default:
-			return Token{}, cfg.TokenReuse, binding, err
+			return Token{}, cfg.TokenReuse, binding, withLead(err, lead)
 		}
 	}
 	// The child token is CLI-created even when the stored parent is not:
@@ -2501,7 +2537,7 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 			}
 		}
 	}
-	return Token{Token: bearer, ExpiresAt: expiresAt, fresh: fresh, binding: binding, loginToken: stored}, cfg.TokenReuse, binding, nil
+	return Token{Token: bearer, ExpiresAt: expiresAt, fresh: fresh, binding: binding, loginToken: stored, loginClient: client}, cfg.TokenReuse, binding, nil
 }
 
 // classifyRejection maps a 401 or 403 from any credential-authenticated

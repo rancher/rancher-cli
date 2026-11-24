@@ -50,9 +50,13 @@ type PersistLoginInput struct {
 	// An update records it on an entry that keeps no CA, and clears the
 	// record when the login connected without the variable.
 	CAFromEnvironment bool
-	Provenance        clierr.Provenance
-	TokenRef          *clierr.TokenRef
-	TokenUserID       string
+	// SignedInWithSkipVerify says the sign-in connected without verifying
+	// the server. The entry records it only when the written entry saves no
+	// CA, and every login write that does not pass it clears the record.
+	SignedInWithSkipVerify bool
+	Provenance             clierr.Provenance
+	TokenRef               *clierr.TokenRef
+	TokenUserID            string
 	// TokenAuthConfig is the auth config the token create response named;
 	// empty when it named none, which a login of a pasted token never does.
 	// It replaces the one the entry recorded.
@@ -776,6 +780,7 @@ func newEntry(in PersistLoginInput, snap *Server, now time.Time) Server {
 		}
 	}
 	e.Provenance, e.TokenRef, e.TokenUserID, e.TokenAuthConfig, e.CredentialExpiresAt = in.Provenance, in.TokenRef, in.TokenUserID, in.TokenAuthConfig, in.ExpiresAt
+	e.SignedInWithSkipVerify = in.SignedInWithSkipVerify && e.CA == ""
 	e.LoggedOutAt = ""
 	return e
 }

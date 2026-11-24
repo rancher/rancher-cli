@@ -88,14 +88,14 @@ func kubectl(t *testing.T, dir, url string, p runtime.Prompter, between func(), 
 	_, store, err := config.LoadAndStore(dir, false)
 	require.NoError(t, err)
 	cmd := tokenCmd{dir: dir, store: store, anchor: anchor.WithConfig(cfg)}
-	cmd.newClient = func(o httpx.Options) (*http.Client, error) {
+	cmd.newClient = recordedClients(newClientRecorder(t, dir, store), func(o httpx.Options) (*http.Client, error) {
 		if between != nil {
 			b := between
 			between = nil
 			b()
 		}
 		return httpx.New(o)
-	}
+	})
 	in := map[string]string{"server": url, "name": "prod", "cluster": "local"}
 	for i := 0; i+1 < len(inputs); i += 2 {
 		in[inputs[i]] = inputs[i+1]

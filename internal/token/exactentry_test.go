@@ -790,7 +790,7 @@ func TestResolveConnCAFollowsTheIdentifiedEntry(t *testing.T) {
 			if tc.noServer {
 				flagServer = ""
 			}
-			_, _, _, source, _, _, err := cmd.resolveConnWithCA(flagServer, "c-1", tc.cacert, tc.wantName, "", tc.shim, false)
+			_, _, _, source, _, _, err := cmd.resolveConnWithCA(flagServer, "c-1", tc.cacert, tc.wantName, "", tc.shim)
 			if tc.wantCode != "" {
 				ce, ok := errors.AsType[*clierr.Error](err)
 				require.True(t, ok, "%v", err)
@@ -821,7 +821,7 @@ func TestStoredCredTokenStopsWhenConfigChangedUnderTheCall(t *testing.T) {
 
 	run := func(resolved entryChoice) error {
 		cmd := tokenCmd{dir: dir, store: store, resolved: resolved}
-		_, _, _, err := cmd.storedCredToken(t.Context(), failingTransportClient(t), "https://r.ex", "c-1", "prod-eu-c-1", false, ui.Discard())
+		_, _, _, err := cmd.storedCredToken(t.Context(), clientsOver(failingTransportClient(t)), "https://r.ex", "c-1", "prod-eu-c-1", false, ui.Discard())
 		return err
 	}
 
@@ -907,14 +907,14 @@ func TestCallStopsWhenConfigChangesBetweenItsTwoReads(t *testing.T) {
 	require.NoError(t, store.SetToken(config.ServerRef{Name: "prod-eu", URL: "https://r.ex"}, "tok-eu"))
 
 	cmd := tokenCmd{dir: dir, store: store, anchor: anchorFor(dir)}
-	cmd.newClient = func(httpx.Options) (*http.Client, error) {
+	cmd.newClient = recordedClients(newClientRecorder(t, dir, store), func(httpx.Options) (*http.Client, error) {
 		// The client is built between the two reads of config.yaml.
 		changed, err := config.Load(config.FilePath(dir))
 		require.NoError(t, err)
 		changed.Servers["prod-eu-c-test"] = config.Server{URL: "https://r.ex"}
 		require.NoError(t, changed.Write())
 		return &http.Client{Transport: failingTransport{t}}, nil
-	}
+	})
 
 	_, err := cmd.Execute(t.Context(), tin{s: map[string]string{
 		"server": "https://r.ex", "cluster": "c-test", "name": "prod-eu-c-test", "auth-provider": "localProvider",

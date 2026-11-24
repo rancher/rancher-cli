@@ -282,6 +282,7 @@ func TestAuthStatusKeepsStoredCredentialValuesOnTheirLines(t *testing.T) {
 		},
 		nonText: map[string]string{
 			"CAFromEnvironment":                           "a bool, which holds no text",
+			"SignedInWithSkipVerify":                      "a bool, which holds no text",
 			"SupersededTokens[].LastAttempt.Status":       "an HTTP status number, which holds no newline",
 			"SupersededTokens[].LastAttempt.LogoutStatus": "an HTTP status number, which holds no newline",
 		},

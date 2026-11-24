@@ -117,26 +117,26 @@ func TestEveryRecordIsBoundToWhatItsLookupRead(t *testing.T) {
 			}
 
 			// Nothing stored, nothing identified: every entry for the URL.
-			_, _, b, err := cmd.storedCredToken(t.Context(), m.Client(), m.URL, "local", "", false, ui.Discard())
+			_, _, b, err := cmd.storedCredToken(t.Context(), clientsOver(m.Client()), m.URL, "local", "", false, ui.Discard())
 			require.ErrorIs(t, err, errNoStoredCredential)
 			check(t, b, unnamed, "a-guess")
 
 			// Nothing stored, prod identified: prod and the setting.
-			_, _, b, err = cmd.storedCredToken(t.Context(), m.Client(), m.URL, "local", "prod", false, ui.Discard())
+			_, _, b, err = cmd.storedCredToken(t.Context(), clientsOver(m.Client()), m.URL, "local", "prod", false, ui.Discard())
 			require.ErrorIs(t, err, errNoStoredCredential)
 			check(t, b, diskRecord{Kind: "identifiedEntry", Identified: "prod", Entry: "prod", BindingID: "prod-id", TokenReuse: new(false)}, "prod")
 
 			require.NoError(t, store.SetToken(config.ServerRef{Name: "prod", URL: m.URL}, "alice"))
 
 			// prod's credential answers the unnamed call: still every entry.
-			tok, _, b, err := cmd.storedCredToken(t.Context(), m.Client(), m.URL, "local", "", false, ui.Discard())
+			tok, _, b, err := cmd.storedCredToken(t.Context(), clientsOver(m.Client()), m.URL, "local", "", false, ui.Discard())
 			require.NoError(t, err)
 			assert.Equal(t, b, tok.binding, "the token carries the binding it was made under")
 			check(t, b, unnamed, "a-guess")
 
 			// prod's own credential answers the call that identifies it:
 			// prod alone.
-			tok, _, b, err = cmd.storedCredToken(t.Context(), m.Client(), m.URL, "local", "prod", false, ui.Discard())
+			tok, _, b, err = cmd.storedCredToken(t.Context(), clientsOver(m.Client()), m.URL, "local", "prod", false, ui.Discard())
 			require.NoError(t, err)
 			assert.Equal(t, b, tok.binding, "the token carries the binding it was made under")
 			check(t, b, diskRecord{Kind: "ownCredential", Identified: "prod", Entry: "prod", BindingID: "prod-id"}, "prod")
@@ -153,7 +153,7 @@ func TestEveryRecordIsBoundToWhatItsLookupRead(t *testing.T) {
 func TestThePluginLoginsRecordsAreBoundToWhatItsLookupRead(t *testing.T) {
 	t.Run("the plugin-created login", func(t *testing.T) {
 		x := newPluginFixture(t, true, testrancher.Options{})
-		tok, _, err := x.command(x.store).pluginLogin(t.Context(), x.command(x.store).pluginInput(x.url, x.url, "", "c-test", x.client(),
+		tok, _, err := x.command(x.store).pluginLogin(t.Context(), x.command(x.store).pluginInput(x.url, x.url, "", "c-test", clientsOver(x.client()),
 			runParams{Name: "n", AuthProvider: "localProvider"}), localPrompter())
 		require.NoError(t, err)
 		entry, ok := x.entry(t)
@@ -179,7 +179,7 @@ func TestThePluginLoginsRecordsAreBoundToWhatItsLookupRead(t *testing.T) {
 		cfg.Servers[x.entryName()] = e
 		require.NoError(t, cfg.Write())
 
-		tok, _, err := x.command(x.store).pluginLogin(t.Context(), x.command(x.store).pluginInput(x.url, x.url, "", "c-test", x.client(),
+		tok, _, err := x.command(x.store).pluginLogin(t.Context(), x.command(x.store).pluginInput(x.url, x.url, "", "c-test", clientsOver(x.client()),
 			runParams{Name: "n", AuthProvider: "localProvider"}), ui.Discard())
 		require.NoError(t, err)
 		assert.Equal(t, x.entryName(), tok.binding.PausedEntry(), "from the waiter's own read, which shows the pause")

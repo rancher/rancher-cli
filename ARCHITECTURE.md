@@ -1244,9 +1244,14 @@ polls the auth-token URL every 10s up to 15 min, and decrypts the returned token
 RSA-OAEP/SHA-256), or **OAuth / Azure AD** (device-code by default, or PKCE auth-code
 with a `127.0.0.1` callback). All of this HTTP goes through
 `internal/client/httpx`, whose `Options` set the TLS floor, CA, proxy, and timeouts.
-The native surface has no skip-verify flag; only the legacy `rancher token` shim's
-`--skip-verify` (kept for Rancher-generated kubeconfigs that pass it verbatim) sets
-`InsecureSkipVerify`, for that client only.
+The native surface has no skip-verify flag. Only the legacy `rancher token` shim has
+`--skip-verify` (kept for `exec` blocks that pass it; kubeconfigs that Rancher writes do
+not). It sets `InsecureSkipVerify` only for the client of a new sign-in
+(`callClients.signInClient`). A stored login goes only over a client that verifies the
+server, except for a plugin login entry that has no saved CA and whose login came from a
+sign-in that did not verify the server. After the server rejects (HTTP 401) a stored
+login sent over a client that verifies the server, the sign-in that follows uses a
+client that verifies the server too (REFERENCE.md, Which CA a command trusts).
 A call with `--user-id` checks the owner of every token it hands kubectl:
 the create responses' owner (ext `spec.userID`, v3 `userId`), or, when a create
 names none, one `SelfSubjectReview` the plugin posts over the same

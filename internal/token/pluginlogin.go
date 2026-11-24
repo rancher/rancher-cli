@@ -17,7 +17,7 @@ import (
 // invocation that missed its cache.
 type pluginLoginInput struct {
 	server, serverID, caPEM, clusterID string
-	client                             *http.Client
+	clients                            *callClients
 	authProvider, authFlow             string
 	exactAuthConfig                    bool
 	newIdPClient                       func() *http.Client
@@ -28,10 +28,14 @@ type pluginLoginInput struct {
 	// refreshEntry is the plugin entry a 401 named; "" on first use. The
 	// re-login replaces that entry's credential as an update.
 	refreshEntry string
+	// rejectedOverVerified says the server rejected, over a client that
+	// verified it, the stored login the call read before it took the plugin
+	// login lock: the sign-in verifies the server too.
+	rejectedOverVerified bool
 }
 
-func (t tokenCmd) pluginInput(server, serverID, caPEM, clusterID string, client *http.Client, params runParams) pluginLoginInput {
-	return pluginLoginInput{server: server, serverID: serverID, caPEM: caPEM, clusterID: clusterID, client: client,
+func (t tokenCmd) pluginInput(server, serverID, caPEM, clusterID string, clients *callClients, params runParams) pluginLoginInput {
+	return pluginLoginInput{server: server, serverID: serverID, caPEM: caPEM, clusterID: clusterID, clients: clients,
 		authProvider: params.AuthProvider, authFlow: params.AuthFlow, exactAuthConfig: params.exactAuthConfig(),
 		newIdPClient: func() *http.Client { return httpx.NewExternal(httpx.DefaultTimeout) },
 		wantName:     params.Name, ignoreCurrentContext: params.legacyShim, shim: params.legacyShim}
@@ -78,6 +82,10 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 		cred     LoginCredential
 		records  []config.SupersededToken
 		acquired bool
+		// verifiedRejection says the server rejected a stored login sent
+		// over a verified connection, before the lock or by the read under
+		// it: every sign-in that follows in the call verifies the server.
+		verifiedRejection = in.rejectedOverVerified
 	)
 	err := config.WithPluginLoginLock(ctx, t.dir, in.serverID, func() error {
 		cfg, err := config.Load(config.FilePath(t.dir))
@@ -100,7 +108,7 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 		// This load's binding is the one the login's record takes: it was
 		// made before the reads below found no credential, so an entry that
 		// gets a login after it has another id than the record carries.
-		tok, _, lookup, perr := tokenCmd{dir: t.dir, store: fresh, anchor: t.anchor, user: t.user}.storedCredToken(ctx, in.client, in.server, in.clusterID, in.wantName, in.ignoreCurrentContext, p)
+		tok, _, lookup, perr := tokenCmd{dir: t.dir, store: fresh, anchor: t.anchor, user: t.user}.storedCredToken(ctx, in.clients, in.server, in.clusterID, in.wantName, in.ignoreCurrentContext, p)
 		switch {
 		case perr == nil:
 			result = tok
@@ -111,6 +119,7 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 				return perr
 			}
 		}
+		verifiedRejection = verifiedRejection || isRejectedOverVerified(perr)
 
 		entry = in.refreshEntry
 		if entry == "" {
@@ -149,6 +158,25 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 		if derr != nil {
 			return derr
 		}
+		// A sign-in after the server rejected a stored login sent over a
+		// verified connection, by either read, verifies the server too. Any
+		// other sign-in of a call that passes --skip-verify does not: the
+		// entry records that and saves no CA, since the sign-in verified none.
+		verifiedSignIn := verifiedRejection
+		var client *http.Client
+		if verifiedSignIn {
+			client, err = in.clients.verified(in.clients.callRemedy())
+		} else {
+			client, err = in.clients.signInClient()
+		}
+		if err != nil {
+			return err
+		}
+		skippedVerify := in.clients.skipVerify && !verifiedSignIn
+		ca := in.caPEM
+		if skippedVerify {
+			ca = ""
+		}
 		req := LoginRequest{Server: in.server, AuthProvider: in.authProvider, ExactAuthConfig: in.exactAuthConfig,
 			AuthFlow: in.authFlow, CAFlag: caFlagName(in.shim), IdPClient: in.newIdPClient(), ResponseType: "json"}
 		if disclosure.text != "" {
@@ -161,7 +189,7 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 				decision.DisclosedPlaintextPath = disclosure.path
 			}
 		}
-		cred, err = AcquireLoginCredential(ctx, in.client, req, 0, p)
+		cred, err = AcquireLoginCredential(ctx, client, req, 0, p)
 		if err != nil {
 			if ae, ok := errors.AsType[*AcquireError](err); ok {
 				return FailAcquire(ae, entry)
@@ -177,14 +205,14 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 		if t.user.otherAuthConfig(cred.AuthConfig) {
 			return FailLogin(t.user.pluginAuthConfigRefused(cred.AuthConfig), clierr.StageAuthentication, st, cred, entry)
 		}
-		resolved, warning, err := resolveClusterIDForCreate(ctx, in.client, base, cred.Token, in.clusterID)
+		resolved, warning, err := resolveClusterIDForCreate(ctx, client, base, cred.Token, in.clusterID)
 		if err != nil {
 			return FailLogin(freshCredentialError(err), clierr.StageClusterToken, st, cred, entry)
 		}
 		if warning != "" {
 			p.Notice(warning)
 		}
-		ct, err := createClusterToken(ctx, in.client, base, cred.Token, resolved, TokenDescription(hostname(), cred.Marker))
+		ct, err := createClusterToken(ctx, client, base, cred.Token, resolved, TokenDescription(hostname(), cred.Marker))
 		if err != nil {
 			st.ClusterToken = clusterTokenFate(ctx, ct, cred)
 			return FailLogin(freshCredentialError(err), clierr.StageClusterToken, st, cred, entry)
@@ -222,7 +250,7 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 			recorded = ct.AuthConfig
 		}
 		out, perr := config.PersistLoginCredential(ctx, t.dir, config.PersistLoginInput{
-			Name: entry, CollisionSuffix: true, CanonicalURL: in.serverID, CA: in.caPEM,
+			Name: entry, CollisionSuffix: true, CanonicalURL: in.serverID, CA: ca, SignedInWithSkipVerify: skippedVerify,
 			Provenance: clierr.ProvenanceExecLogin, TokenRef: cred.Ref, TokenUserID: owner, TokenAuthConfig: recorded,
 			Bearer: cred.Token, ExpiresAt: cred.ExpiresAt,
 			OwnsEntry: true, Decision: &decision, ReadOnlyStoreIsFailure: true,
@@ -257,8 +285,8 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 		// The record this invocation goes on to write is bound to what the
 		// lookup above read, with the entry this login just wrote as its
 		// last write wrote it - from the write itself, never a re-read.
-		result = Token{Token: ct.Bearer, ExpiresAt: ct.ExpiresAt, fresh: newFreshToken(ct, in.client, base, cred.Token),
-			binding: out.CacheBindingOver(t.cacheDir(), lookup), loginToken: cred.Token, loginIsNew: true}
+		result = Token{Token: ct.Bearer, ExpiresAt: ct.ExpiresAt, fresh: newFreshToken(ct, client, base, cred.Token),
+			binding: out.CacheBindingOver(t.cacheDir(), lookup), loginToken: cred.Token, loginClient: client, loginIsNew: true}
 		warnings = append(warnings, st.Warnings...)
 		// A login token that outlives the sign-in is listed with how it ends.
 		loginFate := SessionTokenFate(cred)
@@ -269,6 +297,10 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 		}
 		return nil
 	})
+	if verifiedRejection && errors.Is(err, errNoStoredCredential) {
+		// The caller's interactive sign-in follows the same rule.
+		err = &rejectedOverVerified{err: err}
+	}
 	if err != nil {
 		return Token{}, nil, err
 	}

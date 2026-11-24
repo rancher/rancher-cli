@@ -1,6 +1,8 @@
 package token
 
 import (
+	"net/http"
+
 	"github.com/rancher/rancher-cli/internal/config"
 )
 
@@ -35,6 +37,10 @@ type Token struct {
 	// request carries it, never the token handed to kubectl. Empty when the
 	// call holds none. Kept in memory only and never serialized.
 	loginToken string
+	// loginClient is the client loginToken may be sent over: the one the
+	// call sent it over already. Set wherever loginToken is set. Never
+	// serialized.
+	loginClient *http.Client
 	// loginIsNew is set when this call created or replaced the login in
 	// loginToken: the install id is then asked for again whatever failure
 	// the server's facts file holds. Never serialized.

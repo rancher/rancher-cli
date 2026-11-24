@@ -21,6 +21,7 @@ var evOriginCallees = map[string]string{
 	"internal/engine/oidcclient.resolveSecretName":        "returns the name of a client secret as the server holds it, or the typed name",
 	"internal/engine/resources.Route":                     "returns the cluster and namespace the server and the typed flags name",
 	"internal/token.identifyEntry":                        "returns the name of a config entry as the config holds it",
+	"internal/token.caForServer":                          "returns the name of a config entry as the config holds it",
 	"internal/config.ExecLoginEntryNameFor":               "returns the name of the exec login entry the config holds or will hold",
 	"internal/config.CollisionFreeName":                   "returns a config entry name the config does not hold yet, which the command creates",
 	"internal/token.tokenCmd.resolveConnWithCA":           "returns the server, cluster and entry the config and the typed flags name",
