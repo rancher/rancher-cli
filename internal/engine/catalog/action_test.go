@@ -498,51 +498,119 @@ func TestFilterHidesOverlappingValuesWhole(t *testing.T) {
 	}
 }
 
-// TestRefusedActionFiltersALargePlainBodyQuickly asserts a refusal whose
-// body is 1 MiB of random letters and digits, with 2,000 random values of
-// 32 characters of which one occurs once in the middle, is classified in
-// under 5 seconds. It does not run in parallel, so other tests do not share
-// its time.
-func TestRefusedActionFiltersALargePlainBodyQuickly(t *testing.T) {
+// timedRefusal is a refusal, the values to hide in its body, and the size of
+// its body in bytes.
+type timedRefusal struct {
+	refusal *engine.ActionRefused
+	values  Values
+	size    int
+}
+
+const (
+	// sizeScale is how many times smaller the small body of a scaling check
+	// is than the full body.
+	sizeScale = 16
+	// maxTimeRatio is the largest ratio of the time on the full body to the
+	// time on the small body that a scaling check accepts. Work that grows
+	// with the size of the body takes sizeScale times as long on the full
+	// body, and work that grows as fast as the square of the size takes
+	// sizeScale squared times as long.
+	maxTimeRatio = 48
+	// refusalTimeLimit is the longest one run of a scaling check may take.
+	refusalTimeLimit = 60 * time.Second
+	// shortestRunLimit is the longest the shortest run on the full body may
+	// take. The ratio does not detect work that is many times slower at every
+	// size, such as marking every byte of every occurrence of a value in a
+	// body of one repeated letter. The test fails on such work only once it
+	// makes the shortest run on the full body longer than this limit.
+	shortestRunLimit = 10 * time.Second
+)
+
+// assertRefusalTimeScales asserts the time to classify full is less than
+// maxTimeRatio times the time to classify small, and returns the error of the
+// last run on full. It compares the shortest of five runs on full with the
+// shortest of nine runs on small; the five runs on full alternate with the
+// first five runs on small. A time in seconds depends on the machine; the
+// ratio of the times of two runs on the same machine changes little with its
+// speed. Each run must also take less than refusalTimeLimit, and the shortest
+// run on full less than shortestRunLimit; these two limits fail a slow run
+// whatever the ratio. A hang ends with the test timeout of go test.
+func assertRefusalTimeScales(t *testing.T, small, full timedRefusal) error {
+	t.Helper()
+	var last error
+	run := func(c timedRefusal) (time.Duration, error) {
+		start := time.Now()
+		got := refused(refusedPath, c.refusal, c.values)
+		elapsed := time.Since(start)
+		require.Less(t, elapsed, refusalTimeLimit, "a run on a body of %d bytes took too long", c.size)
+		assert.Equal(t, clierr.CodeValidation, clierr.From(got).Code)
+		return elapsed, got
+	}
+	shortSmall, shortFull := time.Duration(math.MaxInt64), time.Duration(math.MaxInt64)
+	for i := range 9 {
+		elapsed, _ := run(small)
+		shortSmall = min(shortSmall, elapsed)
+		if i < 5 {
+			elapsed, last = run(full)
+			shortFull = min(shortFull, elapsed)
+		}
+	}
+	t.Logf("shortest run: %v on a body of %d bytes, %v on one of %d bytes; ratio %.1f",
+		shortFull, full.size, shortSmall, small.size, float64(shortFull)/float64(shortSmall))
+	assert.Less(t, shortFull, maxTimeRatio*shortSmall)
+	assert.Less(t, shortFull, shortestRunLimit, "the shortest run on a body of %d bytes took too long", full.size)
+	return last
+}
+
+// TestRefusedActionPlainBodyFilterTimeScalesWithTheBodySize asserts the time
+// to classify a refusal does not grow as fast as the square of the size of its
+// body. The body is 1 MiB of random letters and digits, with 2,000 random
+// values of 32 characters of which one occurs once in the middle; the check
+// compares it with a body one sixteenth its size and the same values (see
+// assertRefusalTimeScales). The work mostly grows with the length of the
+// body, plus a search of the whole body for each value once one occurs. The
+// time grows about 12 to 19 times for a body 16 times larger; the limit is 48
+// times. It does not run in parallel; other tests do not share its time.
+func TestRefusedActionPlainBodyFilterTimeScalesWithTheBodySize(t *testing.T) {
+	const fullSize = 1 << 20
 	tree := map[string]any{}
 	for i := range 2000 {
 		tree["k"+strconv.Itoa(i)] = randomToken()
 	}
-	var b strings.Builder
-	for b.Len() < 1<<20 {
-		b.WriteString(randomToken())
+	body := func(size int) timedRefusal {
+		var b strings.Builder
+		for b.Len() < size {
+			b.WriteString(randomToken())
+		}
+		text := b.String()[:size]
+		middle := size / 2
+		text = text[:middle] + tree["k0"].(string) + text[middle+32:]
+		return timedRefusal{refusal(http.StatusBadRequest, text), Values{tree: tree}, size}
 	}
-	body := b.String()[:1<<20]
-	middle := len(body) / 2
-	body = body[:middle] + tree["k0"].(string) + body[middle+32:]
-	r := refusal(http.StatusBadRequest, body)
-	start := time.Now()
-	got := refused(refusedPath, r, Values{tree: tree})
-	elapsed := time.Since(start)
-	t.Logf("refused took %v", elapsed)
-	assert.Less(t, elapsed, 5*time.Second)
-	assert.Equal(t, clierr.CodeValidation, clierr.From(got).Code)
+	_ = assertRefusalTimeScales(t, body(fullSize/sizeScale), body(fullSize))
 }
 
-// TestRefusedActionFiltersRepeatedOverlappingValuesQuickly asserts a
-// refusal whose body is 256 KiB of one letter, with 200 values of that
-// letter from 4 to 203 characters long, each occurring at every offset, is
-// classified in under 5 seconds and shows one <hidden> and no run of the
-// letter. It does not run in parallel, so other tests do not share its
-// time.
-func TestRefusedActionFiltersRepeatedOverlappingValuesQuickly(t *testing.T) {
+// TestRefusedActionRepeatedOverlappingValuesFilterTimeScalesWithTheBodySize
+// asserts the time to classify a refusal does not grow as fast as the square
+// of the size of its body, and that the result shows one <hidden> and no run
+// of the letter. The body is 256 KiB of one letter, with 200 values of that
+// letter from 4 to 203 characters long, each occurring at every offset; the
+// check compares it with a body one sixteenth its size and the same values
+// (see assertRefusalTimeScales). The work mostly is, for each value, a search
+// of the body that finds the value at every offset. The time grows about 15 to
+// 18 times for a body 16 times larger; the limit is 48 times. It does not run
+// in parallel; other tests do not share its time.
+func TestRefusedActionRepeatedOverlappingValuesFilterTimeScalesWithTheBodySize(t *testing.T) {
+	const fullSize = 256 << 10
 	tree := map[string]any{}
 	for n := 4; n <= 203; n++ {
 		tree["k"+strconv.Itoa(n)] = strings.Repeat("a", n)
 	}
-	r := refusal(http.StatusBadRequest, strings.Repeat("a", 256<<10))
-	start := time.Now()
-	got := refused(refusedPath, r, Values{tree: tree})
-	elapsed := time.Since(start)
-	t.Logf("refused took %v", elapsed)
-	assert.Less(t, elapsed, 5*time.Second)
+	body := func(size int) timedRefusal {
+		return timedRefusal{refusal(http.StatusBadRequest, strings.Repeat("a", size)), Values{tree: tree}, size}
+	}
+	got := assertRefusalTimeScales(t, body(fullSize/sizeScale), body(fullSize))
 	ce := clierr.From(got)
-	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Equal(t, 1, strings.Count(ce.Message, hiddenText), ce.Message)
 	assertNoValuePart(t, "aaaa", got, "repeated letter")
 }
