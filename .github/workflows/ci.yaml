@@ -491,6 +491,7 @@ jobs:
       - run: go test -count=1 -run TestWindows ./install/
       - run: go test -count=1 ./internal/config/
       - run: go test -count=1 ./internal/telemetry/ ./internal/telemetrysend/ ./internal/fsacl/ ./internal/commands/telemetrycmd/
+      - run: go test -count=1 -run TestProjectScope ./internal/skillinstall/ ./internal/commands/skill/
       - run: go test -count=1 -v ./internal/testfs/
       - run: go test -count=1 -run 'TestRecordingAddsTheListedOperationsToThePluginHit|TestARecordedRunReadsTheFactsFileOnce|TestTheFirstLoginReadsAndWritesTheFactsFileAndNothingElse|TestTheFileOperationsOfAPluginSignInAreTheListed|TestTheFileOperationsOfAFirstPluginRunAreTheListed|TestTelemetryOffAlwaysWinsOverUpload|TestDevBuildsHonorExperiments|TestExecPluginRunsNeverUpload|TestReleaseBuildsIgnoreExperiments|TestNoUploadWithoutAnEndpoint|TestUploadURLRules|TestPassFileOfThisRunIsSent|TestPassRemovesAnOldHourWhenItsWriteOutlastsTheReadLimit|TestUploadStaysInTheDeadline|TestUploadNeverChangesTheRun|TestUploadSendsNoCredential|TestDebugLinesShowOnlyCountsOriginAndAnswer|TestARecordedRunWithTheExperimentReadsTheStateOnce|TestUploadExcludedNamesRegisteredCommands|TestTheControlsFunctionTakesNoLock|TestUploadCommandRefusals|TestUploadCommandIgnoresTheHourlyLimit|TestUploadCommandSendsTheCurrentHour|TestUploadCommandWithNoConfigDirectory|TestUploadCommandSharesTheLock|TestUploadCommandIsBounded|TestUploadCommandOutput|TestDebugLinesOfTheUploadCommand|TestUploadCommandRecordsNothing|TestUploadCommandSendsNoCredential|TestUploadCommandTakesNoConfigLock|TestUploadCommandReportsFailures|TestUploadCommandUnderReadOnly|TestUploadCommandBoundIsTheTelemetryBound|TestLinesWithNoChosenCommandRecordNothing|TestNoConfigDirectoryRecordsNothingAndCreatesNone|TestTelemetryExcludedHasExactlyTheSevenCommands|TestEveryRegisteredCommandRecordsOrIsExcluded|TestSubcommandCompletionTelemetryGroup|TestHelpGolden|TestParseGolden|TestTheConfigHelpRowNamesTheVariableTheSameWayOnEveryOS' ./internal/cli/
       - run: go test -run '^$' -bench 'BenchmarkPluginHit$' -benchtime 200x -count 10 ./internal/cli/
@@ -600,6 +601,12 @@ jobs:
       # contract files read from a Windows checkout. The telemetry commands
       # list and delete that store, so their tests run here too.
       - run: go test -race -count=1 ./internal/telemetry/ ./internal/telemetrysend/ ./internal/fsacl/ ./internal/commands/telemetrycmd/
+      # The skill install under a project directory: a link, a junction or a
+      # plain file at any directory between the working directory and the skill
+      # directory is refused. Junctions need no privilege and run here;
+      # symbolic links skip on an account that cannot create them. A plain file
+      # at a parent reads as missing below it on Windows.
+      - run: go test -race -count=1 -run TestProjectScope ./internal/skillinstall/ ./internal/commands/skill/
       # The test helpers for the Windows differences: -v prints each test and
       # the log shows which Windows branches of the helpers ran and which
       # skipped.

@@ -37,6 +37,25 @@ func grantProtected(t *testing.T, path string, sids ...*windows.SID) {
 		nil, nil, acl, nil))
 }
 
+// TestJunctionCreatesAnEntryThatLstatReportsAsIrregular asserts that a
+// junction made by the helper reads as an irregular entry that is not a
+// directory, and that a file below it is the file of the target.
+func TestJunctionCreatesAnEntryThatLstatReportsAsIrregular(t *testing.T) {
+	base := t.TempDir()
+	target := filepath.Join(base, "target")
+	require.NoError(t, os.Mkdir(target, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(target, "f"), []byte("x"), 0o644))
+	link := filepath.Join(base, "link")
+	Junction(t, target, link)
+	info, err := os.Lstat(link)
+	require.NoError(t, err)
+	assert.NotZero(t, info.Mode()&os.ModeIrregular)
+	assert.False(t, info.Mode().IsDir())
+	data, err := os.ReadFile(filepath.Join(link, "f"))
+	require.NoError(t, err)
+	assert.Equal(t, "x", string(data))
+}
+
 func ownerOnlyFile(t *testing.T) string {
 	t.Helper()
 	file := filepath.Join(t.TempDir(), "f")

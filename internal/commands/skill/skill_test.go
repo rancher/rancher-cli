@@ -2,6 +2,7 @@ package skill
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -623,4 +624,156 @@ func TestSkillUninstallPartialFailureCarriesOutcomesAndWarnings(t *testing.T) {
 	warnings := ce.Warnings()
 	require.Len(t, warnings, 1)
 	assert.Contains(t, warnings[0], "could not remove the empty directory "+filepath.Join(home, ".claude", "skills"))
+}
+
+// TestProjectScopeCommandsRefuseLinks asserts that with a link at a skill
+// directory, at .claude/skills, or at .codex (which status reaches after the
+// first harness passed), install (with and without --force), uninstall and
+// status refuse with the link text and the project hint, change nothing, and
+// create no directory for another harness.
+func TestProjectScopeCommandsRefuseLinks(t *testing.T) {
+	cases := []struct {
+		name   string
+		linkAt []string
+		victim []string
+		agents []string
+		final  bool
+	}{
+		{"a link at claude skills", []string{".claude", "skills"}, []string{"rancher"}, []string{"all", "claude"}, false},
+		{"a link at codex", []string{".codex"}, []string{"skills", "rancher"}, []string{"all", "codex"}, false},
+		{"a link at the skill directory", []string{".claude", "skills", "rancher"}, nil, []string{"all", "claude"}, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			skillHome(t)
+			skillinstall.SetSource(skillTestSource(t))
+			repo, outside := t.TempDir(), t.TempDir()
+			lead := filepath.Join(outside, "lead")
+			victimDir := filepath.Join(append([]string{lead}, c.victim...)...)
+			require.NoError(t, os.MkdirAll(filepath.Dir(victimDir), 0o755))
+			victim := skillinstall.Target{Harness: "claude", Scope: skillinstall.ScopeUser, Dir: victimDir}
+			leases, err := skillinstall.Acquire(t.TempDir(), []skillinstall.Target{victim}, "install", false)
+			require.NoError(t, err)
+			_, err = leases[0].Install("v1.0.0", false)
+			skillinstall.ReleaseAll(leases)
+			require.NoError(t, err)
+			link := filepath.Join(append([]string{repo}, c.linkAt...)...)
+			require.NoError(t, os.MkdirAll(filepath.Dir(link), 0o755))
+			testfs.Symlink(t, lead, link)
+			t.Chdir(repo)
+			cwd, err := os.Getwd()
+			require.NoError(t, err)
+			component := filepath.Join(append([]string{cwd}, c.linkAt...)...)
+
+			beforeRepo, beforeOutside := testfs.Snapshot(t, repo), testfs.Snapshot(t, outside)
+			for _, agent := range c.agents {
+				in := skillInput{strings: map[string]string{"agent": agent, "scope": "project"}}
+				forced := skillInput{strings: in.strings, bools: map[string]bool{"force": true}}
+				runs := map[string]func() error{
+					"install": func() error {
+						_, err := NewInstall("v1.0.0").(skillInstallCmd).Execute(t.Context(), in, nil)
+						return err
+					},
+					"install-force": func() error {
+						_, err := NewInstall("v1.0.0").(skillInstallCmd).Execute(t.Context(), forced, nil)
+						return err
+					},
+					"uninstall": func() error {
+						_, err := NewUninstall("v1.0.0").(skillUninstallCmd).Execute(t.Context(), in, nil)
+						return err
+					},
+					"status": func() error {
+						_, err := NewStatus("v1.0.0").(skillStatusCmd).Execute(t.Context(), in, nil)
+						return err
+					},
+				}
+				for name, run := range runs {
+					t.Run(agent+"/"+name, func(t *testing.T) {
+						err := run()
+						if c.final {
+							require.ErrorContains(t, err, "the skill directory "+component+" is a symbolic link to")
+						} else {
+							require.ErrorContains(t, err, component+", on the path to it, is a symbolic link to")
+						}
+						ce, ok := errors.AsType[*clierr.Error](err)
+						require.True(t, ok)
+						if name == "status" {
+							assert.Equal(t, clierr.CodeGeneric, ce.Code)
+						} else {
+							require.ErrorContains(t, err, "no target was changed")
+							assert.Equal(t, clierr.CodeValidation, ce.Code)
+						}
+						assert.Equal(t, "remove the symbolic link at "+component+", then run this command again", ce.Hint)
+						assert.Equal(t, beforeRepo, testfs.Snapshot(t, repo))
+						assert.Equal(t, beforeOutside, testfs.Snapshot(t, outside))
+					})
+				}
+			}
+		})
+	}
+}
+
+// TestProjectScopeCommandsTakeAnUncleanWorkingDirectoryUnlessItHasDotDot
+// asserts that install, status and uninstall with --scope project work when
+// the working directory os.Getwd returns is the current directory spelled with
+// a trailing separator, a doubled separator or a /. at the end, and refuse with
+// the working directory text and its hint when the path holds a .. element.
+func TestProjectScopeCommandsTakeAnUncleanWorkingDirectoryUnlessItHasDotDot(t *testing.T) {
+	testfs.SkipOnWindows(t, "the working directory spellings below are Unix paths")
+	skillHome(t)
+	skillinstall.SetSource(skillTestSource(t))
+	repo := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(repo, "x"), 0o755))
+	t.Chdir(repo)
+	dir := filepath.Join(repo, ".claude", "skills", "rancher")
+	in := skillInput{strings: map[string]string{"agent": "claude", "scope": "project"}}
+
+	for _, spelling := range []string{repo + "/", repo + "//", repo + "/."} {
+		t.Setenv("PWD", spelling)
+		cwd, err := os.Getwd()
+		require.NoError(t, err)
+		require.Equal(t, spelling, cwd, "setup: os.Getwd must return the working directory as written")
+
+		res, err := NewInstall("v1.0.0").(skillInstallCmd).Execute(t.Context(), in, nil)
+		require.NoError(t, err, spelling)
+		outs := res.Data.(skillOutcomes)
+		require.Len(t, outs, 1)
+		assert.Equal(t, dir, outs[0].Target.Dir)
+		assert.Equal(t, skillinstall.VerdictInSync, outs[0].Verdict)
+
+		res, err = NewStatus("v1.0.0").(skillStatusCmd).Execute(t.Context(), in, nil)
+		require.NoError(t, err, spelling)
+		assert.Equal(t, 0, res.ExitStatus)
+
+		_, err = NewUninstall("v1.0.0").(skillUninstallCmd).Execute(t.Context(), in, nil)
+		require.NoError(t, err, spelling)
+		assert.NoDirExists(t, dir)
+	}
+
+	t.Setenv("PWD", repo+"/x/..")
+	cwd, err := os.Getwd()
+	require.NoError(t, err)
+	require.Equal(t, repo+"/x/..", cwd, "setup: os.Getwd must return the working directory as written")
+	before := testfs.Snapshot(t, repo)
+	for name, run := range map[string]func() error{
+		"install": func() error {
+			_, err := NewInstall("v1.0.0").(skillInstallCmd).Execute(t.Context(), in, nil)
+			return err
+		},
+		"uninstall": func() error {
+			_, err := NewUninstall("v1.0.0").(skillUninstallCmd).Execute(t.Context(), in, nil)
+			return err
+		},
+		"status": func() error {
+			_, err := NewStatus("v1.0.0").(skillStatusCmd).Execute(t.Context(), in, nil)
+			return err
+		},
+	} {
+		err := run()
+		require.ErrorContains(t, err, "the working directory "+repo+"/x/.. has a .. element", name)
+		ce, ok := errors.AsType[*clierr.Error](err)
+		require.True(t, ok, name)
+		assert.Equal(t, "change to the working directory by a path with no .. element, then run this command again", ce.Hint, name)
+	}
+	assert.Equal(t, before, testfs.Snapshot(t, repo))
 }

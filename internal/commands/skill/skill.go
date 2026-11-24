@@ -2,6 +2,7 @@ package skill
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
@@ -104,6 +105,15 @@ func skillTargets(in runtime.Input) ([]skillinstall.Target, error) {
 	return targets, nil
 }
 
+// noTargetChanged is the error of a refused Acquire: a typed error keeps its
+// code and hint, any other becomes a validation error.
+func noTargetChanged(err error) *clierr.Error {
+	if ce, ok := errors.AsType[*clierr.Error](err); ok {
+		return ce.WithMessage(ce.Message + "; no target was changed")
+	}
+	return clierr.New(clierr.CodeValidation, err.Error()+"; no target was changed")
+}
+
 func nothingDetectedErr() *clierr.Error {
 	return clierr.New(clierr.CodeValidation,
 		"no coding-agent harness detected in the home directory; "+
@@ -149,7 +159,7 @@ func (c skillInstallCmd) Execute(_ context.Context, in runtime.Input, _ runtime.
 	}
 	leases, err := skillinstall.Acquire(lockDir, targets, "install", force)
 	if err != nil {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation, err.Error()+"; no target was changed")
+		return runtime.Result{}, noTargetChanged(err)
 	}
 	defer skillinstall.ReleaseAll(leases)
 
@@ -218,7 +228,7 @@ func (c skillUninstallCmd) Execute(_ context.Context, in runtime.Input, _ runtim
 	}
 	leases, err := skillinstall.Acquire(lockDir, targets, "uninstall", false)
 	if err != nil {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation, err.Error()+"; no target was changed")
+		return runtime.Result{}, noTargetChanged(err)
 	}
 	defer skillinstall.ReleaseAll(leases)
 
@@ -287,6 +297,9 @@ func (c skillStatusCmd) Execute(_ context.Context, in runtime.Input, _ runtime.P
 	for _, t := range targets {
 		v, installed, err := skillinstall.StatusTarget(t, c.version)
 		if err != nil {
+			if ce, ok := errors.AsType[*clierr.Error](err); ok {
+				return runtime.Result{}, clierr.New(clierr.CodeGeneric, ce.Message).WithHint(ce.Hint)
+			}
 			return runtime.Result{}, clierr.New(clierr.CodeGeneric,
 				fmt.Sprintf("could not check %s: %v", t.Dir, err))
 		}

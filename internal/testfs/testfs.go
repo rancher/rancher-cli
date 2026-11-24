@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -31,6 +32,7 @@ var (
 	goos    = runtime.GOOS
 	geteuid = os.Geteuid
 	symlink = os.Symlink
+	mklink  = makeJunction
 )
 
 // errPrivilegeNotHeld is ERROR_PRIVILEGE_NOT_HELD, the error a Windows
@@ -69,6 +71,27 @@ func Symlink(tb testing.TB, target, link string) {
 		tb.Skipf("this Windows account cannot create symlinks: %v", err)
 	}
 	tb.Fatalf("create the symlink %s: %v", link, err)
+}
+
+// makeJunction runs the Windows command that creates a junction. The process
+// takes its environment from EnvWithoutGit.
+func makeJunction(target, link string) ([]byte, error) {
+	cmd := exec.Command("cmd", "/c", "mklink", "/J", link, target)
+	cmd.Env = EnvWithoutGit()
+	return cmd.CombinedOutput()
+}
+
+// Junction creates a junction at link that leads to the directory target.
+// Creating one needs no privilege, so the test is not skipped. It fails the
+// test on every OS other than Windows, where junctions do not exist.
+func Junction(tb testing.TB, target, link string) {
+	tb.Helper()
+	if !OnWindows() {
+		tb.Fatalf("create the junction %s: junctions exist on Windows only", link)
+	}
+	if out, err := mklink(target, link); err != nil {
+		tb.Fatalf("create the junction %s: %v: %s", link, err, out)
+	}
 }
 
 // RestrictAccess sets the mode of path and restores the previous mode when

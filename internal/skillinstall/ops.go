@@ -172,22 +172,6 @@ type Lease struct {
 // Target returns the lease's target (read-only accessor for outcomes).
 func (l *Lease) Target() Target { return l.target }
 
-// refuseSymlink enforces the Lstat rule at the final target: install,
-// status ownership checks, and uninstall never operate through a link.
-func refuseSymlink(dir string) error {
-	info, err := os.Lstat(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("refusing to use the skill directory %s: it is a symbolic link", dir)
-	}
-	return nil
-}
-
 // owned reports whether dir is an installation of ours: exact OwnerKey/
 // OwnerValue match in SKILL.md metadata. SKILL.md itself is Lstat-checked
 // first - a symlinked or otherwise non-regular SKILL.md is NEVER followed
@@ -215,11 +199,11 @@ func owned(dir string) (bool, InstallRecord, error) {
 	return true, rec, nil
 }
 
-// validateTarget is the per-target preflight shared by Acquire: symlink
+// validateTarget is the per-target preflight shared by Acquire: link
 // refusal and ownership authorization. force authorizes foreign
 // replacement for install; uninstall never touches foreign content.
 func validateTarget(t Target, verb string, force bool) error {
-	if err := refuseSymlink(t.Dir); err != nil {
+	if err := refuseLinkedPath(t, verb); err != nil {
 		return err
 	}
 	if _, err := os.Stat(t.Dir); os.IsNotExist(err) {
@@ -261,6 +245,15 @@ func probeWritable(parent string) error {
 // exactly like a present one (the appear-mid-batch race is closed by the
 // lock, not by rechecking). Any failure releases all held locks: zero changed.
 func Acquire(lockDir string, targets []Target, verb string, force bool) ([]*Lease, error) {
+	// A refused link comes first, before any lock or directory exists: two
+	// targets that reach one directory through a link share one lock file,
+	// and the per-target check below would otherwise run after an earlier
+	// target's parent was created.
+	for _, t := range targets {
+		if err := refuseLinkedPath(t, verb); err != nil {
+			return nil, err
+		}
+	}
 	if err := os.MkdirAll(filepath.Join(lockDir, "skill-locks"), 0o700); err != nil {
 		return nil, err
 	}
@@ -431,6 +424,9 @@ func validateStaged(staging string) error {
 // written FIRST so the leftover staging entry is owner-marked from its first file -
 // an interrupted population can never strand foreign-looking leftovers.
 func (l *Lease) Install(cliVersion string, force bool) ([]string, error) {
+	if err := refuseLinkedPath(l.target, "install"); err != nil {
+		return nil, err
+	}
 	warnings, err := cleanStaging(filepath.Dir(l.target.Dir))
 	if err != nil {
 		return warnings, err
@@ -537,6 +533,9 @@ func (l *Lease) install(cliVersion string, force bool, warnings []string) ([]str
 // errors. The bytes are compared, not the version or the recorded digest: two
 // builds can carry one version and different skill text.
 func (l *Lease) InstallIfChanged(cliVersion string, force bool) (changed bool, warnings []string, err error) {
+	if err := refuseLinkedPath(l.target, "install"); err != nil {
+		return false, nil, err
+	}
 	warnings, err = cleanStaging(filepath.Dir(l.target.Dir))
 	if err != nil {
 		return false, warnings, err
@@ -632,7 +631,7 @@ func removeEmptyParent(dir string) string {
 
 // StatusTarget classifies one target. Read-only and lock-free.
 func StatusTarget(t Target, cliVersion string) (Verdict, string, error) {
-	if err := refuseSymlink(t.Dir); err != nil {
+	if err := refuseLinkedPath(t, "status"); err != nil {
 		return "", "", err
 	}
 	if _, err := os.Stat(t.Dir); os.IsNotExist(err) {

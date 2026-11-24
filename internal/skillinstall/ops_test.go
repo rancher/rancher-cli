@@ -1,6 +1,7 @@
 package skillinstall
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/testfs"
 )
 
@@ -188,19 +190,26 @@ func TestSymlinkTargetRefused(t *testing.T) {
 	SetSource(testSource(t))
 	real := targetIn(t)
 	install(t, real, "v1.0.0")
-	parent := filepath.Join(t.TempDir(), ".agents", "skills")
+	root := t.TempDir()
+	parent := filepath.Join(root, ".agents", "skills")
 	require.NoError(t, os.MkdirAll(parent, 0o755))
-	link := Target{Harness: "agents", Scope: ScopeProject, Dir: filepath.Join(parent, "rancher")}
+	link := Target{Harness: "agents", Scope: ScopeProject, Dir: filepath.Join(parent, "rancher"), Root: root}
 	require.NoError(t, os.Symlink(real.Dir, link.Dir))
 
+	wantText := "the skill directory " + link.Dir + " is a symbolic link to"
 	for _, force := range []bool{false, true} {
 		_, err := Acquire(testLockDir(link), []Target{link}, "install", force)
-		require.Error(t, err) // force does not bypass symlink refusal
+		require.ErrorContains(t, err, wantText) // force does not bypass symlink refusal
+		require.ErrorContains(t, err, "; --force does not prevent this error")
+		ce, ok := errors.AsType[*clierr.Error](err)
+		require.True(t, ok)
+		assert.Equal(t, clierr.CodeValidation, ce.Code)
+		assert.NotEmpty(t, ce.Hint)
 	}
 	_, err := Acquire(testLockDir(link), []Target{link}, "uninstall", false)
-	require.Error(t, err)
+	require.ErrorContains(t, err, wantText)
 	_, _, err = StatusTarget(link, "v1.0.0")
-	require.Error(t, err)
+	require.ErrorContains(t, err, wantText)
 	v, _, _ := StatusTarget(real, "v1.0.0")
 	assert.Equal(t, VerdictInSync, v) // linked-to installation untouched
 }

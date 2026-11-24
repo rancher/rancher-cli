@@ -132,6 +132,13 @@ func setSymlink(t *testing.T, fn func(target, link string) error) {
 	t.Cleanup(func() { symlink = old })
 }
 
+func setMklink(t *testing.T, fn func(target, link string) ([]byte, error)) {
+	t.Helper()
+	old := mklink
+	mklink = fn
+	t.Cleanup(func() { mklink = old })
+}
+
 func linkError(err error) error {
 	return &os.LinkError{Op: "symlink", Old: "a", New: "b", Err: err}
 }
@@ -450,4 +457,47 @@ func TestRequireOwnerOnlyOnUnix(t *testing.T) {
 			assert.Equal(t, c.wantFailed, r.failed, r.text())
 		})
 	}
+}
+
+// TestJunctionOnWindowsRunsTheCommandWithTargetAndLink asserts that with the
+// OS set to windows the helper creates the junction at the link, to the
+// target, and does not skip.
+func TestJunctionOnWindowsRunsTheCommandWithTargetAndLink(t *testing.T) {
+	setGOOS(t, "windows")
+	var gotTarget, gotLink string
+	setMklink(t, func(target, link string) ([]byte, error) {
+		gotTarget, gotLink = target, link
+		return nil, nil
+	})
+	r := run(t, func(tb testing.TB) { tb.Helper(); Junction(tb, "the-target", "the-link") })
+	assert.False(t, r.failed, r.text())
+	assert.False(t, r.skipped)
+	assert.Equal(t, "the-target", gotTarget)
+	assert.Equal(t, "the-link", gotLink)
+}
+
+// TestJunctionFailsWithTheCommandOutputWhenItFails asserts that a failed
+// command fails the test and the message holds the link and the output.
+func TestJunctionFailsWithTheCommandOutputWhenItFails(t *testing.T) {
+	setGOOS(t, "windows")
+	setMklink(t, func(string, string) ([]byte, error) {
+		return []byte("access denied"), errors.New("exit status 1")
+	})
+	r := run(t, func(tb testing.TB) { tb.Helper(); Junction(tb, "the-target", "the-link") })
+	assert.True(t, r.failed)
+	assert.False(t, r.skipped)
+	assert.Contains(t, r.text(), "the-link")
+	assert.Contains(t, r.text(), "access denied")
+}
+
+// TestJunctionOffWindowsFailsWithoutRunningTheCommand asserts that on another
+// OS the helper fails the test and starts no process.
+func TestJunctionOffWindowsFailsWithoutRunningTheCommand(t *testing.T) {
+	setGOOS(t, "linux")
+	started := false
+	setMklink(t, func(string, string) ([]byte, error) { started = true; return nil, nil })
+	r := run(t, func(tb testing.TB) { tb.Helper(); Junction(tb, "the-target", "the-link") })
+	assert.True(t, r.failed)
+	assert.False(t, started)
+	assert.Contains(t, r.text(), "junctions exist on Windows only")
 }

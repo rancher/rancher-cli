@@ -36,6 +36,9 @@ type Target struct {
 	Harness string `json:"harness"`
 	Scope   Scope  `json:"scope"`
 	Dir     string `json:"dir"`
+	// Root is the working directory a project scope target sits below; empty
+	// for user scope. It is not part of the result row.
+	Root string `json:"-"`
 }
 
 func homeSub(parts ...string) func() (string, error) {
@@ -110,6 +113,18 @@ func Harnesses() []Harness {
 	}
 }
 
+// workingDirectory is cwd as the root of a project scope target. A working
+// directory that os.Getwd returned as written, such as one with a trailing
+// slash, is cleaned: without a .. element, the cleaned path names the same
+// directory. A path with a .. element is returned as it is and a project target
+// built from it is refused.
+func workingDirectory(cwd string) string {
+	if hasDotDot(cwd) {
+		return cwd
+	}
+	return filepath.Clean(cwd)
+}
+
 // AgentNames is the --agent completion enum: table names plus "all".
 func AgentNames() []string {
 	names := make([]string, 0, 5)
@@ -122,9 +137,11 @@ func AgentNames() []string {
 // Targets resolves the selected agent+scope to deduplicated final dirs.
 // User scope + "all" selects detected harnesses only. Project scope
 // collapses aliased rows (copilot → agents) so a shared dir appears once.
-// Deduplication uses canonicalTarget so two textual paths to the same
-// physical directory (e.g. CODEX_HOME set to a symlink of ~/.claude) produce
-// only one target. Table order determines the winner: the first row
+// User scope deduplicates with canonicalTarget, so two textual paths to the
+// same physical directory (e.g. CODEX_HOME set to a symlink of ~/.claude)
+// produce only one target. Project scope deduplicates by the cleaned path
+// text: a link in the checkout must reach the check that refuses it, not
+// hide a target. Table order determines the winner: the first row
 // (claude, codex, copilot, agents) that claims a canonical identity keeps
 // its harness name; later aliases are skipped.
 func Targets(agent string, scope Scope, cwd string) ([]Target, error) {
@@ -140,6 +157,9 @@ func Targets(agent string, scope Scope, cwd string) ([]Target, error) {
 		if !found {
 			return nil, fmt.Errorf("unknown harness %q (valid: %s)", agent, strings.Join(AgentNames(), ", "))
 		}
+	}
+	if scope == ScopeProject {
+		cwd = workingDirectory(cwd)
 	}
 	var out []Target
 	seen := map[string]bool{}
@@ -164,11 +184,17 @@ func Targets(agent string, scope Scope, cwd string) ([]Target, error) {
 		default:
 			return nil, fmt.Errorf("unknown scope %q", scope)
 		}
-		if seen[canonicalTarget(dir)] {
+		var key, root string
+		if scope == ScopeProject {
+			key, root = filepath.Clean(dir), cwd
+		} else {
+			key = canonicalTarget(dir)
+		}
+		if seen[key] {
 			continue
 		}
-		seen[canonicalTarget(dir)] = true
-		out = append(out, Target{Harness: name, Scope: scope, Dir: dir})
+		seen[key] = true
+		out = append(out, Target{Harness: name, Scope: scope, Dir: dir, Root: root})
 	}
 	return out, nil
 }

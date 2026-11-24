@@ -693,7 +693,7 @@ var detailsRows = map[string]detailsRow{
 			{name: "an action"},
 			{name: "a verdict", sets: []string{"Outcomes[].Action"}, set: setDetails("Outcomes[].Action", "")},
 		},
-		notShown: map[string]string{"Outcomes[].CLIVersion": detailsNeverPrinted},
+		notShown: map[string]string{"Outcomes[].CLIVersion": detailsNeverPrinted, "Outcomes[].Target.Root": detailsNeverPrinted},
 	},
 	"internal/token DeleteTokenFailure": {
 		typ:      reflect.TypeFor[token.DeleteTokenFailure](),

@@ -67,6 +67,7 @@ jobs:
           name: install-windows-config
       - run: go test -race -count=1 ./internal/config/
       - run: go test -race -count=1 ./internal/telemetry/ ./internal/telemetrysend/ ./internal/fsacl/ ./internal/commands/telemetrycmd/
+      - run: go test -race -count=1 -run TestProjectScope ./internal/skillinstall/ ./internal/commands/skill/
       # The test helpers for the Windows differences: -v prints each test and
       # the log shows which Windows branches of the helpers ran and which
       # skipped.
