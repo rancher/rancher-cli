@@ -302,3 +302,11 @@ func (p plainRemedyWriter) Write(b []byte) (int, error) {
 func PrintableRemedies(s string) string {
 	return strings.ReplaceAll(output.PrintableLines(s), "\n", "")
 }
+
+// FilterRemedies is PrintableRemedies(x) as a clierr.Filtered, for a server
+// value that may have a remedy command and goes into a result text or a
+// notice (see clierr.Filtered).
+func FilterRemedies(x string) clierr.Filtered {
+	p := PrintableRemedies(x)
+	return clierr.NewFiltered(p, p != x)
+}

@@ -182,7 +182,7 @@ func AcquireLoginCredential(ctx context.Context, client *http.Client, req LoginR
 		if errors.Is(err, ErrExtGroupAbsent) {
 			st.sOwned = false
 			noun := FateOf(clierr.CreateKnown, s.Kind, s.Ref, s.Marked, s.CreatedAt, s.ExpiresAt, RevokeOutcome{}, st.session.Handoff).LoginTokenNoun()
-			p.Notice(legacyFallbackNotice(noun, s.ExpiresAt))
+			p.Notice(legacyFallbackNotice(noun, s.ExpiresAt).Marked())
 			return LoginCredential{Token: s.Bearer, ExpiresAt: s.ExpiresAt, Provenance: ProvenanceLegacySession, Marker: marker,
 				UserID: s.UserID,
 				Ref:    s.Ref, SessionTokenUnmarked: !s.Marked, SessionTokenSearch: st.session.Handoff,
@@ -310,10 +310,10 @@ func signInForClusterToken(ctx context.Context, client *http.Client, input *logi
 // legacyFallbackNotice explains why the login token itself is being stored,
 // named by noun (TokenFate.LoginTokenNoun): this Rancher does not serve the
 // ext token store the derived token would come from.
-func legacyFallbackNotice(noun, expiresAt string) string {
-	note := fmt.Sprintf("this Rancher does not serve ext.cattle.io (requires Rancher >= %s, the supported minimum); storing the %s directly", config.MinRancherVersion, noun)
+func legacyFallbackNotice(noun, expiresAt string) clierr.Filtered {
+	note := clierr.Plain(fmt.Sprintf("this Rancher does not serve ext.cattle.io (requires Rancher >= %s, the supported minimum); storing the %s directly", config.MinRancherVersion, noun))
 	if expiresAt != "" {
-		note += " (expires " + output.Printable(expiresAt) + ")"
+		note = note.AppendString(" (expires ").Append(output.FilterValue(expiresAt)).AppendString(")")
 	}
 	return note
 }

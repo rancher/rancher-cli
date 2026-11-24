@@ -161,7 +161,7 @@ func (c *explainCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 		if groupsIssue != nil {
 			out.Chain, out.ChainIssues = chainPartial, []chainIssue{*groupsIssue}
 		}
-		res := runtime.Result{Kind: "AccessExplanation", Data: out, ExitStatus: exitDenied, Text: explainText(out)}
+		res := runtime.Result{Kind: "AccessExplanation", Data: out, ExitStatus: exitDenied, Text: explainText(out).Marked()}
 		return withDiscoveryWarning(res, discoveryWarning), nil
 	}
 	var r reviewResult
@@ -208,7 +208,7 @@ func (c *explainCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 	if walker.issues != nil {
 		out.ChainIssues = walker.issues
 	}
-	res := runtime.Result{Kind: "AccessExplanation", Data: out, ExitStatus: exitFor(out.Decision), Text: explainText(out), Warnings: slices.Clone(plan.Warnings)}
+	res := runtime.Result{Kind: "AccessExplanation", Data: out, ExitStatus: exitFor(out.Decision), Text: explainText(out).Marked(), Warnings: slices.Clone(plan.Warnings)}
 	if outcome.EvaluationError != "" && outcome.Decision == DecisionAllowed {
 		res.Warnings = append(res.Warnings, "the authorizer reported an evaluation error: "+outcome.EvaluationError)
 	}
@@ -229,7 +229,7 @@ func groupsUnavailableChainIssue(plan identityPlan) *chainIssue {
 // the chain block when the chain is not complete, and the source line.
 // Authored text is plain ASCII; server text passes the terminal-safety
 // boundary at insertion.
-func explainText(out explainResult) string {
+func explainText(out explainResult) clierr.Filtered {
 	who := out.Subject.Name
 	if out.Identity == IdentityCaller {
 		who = "you"
@@ -249,21 +249,22 @@ func explainText(out explainResult) string {
 		where = " in " + out.Scope.Namespace + where
 	}
 	verbPhrase := map[Decision]string{DecisionAllowed: "can", DecisionDenied: "cannot", DecisionUnknown: "may or may not"}[out.Decision]
-	var b strings.Builder
-	fmt.Fprintf(&b, "%s  %s %s %s %s%s\n", out.Decision, output.Printable(who), verbPhrase, out.Question.Verb, output.Printable(target), output.Printable(where))
+	var b clierr.Builder
+	b.Printf("%s  %s %s %s %s%s\n", out.Decision, output.FilterValue(who), verbPhrase, out.Question.Verb, output.FilterValue(target), output.FilterValue(where))
 	if out.Reason != "" {
-		fmt.Fprintf(&b, "  reason: %s\n", output.Printable(out.Reason))
+		b.Printf("  reason: %s\n", output.FilterValue(out.Reason))
 	}
 	if out.Note != "" {
-		fmt.Fprintf(&b, "  note: %s\n", runtime.PrintableRemedies(out.Note))
+		b.Printf("  note: %s\n", runtime.FilterRemedies(out.Note))
 	}
 	if out.EvaluationError != "" {
-		fmt.Fprintf(&b, "  evaluation error: %s\n", output.Printable(out.EvaluationError))
+		b.Printf("  evaluation error: %s\n", output.FilterValue(out.EvaluationError))
 	}
 	if out.Tree != nil {
 		mark := "[" + string(out.Decision) + "]"
 		for _, line := range renderTree(*out.Tree, mark) {
-			b.WriteString(runtime.PrintableRemedies(line) + "\n")
+			b.Write(line)
+			b.WriteString("\n")
 		}
 	}
 	if out.Chain != chainComplete {
@@ -271,19 +272,19 @@ func explainText(out explainResult) string {
 		if len(out.ChainIssues) == 1 {
 			noun = "issue"
 		}
-		fmt.Fprintf(&b, "chain: %s (%d %s)\n", out.Chain, len(out.ChainIssues), noun)
+		b.Printf("chain: %s (%d %s)\n", out.Chain, len(out.ChainIssues), noun)
 		for _, i := range out.ChainIssues {
 			object := ""
 			if i.Object != "" {
 				object = " " + i.Object
 			}
-			fmt.Fprintf(&b, "  %s%s: %s - %s\n", i.Stage, output.Printable(object), i.Code, runtime.PrintableRemedies(i.Message))
+			b.Printf("  %s%s: %s - %s\n", i.Stage, output.FilterValue(object), i.Code, runtime.FilterRemedies(i.Message))
 		}
 	}
-	fmt.Fprintf(&b, "source: %s | identity: %s", out.ResultSource, out.Identity)
+	b.Printf("source: %s | identity: %s", out.ResultSource, out.Identity)
 	if out.GroupsFrom != "" {
-		fmt.Fprintf(&b, " | groups from %s%s", out.GroupsFrom, groupsUnavailableMark(out.GroupAliases))
+		b.Printf(" | groups from %s%s", out.GroupsFrom, groupsUnavailableMark(out.GroupAliases))
 	}
 	b.WriteString("\n")
-	return b.String()
+	return b.Filtered()
 }

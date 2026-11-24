@@ -93,7 +93,10 @@ func TestChainClassicRoleBindingToPRTB(t *testing.T) {
 	assert.Equal(t, "inherits RoleTemplate edit", prtb.Children[0].Note)
 	require.Len(t, prtb.Children[0].Children, 1)
 	assert.Equal(t, "external: binds the cluster's own ClusterRole edit", prtb.Children[0].Children[0].Note)
-	lines := renderTree(*root, "[allowed]")
+	var lines []string
+	for _, l := range renderTree(*root, "[allowed]") {
+		lines = append(lines, l.Marked())
+	}
 	assert.Equal(t, "[allowed] RoleBinding team-a/rb-1 - one binding the server accepted", lines[0])
 	assert.Equal(t, "+-- ClusterRole project-member-promoted - rules covering the request: core/pods [get list delete]", lines[1])
 	assert.Equal(t, "+-- ProjectRoleTemplateBinding c-1-p-abc/prtb-1 - project c-1:p-abc, user u-1, RoleTemplate project-member", lines[2])

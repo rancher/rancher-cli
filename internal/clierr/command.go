@@ -394,6 +394,12 @@ func Text(parts ...any) string {
 	return NoteOnce(b.String())
 }
 
+// textAfter is Text with first as its first prose part, followed by parts.
+// It is in this file because Text's parts are checked here.
+func textAfter(first string, parts []any) string {
+	return Text(append([]any{first}, parts...)...)
+}
+
 // NoteOnce is text with LeftOutNote in it once, at the end, however many of
 // the texts joined into it were written with a command left out. Text that
 // holds no note is returned as it is.

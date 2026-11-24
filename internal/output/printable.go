@@ -78,3 +78,11 @@ func printableKeepingNewlines(s string) string {
 		return r
 	}, s)
 }
+
+// FilterValue is Printable(x) as a clierr.Filtered, for a server value that
+// goes into a result text or a notice. The Filtered keeps the value whole
+// until it is printed (see clierr.Filtered).
+func FilterValue(x string) clierr.Filtered {
+	p := Printable(x)
+	return clierr.NewFiltered(p, p != x)
+}

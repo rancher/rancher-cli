@@ -17,6 +17,8 @@ import (
 // replaces characters anywhere in a text it is given.
 var evFilters = map[string]bool{
 	"internal/output.Printable":                  true,
+	"internal/output.FilterValue":                true,
+	"internal/runtime.FilterRemedies":            true,
 	"internal/output.PrintableLines":             true,
 	"internal/runtime.PrintableRemedies":         true,
 	"internal/clierr.WithoutUnsafeToDisplay":     true,
@@ -26,12 +28,13 @@ var evFilters = map[string]bool{
 }
 
 // evFilterAnyText are the filters a text that holds commands may pass: the
-// two keep the remedy marker and cannot change a value NotQuotable accepts,
+// three keep the remedy marker and cannot change a value NotQuotable accepts,
 // and every result of the catalog values filter holds <hidden>, which no
 // command accepts as a value and no Kubernetes name can hold.
 var evFilterAnyText = map[string]bool{
 	"internal/output.PrintableLines":             true,
 	"internal/runtime.PrintableRemedies":         true,
+	"internal/runtime.FilterRemedies":            true,
 	"internal/engine/catalog.Values.Filter":      true,
 	"internal/engine/catalog.Values.FilterError": true,
 	"internal/engine/catalog.Values.filterFunc":  true,
@@ -396,6 +399,59 @@ func TestEveryWholeTextFilterReferenceHasAReviewedRow(t *testing.T) {
 	r, err := evProductionResults()
 	require.NoError(t, err)
 	for _, p := range evCheckFilterRows(r.refs, evFilterRows) {
+		t.Error(p)
+	}
+}
+
+// evBuilderFilters are the filters a builder of a result text or a notice
+// uses: each returns a clierr.Filtered, which no code can cut at a length. Every
+// other whole-text filter may be referenced only in the places evFilterPlaces
+// lists.
+var evBuilderFilters = map[string]bool{
+	"internal/output.FilterValue":     true,
+	"internal/runtime.FilterRemedies": true,
+}
+
+// evCheckFilterPlaces checks that every row of a whole-text filter other than
+// the builder filters and the catalog values filter names a function in
+// places, and that every entry of places is named by a row.
+func evCheckFilterPlaces(rows []evFilterRow, places map[string]string) []string {
+	var problems []string
+	used := map[string]bool{}
+	for _, row := range rows {
+		switch {
+		case evBuilderFilters[row.filter]:
+		case strings.HasPrefix(row.filter, "internal/engine/catalog."):
+		default:
+			if _, ok := places[row.fn]; !ok {
+				problems = append(problems, fmt.Sprintf("%s references %s: a builder of a result text or a notice filters a value with output.FilterValue or runtime.FilterRemedies; only the renderers, definitions, checks and certificate text in evFilterPlaces may reference another filter", row.fn, row.filter))
+			}
+			used[row.fn] = true
+		}
+	}
+	for _, fn := range slices.Sorted(maps.Keys(places)) {
+		if !used[fn] {
+			problems = append(problems, fmt.Sprintf("the place %s is named by no row of a whole-text filter; remove it", fn))
+		}
+	}
+	return problems
+}
+
+// TestOnlyRenderersReferenceTheWholeTextFilters asserts that outside the
+// places evFilterPlaces lists (the renderers, the filters' own definitions,
+// the checks that print nothing and the certificate text, each with its
+// reason), no function references output.Printable,
+// output.PrintableLines, runtime.PrintableRemedies or
+// clierr.WithoutUnsafeToDisplay: a builder of a result text or a notice uses
+// output.FilterValue or runtime.FilterRemedies. It also asserts that every
+// place is used.
+//
+// Limits: it reads the rows of evFilterRows, which
+// TestEveryWholeTextFilterReferenceHasAReviewedRow checks against the tree;
+// the catalog values filter is out of its scope.
+func TestOnlyRenderersReferenceTheWholeTextFilters(t *testing.T) {
+	t.Parallel()
+	for _, p := range evCheckFilterPlaces(evFilterRows, evFilterPlaces) {
 		t.Error(p)
 	}
 }

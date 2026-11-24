@@ -59,6 +59,8 @@ var discardedWriteAllowlist = map[string]discardAllowance{
 	"internal/cli.printCompletionCandidate":     {1, "one completion candidate for the shell, which ends the request when the pipe closes and reads no exit code"},
 	"internal/cli.universalShellCompleteFunc":   {2, "one completion candidate for the shell, which ends the request when the pipe closes and reads no exit code"},
 	"internal/cli.wiredRegistry.root":           {1, "one completion candidate for the shell, which ends the request when the pipe closes and reads no exit code"},
+	"internal/clierr.Filtered.Format":           {1, "the refusal a fmt.Formatter writes into the buffer of fmt: Format has no error to return, and the buffer is a text under construction, not a stream"},
+	"internal/clierr.whole.Format":              {3, "the text or the refusal a fmt.Formatter writes into the buffer of fmt for clierr.Sprintf: Format has no error to return, and the buffer is a text under construction, not a stream"},
 	"internal/runtime.WriteError":               {1, "the one line written when the error already failed to write in its format: nothing else carries it, and the exit code is the error's own"},
 	"internal/runtime.mirrorWarnings":           {1, "a warning line on standard error: the result and its exit code are decided before it, and nothing else carries a warning that failed to write"},
 	"internal/telemetrysend.attempt.debug":      {1, "one line of the opt-in --debug trace of an upload attempt on standard error: nothing else carries it and the upload does not depend on it"},

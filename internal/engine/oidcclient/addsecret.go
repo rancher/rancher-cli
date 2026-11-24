@@ -139,9 +139,9 @@ func (c *addSecretCmd) execute(ctx context.Context, client engine.ClusterClient,
 	}
 
 	secretLine, shownOnce := runtime.OnceOnlyLine("client secret", plaintext, "client secret")
-	res := runtime.MutationText("oidcclient", clientName, "patched",
-		"secret "+output.Printable(secretName)+" added",
-		secretLine,
+	res := runtime.MutationTextOf("oidcclient", clierr.Plain(clientName), "patched",
+		clierr.Plain("secret ").Append(output.FilterValue(secretName)).AppendString(" added"),
+		clierr.Plain(secretLine),
 	)
 	res.Kind = "OIDCClientSecretAdded"
 	res.Data = map[string]any{"clientID": clientID, "secretName": secretName, "clientSecret": plaintext}

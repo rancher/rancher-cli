@@ -529,7 +529,9 @@ func evApplyOriginRows(r *evResults, sites map[evOriginSite]string, allow evAllo
 // a field set by another function on a struct the value is read from, and a
 // method reached through an interface whose signature prints differently in
 // two loads are not seen. A field read on the result of a call that returns
-// a struct is a source.
+// a struct is a source. A row of evOriginParams accepts every caller of its
+// method, present and future: its reason states what every caller must
+// pass.
 func TestNoValueChangesBeforeTheCommandBuilder(t *testing.T) {
 	t.Parallel()
 	r, err := evProductionResults()

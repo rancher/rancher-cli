@@ -3,9 +3,7 @@ package configcmd
 import (
 	"cmp"
 	"context"
-	"fmt"
 	"slices"
-	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
@@ -110,33 +108,33 @@ func (c configInfoCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Pro
 	}
 
 	fields := []field{
-		{"path", path},
-		{"exists", exists},
-		{"currentServer", cfg.CurrentServer},
-		{"credentialStore", policy},
-		{"credentialStoreSource", source},
+		{clierr.Plain("path"), path},
+		{clierr.Plain("exists"), exists},
+		{clierr.Plain("currentServer"), cfg.CurrentServer},
+		{clierr.Plain("credentialStore"), policy},
+		{clierr.Plain("credentialStoreSource"), source},
 	}
 	if storeConflict != nil {
-		fields = append(fields, field{"credentialStoreConflict", storeConflict.Error()})
+		fields = append(fields, field{clierr.Plain("credentialStoreConflict"), storeConflict.Error()})
 	}
 	// A binding stamp that is unreadable, or that does not agree with
 	// the one config.yaml carries, costs the directory every warm
 	// exec-credential hit on every command and changes nothing else - so
 	// nothing else would ever say it out loud.
 	if state := cacheBindingStampState(c.dir, cfg); state != "" {
-		fields = append(fields, field{"cacheBindingStamp", state})
+		fields = append(fields, field{clierr.Plain("cacheBindingStamp"), state})
 	}
 	if pin != "" {
-		fields = append(fields, field{"pin", pin})
+		fields = append(fields, field{clierr.Plain("pin"), pin})
 	}
 	if inUse != "" {
-		fields = append(fields, field{"credentialStoreInUse", inUse})
+		fields = append(fields, field{clierr.Plain("credentialStoreInUse"), inUse})
 	}
 	if storeError != "" {
-		fields = append(fields, field{"credentialStoreError", storeError})
+		fields = append(fields, field{clierr.Plain("credentialStoreError"), storeError})
 	}
 	if defaultBackend != "" {
-		fields = append(fields, field{"credentialStoreDefault", defaultBackend})
+		fields = append(fields, field{clierr.Plain("credentialStoreDefault"), defaultBackend})
 	}
 
 	// Completion settings - always present so `config status` can answer
@@ -145,14 +143,14 @@ func (c configInfoCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Pro
 	// raw in one pass so the two cannot disagree.
 	effectiveTimeout, rawTimeout, diverges := config.CompletionTimeoutWithRaw(cfg)
 	completionFields := []field{
-		{"network", cfg.Completion.Network},
-		{"timeout", effectiveTimeout.String()},
+		{clierr.Plain("network"), cfg.Completion.Network},
+		{clierr.Plain("timeout"), effectiveTimeout.String()},
 	}
 	if diverges {
-		completionFields = append(completionFields, field{"timeoutRaw", rawTimeout})
+		completionFields = append(completionFields, field{clierr.Plain("timeoutRaw"), rawTimeout})
 	}
-	fields = append(fields, field{"completion", completionFields})
-	fields = append(fields, field{"tokenReuse", cfg.TokenReuse})
+	fields = append(fields, field{clierr.Plain("completion"), completionFields})
+	fields = append(fields, field{clierr.Plain("tokenReuse"), cfg.TokenReuse})
 
 	// Servers: every entry with CLI-owned tokens (current or records).
 	var serverSections []field
@@ -165,32 +163,32 @@ func (c configInfoCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Pro
 	slices.Sort(serverNames)
 	for _, n := range serverNames {
 		s := cfg.Servers[n]
-		serverSections = append(serverSections, field{n, entrySection(n, s)})
+		serverSections = append(serverSections, field{clierr.Plain(n), entrySection(n, s)})
 	}
-	var text strings.Builder
-	data := renderFields(fields, "", &text)
+	var text clierr.Builder
+	renderFields(fields, "", &text)
 
 	// The credential store change record, read the way every credential
 	// command's prelude reads it, so the refusal or warning a command gave
 	// can be looked at here. A report only: it never fails the command and
 	// opens no credential store.
-	if change := config.ChangeRecordStatusOf(c.dir, cfg); change != nil {
+	change := config.ChangeRecordStatusOf(c.dir, cfg)
+	if change != nil {
 		text.WriteString("credentialStoreChange:\n")
 		for _, line := range change.TextLines() {
-			fmt.Fprintf(&text, "  %s\n", line)
+			text.Printf("  %s\n", line)
 		}
-		data["credentialStoreChange"] = change
 	}
 
 	// Entries whose cache writes a change left paused. No other report
 	// shows them, and every kubectl call for them makes a fresh token
 	// until the pause is cleared.
-	if paused := config.PausedEntries(c.dir, cfg); len(paused) > 0 {
+	paused := config.PausedEntries(c.dir, cfg)
+	if len(paused) > 0 {
 		text.WriteString("cacheWritesPaused:\n")
 		for _, p := range paused {
-			fmt.Fprintf(&text, "  %s: %s\n", p.Entry, pauseReasonText(c.dir, p.Entry, p.Reason))
+			text.Printf("  %s: %s\n", p.Entry, pauseReasonText(c.dir, p.Entry, p.Reason))
 		}
-		data["cacheWritesPaused"] = paused
 	}
 
 	// The entries render from their own projections: entryReport owns the
@@ -199,48 +197,82 @@ func (c configInfoCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Pro
 	if len(serverSections) > 0 {
 		text.WriteString("servers:\n")
 		renderFields(serverSections, "  ", &text)
-		serverData := make(map[string]any, len(serverSections))
+	}
+
+	rendered := text.Filtered()
+	return runtime.Result{
+		Kind:       "ConfigInfo",
+		Data:       configData(cfg, fields, change, paused, serverNames),
+		Text:       rendered.Marked(),
+		StyledText: func(s style.Style) string { return styleConfigInfoText(rendered.WithoutMark(), s) },
+	}, nil
+}
+
+// configData is the json projection of config status: the fields, the
+// change record, the paused entries and the server entries. It writes no
+// text.
+func configData(cfg *config.Config, fields []field, change *config.ChangeRecordStatus, paused []config.PausedEntry, serverNames []string) map[string]any {
+	data := projectFields(fields)
+	if change != nil {
+		data["credentialStoreChange"] = change
+	}
+	if len(paused) > 0 {
+		data["cacheWritesPaused"] = paused
+	}
+	if len(serverNames) > 0 {
+		serverData := make(map[string]any, len(serverNames))
 		for _, n := range serverNames {
 			serverData[n] = entryReport(n, cfg.Servers[n])
 		}
 		data["servers"] = serverData
 	}
-
-	rendered := text.String()
-	return runtime.Result{
-		Kind:       "ConfigInfo",
-		Data:       data,
-		Text:       rendered,
-		StyledText: func(s style.Style) string { return styleConfigInfoText(rendered, s) },
-	}, nil
+	return data
 }
 
-// field is one key with a scalar, a nested section ([]field), or a list of
-// strings ([]string). Sections nest to any depth; each level indents two
-// spaces; list items sit one level under their key.
+// field is one key with a scalar, a filtered text (clierr.Filtered), a
+// nested section ([]field), or a list of strings ([]string). Sections nest
+// to any depth; each level indents two spaces; list items sit one level
+// under their key.
 type field struct {
-	key string
+	key clierr.Filtered
 	val any
 }
 
-// renderFields writes fields as text at indent and returns their JSON
-// projection, so -o json and the text view cannot drift for any level.
-func renderFields(fields []field, indent string, text *strings.Builder) map[string]any {
-	data := make(map[string]any, len(fields))
+// renderFields writes fields as text at indent. projectFields gives the
+// JSON projection of the same fields, with the same cases: -o json and the
+// text view cannot drift for any level.
+func renderFields(fields []field, indent string, text *clierr.Builder) {
 	for _, f := range fields {
 		switch v := f.val.(type) {
 		case []field:
-			fmt.Fprintf(text, "%s%s:\n", indent, f.key)
-			data[f.key] = renderFields(v, indent+"  ", text)
+			text.Printf("%s%s:\n", indent, f.key)
+			renderFields(v, indent+"  ", text)
 		case []string:
-			fmt.Fprintf(text, "%s%s:\n", indent, f.key)
+			text.Printf("%s%s:\n", indent, f.key)
 			for _, item := range v {
-				fmt.Fprintf(text, "%s  %s\n", indent, item)
+				text.Printf("%s  %s\n", indent, item)
 			}
-			data[f.key] = v
+		case clierr.Filtered:
+			text.Printf("%s%s: %s\n", indent, f.key, v)
 		default:
-			data[f.key] = v
-			fmt.Fprintf(text, "%s%s: %v\n", indent, f.key, v)
+			text.Printf("%s%s: %v\n", indent, f.key, v)
+		}
+	}
+}
+
+// projectFields is the JSON projection of fields: each key and each
+// filtered value as a string, a nested section as a map. It writes no text.
+func projectFields(fields []field) map[string]any {
+	data := make(map[string]any, len(fields))
+	for _, f := range fields {
+		key := f.key.WithoutMark()
+		switch v := f.val.(type) {
+		case []field:
+			data[key] = projectFields(v)
+		case clierr.Filtered:
+			data[key] = v.WithoutMark()
+		default:
+			data[key] = v
 		}
 	}
 	return data
@@ -252,28 +284,28 @@ func renderFields(fields []field, indent string, text *strings.Builder) map[stri
 func entrySection(name string, s config.Server) []field {
 	var out []field
 	if s.Provenance != "" {
-		out = append(out, field{"provenance", string(s.Provenance)})
+		out = append(out, field{clierr.Plain("provenance"), string(s.Provenance)})
 	}
 	if s.TokenUserID != "" {
-		out = append(out, field{"tokenUserId", clierr.IDText(s.TokenUserID)})
+		out = append(out, field{clierr.Plain("tokenUserId"), clierr.IDText(s.TokenUserID)})
 	}
 	if s.TokenAuthConfig != "" {
-		out = append(out, field{"tokenAuthConfig", output.Printable(s.TokenAuthConfig)})
+		out = append(out, field{clierr.Plain("tokenAuthConfig"), output.FilterValue(s.TokenAuthConfig)})
 	}
 	if s.CredentialExpiresAt != "" {
-		out = append(out, field{"credentialExpiresAt", output.Printable(s.CredentialExpiresAt)})
+		out = append(out, field{clierr.Plain("credentialExpiresAt"), output.FilterValue(s.CredentialExpiresAt)})
 	}
 	if s.LoggedOutAt != "" {
-		out = append(out, field{"loggedOutAt", s.LoggedOutAt}, field{"credential", "no stored credential"})
+		out = append(out, field{clierr.Plain("loggedOutAt"), s.LoggedOutAt}, field{clierr.Plain("credential"), "no stored credential"})
 	}
 	switch {
 	case s.CLIOwned():
-		out = append(out, field{"currentToken", tokenSection(name, s.URL, *s.TokenRef, s.TokenUserID, s.CredentialExpiresAt)})
+		out = append(out, field{clierr.Plain("currentToken"), tokenSection(name, s.URL, *s.TokenRef, s.TokenUserID, s.CredentialExpiresAt)})
 	case s.CLICreated() && s.LoggedOutAt == "":
 		// The CLI created the token but never recorded its name: nothing
 		// can be revoked by name, and the surface says so rather than
 		// hiding the entry.
-		out = append(out, field{"currentToken", []field{{"note", "cannot revoke by name: no tokenRef recorded"}}})
+		out = append(out, field{clierr.Plain("currentToken"), []field{{clierr.Plain("note"), "cannot revoke by name: no tokenRef recorded"}}})
 	}
 	if len(s.SupersededTokens) > 0 {
 		var recs []field
@@ -282,22 +314,22 @@ func entrySection(name string, s config.Server) []field {
 			// do not repeat the ref.
 			var sec []field
 			if r.UserID != "" {
-				sec = append(sec, field{"userId", clierr.IDText(r.UserID)})
+				sec = append(sec, field{clierr.Plain("userId"), clierr.IDText(r.UserID)})
 			}
 			if r.Server != "" {
-				sec = append(sec, field{"server", config.DisplayStoredRecordServer(s.URL, r.Server)})
+				sec = append(sec, field{clierr.Plain("server"), config.DisplayStoredRecordServer(s.URL, r.Server)})
 			}
 			if r.ExpiresAt != "" {
-				sec = append(sec, field{"expiresAt", output.Printable(r.ExpiresAt)})
+				sec = append(sec, field{clierr.Plain("expiresAt"), output.FilterValue(r.ExpiresAt)})
 			}
-			sec = append(sec, field{"supersededAt", r.SupersededAt}, field{"state", recordState(s, r)})
+			sec = append(sec, field{clierr.Plain("supersededAt"), r.SupersededAt}, field{clierr.Plain("state"), recordState(s, r)})
 			if r.LastAttempt != nil {
-				sec = append(sec, field{"lastAttempt", string(r.LastAttempt.Result) + " (" + output.Printable(r.LastAttempt.Error) + ")"})
+				sec = append(sec, field{clierr.Plain("lastAttempt"), clierr.Plain(string(r.LastAttempt.Result) + " (").Append(output.FilterValue(r.LastAttempt.Error)).AppendString(")")})
 			}
 			sec = append(sec, recoveryField(name, s.URL, cmp.Or(r.Server, s.URL), r.UserID, r.Ref))
-			recs = append(recs, field{output.Printable(r.Ref.String()), sec})
+			recs = append(recs, field{output.FilterValue(r.Ref.String()), sec})
 		}
-		out = append(out, field{"supersededTokens", recs})
+		out = append(out, field{clierr.Plain("supersededTokens"), recs})
 	}
 	return out
 }
@@ -305,12 +337,12 @@ func entrySection(name string, s config.Server) []field {
 // tokenSection renders an entry's current token: ref, owner, expiry, then
 // the recovery sequence that revokes it.
 func tokenSection(entry, serverURL string, ref clierr.TokenRef, userID, expiresAt string) []field {
-	sec := []field{{"ref", output.Printable(ref.String())}}
+	sec := []field{{clierr.Plain("ref"), output.FilterValue(ref.String())}}
 	if userID != "" {
-		sec = append(sec, field{"userId", clierr.IDText(userID)})
+		sec = append(sec, field{clierr.Plain("userId"), clierr.IDText(userID)})
 	}
 	if expiresAt != "" {
-		sec = append(sec, field{"expiresAt", output.Printable(expiresAt)})
+		sec = append(sec, field{clierr.Plain("expiresAt"), output.FilterValue(expiresAt)})
 	}
 	return append(sec, recoveryField(entry, serverURL, serverURL, userID, ref))
 }
@@ -323,14 +355,14 @@ func tokenSection(entry, serverURL string, ref clierr.TokenRef, userID, expiresA
 // entryReport, whose recovery value stays the commands alone.
 func recoveryField(entry, entryURL, serverURL, userID string, ref clierr.TokenRef) field {
 	if ref.Kind == clierr.TokenKindV3 {
-		return field{"recovery", []string{administratorLine(entryURL, serverURL, ref)}}
+		return field{clierr.Plain("recovery"), []string{administratorLine(entryURL, serverURL, ref)}}
 	}
 	advice := config.AdviseRecord(config.RecordSite{Entry: entry, EntryURL: entryURL}, serverURL, userID, ref)
 	if advice.Text != "" {
-		return field{"recovery", []string{advice.Text}}
+		return field{clierr.Plain("recovery"), []string{advice.Text}}
 	}
 	if !advice.Sequence.OK() {
-		return field{"recovery", []string{advice.Sequence.String()}}
+		return field{clierr.Plain("recovery"), []string{advice.Sequence.String()}}
 	}
 	lines := append(advice.Sequence.Lines(), "("+clierr.RecoverySequenceAssumption+")")
 	login := "log in as the token's owner or an administrator, then run:"
@@ -338,7 +370,7 @@ func recoveryField(entry, entryURL, serverURL, userID string, ref clierr.TokenRe
 		login = "log in as user " + clierr.ShellQuote(clierr.IDText(advice.LoginAs)) + " (the token's owner), then run:"
 	}
 	lines = append([]string{login}, lines...)
-	return field{"recovery", lines}
+	return field{clierr.Plain("recovery"), lines}
 }
 
 // pauseReasonText is the reason entry's pause stays, as config status

@@ -26,7 +26,7 @@ var evFixtureDirs = []string{
 	"fragmentraw", "fragmentthenraw", "fragmentword",
 	"hintcommand", "kindassign", "kindliteral",
 	"leadalone", "leadconcat", "leadempty", "leadprose", "leadword",
-	"originconcat", "originfield", "originfuncvalue", "originhelper", "originlocal", "originparam", "origintrim",
+	"originconcat", "originfield", "originfuncvalue", "originhelper", "originiface", "originlocal", "originparam", "origintrim",
 	"quoteaddassign", "quoteappend", "quotecommand", "quoteloop", "quoteparam", "quotereturn", "quotevar",
 	"rawoperand", "recoverystring", "rendererunescaped", "revokebuilder", "stringhelper", "textpart", "textthen", "twocommands", "typedline",
 	"unsafeunlisted", "wordconversion", "worddecl", "wordgeneric", "wordjson", "wordjsonstruct", "wordreflect", "wordsscan", "wordunsafe",

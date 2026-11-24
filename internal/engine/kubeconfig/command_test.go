@@ -227,7 +227,7 @@ func assertOnlyMachineNotice(t *testing.T, notices, dir string) {
 	t.Helper()
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
-	assert.Equal(t, machineNotice(config.CanonicalDir(dir), recordedStore(cfg), "rancher", false)+"\n", notices)
+	assert.Equal(t, machineNotice(config.CanonicalDir(dir), recordedStore(cfg), "rancher", false).Marked()+"\n", notices)
 }
 
 // writeTestConfig writes a config.yaml with server "prod" -> https://r.example.com

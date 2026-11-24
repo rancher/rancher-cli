@@ -98,7 +98,7 @@ type loginInput struct {
 	exactAuthConfig bool
 	// notice, when set, is said once, right before the sign-in's first
 	// prompt or notice that asks someone to act (see signInStarts).
-	notice          string
+	notice          clierr.Filtered
 	skipVerify      bool
 	authFlow        string
 	usernameDefault string
@@ -129,9 +129,9 @@ type loginInput struct {
 // prompt or notice that asks someone to act, so neither runs for a sign-in
 // that refuses first.
 func (in *loginInput) signInStarts(p runtime.Prompter) {
-	if n := in.notice; n != "" {
-		in.notice = ""
-		p.Notice(n)
+	if n := in.notice; !n.IsEmpty() {
+		in.notice = clierr.Filtered{}
+		p.Notice(n.Marked())
 	}
 	f := in.beforeSignIn
 	if f == nil {
@@ -1342,7 +1342,7 @@ func samlAuth(ctx context.Context, client *http.Client, input *loginInput, p run
 				}
 			}
 			if err != nil {
-				p.Notice("error deleting auth token: " + runtime.PrintableRemedies(clierr.From(err).Message))
+				p.Notice(clierr.Plain("error deleting auth token: ").Append(runtime.FilterRemedies(clierr.From(err).Message)).Marked())
 			}
 
 			res.Create.ExpiresAt = deposited.ExpiresAt
@@ -1600,7 +1600,7 @@ func selectAuthProvider(ctx context.Context, providers []typedProvider, unsuppor
 
 	if len(providers) == 1 {
 		if note != "" && p.CanPrompt() {
-			p.Notice("Auth config: " + output.Printable(authConfigLabel(providers[0])) + "\n" + output.Printable(note))
+			p.Notice(clierr.Plain("Auth config: ").Append(output.FilterValue(authConfigLabel(providers[0]))).AppendString("\n").Append(output.FilterValue(note)).Marked())
 		}
 		return providers[0], nil
 	}
@@ -1616,14 +1616,15 @@ func selectAuthProvider(ctx context.Context, providers []typedProvider, unsuppor
 // chosen: no terminal, or an answer that names none of the entries.
 func chooseAuthConfig(ctx context.Context, entries []typedProvider, note string, p runtime.Prompter, failure string) (typedProvider, error) {
 	if p.CanPrompt() {
-		var b strings.Builder
+		var b clierr.Builder
+		b.WriteString("Auth configs:\n")
 		for i, prov := range entries {
-			fmt.Fprintf(&b, "%d - %s\n", i, output.Printable(authConfigLabel(prov)))
+			b.Printf("%d - %s\n", i, output.FilterValue(authConfigLabel(prov)))
 		}
 		if note != "" {
-			b.WriteString(output.Printable(note) + "\n")
+			b.Write(output.FilterValue(note).AppendString("\n"))
 		}
-		p.Notice("Auth configs:\n" + b.String())
+		p.Notice(b.Filtered().Marked())
 		sel, err := p.Prompt(ctx, "Select auth config: ")
 		if err != nil {
 			return nil, err
@@ -2527,13 +2528,13 @@ func (t tokenCmd) classifyRejection(err error, sc storedCredential, cluster stri
 	case errors.Is(err, errCredentialUnauthorized) && sc.entry.Provenance == clierr.ProvenanceExecLogin:
 		return &pluginCredentialRejected{name: sc.name}
 	case errors.Is(err, errCredentialUnauthorized):
-		msg := fmt.Sprintf("the stored login credential for %q was rejected (%s); falling back to interactive login", sc.name, runtime.PrintableRemedies(clierr.From(err).Message))
+		msg := clierr.Sprintf("the stored login credential for %q was rejected (%s); falling back to interactive login", sc.name, runtime.FilterRemedies(clierr.From(err).Message))
 		// auth login refuses a name of the exec plugin's own login entries;
 		// the sign-in this falls back to is the one way to a login there.
 		if login, ok := config.LoginHintFor(sc.name); ok {
-			msg = clierr.Text(msg, clierr.Lead("; refresh it with: "), login)
+			msg = clierr.TextOf(msg, clierr.Lead("; refresh it with: "), login)
 		}
-		p.Notice(msg)
+		p.Notice(msg.Marked())
 		return errStoredCredentialRejected
 	}
 	return err

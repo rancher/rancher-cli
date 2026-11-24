@@ -272,7 +272,7 @@ func (c *clustersCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.P
 		exit = exitUnknown
 	}
 	return runtime.Result{Kind: "AccessClusters", Data: out, ExitStatus: exit,
-		Text: clustersText(out, false), WideText: clustersText(out, true)}, nil
+		Text: clustersText(out, false).Marked(), WideText: clustersText(out, true).Marked()}, nil
 }
 
 // probe runs the per-cluster SelfSubjectReview under the fan-out limit and
@@ -431,15 +431,15 @@ func grantedByCell(records []bindingRecord, discovery bindingsDiscovery) string 
 }
 
 // clustersText renders the default and the wide view.
-func clustersText(out clustersResult, wide bool) string {
-	who := output.Printable(out.Subject.Name)
+func clustersText(out clustersResult, wide bool) clierr.Filtered {
+	who := output.FilterValue(out.Subject.Name)
 	if out.Identity == IdentityCaller {
-		who = "you"
+		who = clierr.Plain("you")
 	} else if out.Subject.DisplayName != "" {
-		who = fmt.Sprintf("%s (%s)", output.Printable(out.Subject.DisplayName), who)
+		who = clierr.Sprintf("%s (%s)", output.FilterValue(out.Subject.DisplayName), who)
 	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "clusters you can list, reachability for %s\n\n", who)
+	var b clierr.Builder
+	b.Printf("clusters you can list, reachability for %s\n\n", who)
 	header := []string{"CLUSTER", "NAME", "REACHABILITY", "GRANTED BY", "NOTE"}
 	if wide {
 		header = []string{"CLUSTER", "NAME", "REACHABILITY", "IDENTITY", "GRANTED BY", "PROJECTS", "NOTE"}
@@ -481,37 +481,37 @@ func clustersText(out clustersResult, wide bool) string {
 	if len(out.Reachable) == 0 {
 		b.WriteString("reachable: none\n")
 	} else {
-		var names []string
+		var names []clierr.Filtered
 		for _, e := range out.Reachable {
-			s := output.Printable(e.Cluster)
+			s := output.FilterValue(e.Cluster)
 			if e.Grants != nil {
-				var gs []string
+				var gs []clierr.Filtered
 				for _, g := range e.Grants {
-					gs = append(gs, output.Printable(g.Name))
+					gs = append(gs, output.FilterValue(g.Name))
 				}
 				if len(gs) > 0 {
-					s += " (" + strings.Join(gs, ", ") + ")"
+					s = s.AppendString(" (").Append(clierr.JoinFiltered(gs, ", ")).AppendString(")")
 				}
 			}
 			names = append(names, s)
 		}
-		fmt.Fprintf(&b, "reachable: %s\n", strings.Join(names, ", "))
+		b.Printf("reachable: %s\n", clierr.JoinFiltered(names, ", "))
 	}
-	fmt.Fprintf(&b, "%s\n", reachabilitySentence)
+	b.Printf("%s\n", reachabilitySentence)
 	if out.GroupAliases.Status == "available" {
-		fmt.Fprintf(&b, "%s\n", groupsCachedNote)
+		b.Printf("%s\n", groupsCachedNote)
 	}
 	if out.BindingsDiscovery.Status != "complete" {
-		var reasons []string
+		var reasons []clierr.Filtered
 		for _, si := range out.BindingsDiscovery.Issues {
-			reasons = append(reasons, si.Stage+": "+runtime.PrintableRemedies(si.Issue.Message))
+			reasons = append(reasons, clierr.Plain(si.Stage+": ").Append(runtime.FilterRemedies(si.Issue.Message)))
 		}
-		fmt.Fprintf(&b, "bindings: %s (%s)\n", out.BindingsDiscovery.Status, strings.Join(reasons, "; "))
+		b.Printf("bindings: %s (%s)\n", out.BindingsDiscovery.Status, clierr.JoinFiltered(reasons, "; "))
 	}
-	fmt.Fprintf(&b, "%d clusters: %d reachable, %d refused, %d unknown", out.Rollup.Clusters, out.Rollup.Reachable, out.Rollup.Refused, out.Rollup.Unknown)
+	b.Printf("%d clusters: %d reachable, %d refused, %d unknown", out.Rollup.Clusters, out.Rollup.Reachable, out.Rollup.Refused, out.Rollup.Unknown)
 	if out.Rollup.NotApplicable > 0 {
-		fmt.Fprintf(&b, ", %d not applicable", out.Rollup.NotApplicable)
+		b.Printf(", %d not applicable", out.Rollup.NotApplicable)
 	}
-	fmt.Fprintf(&b, "\nsource: %s | identity: %s\n", out.ResultSource, out.Identity)
-	return b.String()
+	b.Printf("\nsource: %s | identity: %s\n", out.ResultSource, out.Identity)
+	return b.Filtered()
 }

@@ -41,7 +41,7 @@ func (setTokenReuseCmd) Describe() runtime.Descriptor {
 func (c setTokenReuseCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	on := in.Args()[0] == "on"
 	var dormant []map[string]any
-	var lines []string
+	var lines []clierr.Filtered
 	if err := config.WithLock(ctx, c.dir, func() error {
 		cfg, err := config.Load(config.FilePath(c.dir))
 		if err != nil {
@@ -64,7 +64,7 @@ func (c setTokenReuseCmd) Execute(ctx context.Context, in runtime.Input, _ runti
 		headline = "token reuse off: auth get-token logs in per cluster again"
 		data["dormantLogins"] = dormant
 	}
-	res := runtime.TextLines(headline, lines...)
+	res := runtime.TextLinesOf(clierr.Plain(headline), lines...)
 	res.Kind = "TokenReuseSetting"
 	res.Data = data
 	return res, nil
@@ -74,7 +74,7 @@ func (c setTokenReuseCmd) Execute(ctx context.Context, in runtime.Input, _ runti
 // credential or superseded records: the setting stops their use but does
 // not delete anything, so the operator is told where each still lives and
 // how to remove it. Sorted by name.
-func dormantPluginLogins(cfg *config.Config) ([]map[string]any, []string) {
+func dormantPluginLogins(cfg *config.Config) ([]map[string]any, []clierr.Filtered) {
 	names := make([]string, 0, len(cfg.Servers))
 	for n, s := range cfg.Servers {
 		if s.Provenance == clierr.ProvenanceExecLogin {
@@ -83,16 +83,16 @@ func dormantPluginLogins(cfg *config.Config) ([]map[string]any, []string) {
 	}
 	slices.Sort(names)
 	var out []map[string]any
-	var lines []string
+	var lines []clierr.Filtered
 	for _, n := range names {
 		s := cfg.Servers[n]
 		entry := entryReport(n, s)
 		out = append(out, entry)
-		lines = append(lines, fmt.Sprintf("plugin-created login %s (%s) is dormant, not deleted", n, config.DisplayServerURL(s.URL)))
+		lines = append(lines, clierr.Plain(fmt.Sprintf("plugin-created login %s (%s) is dormant, not deleted", n, config.DisplayServerURL(s.URL))))
 		if s.CLIOwned() && s.LoggedOutAt == "" {
-			lines = append(lines, clierr.Text("  remove its credential", clierr.Lead(" with: "), clierr.NewCommand("auth logout").Arg(n)))
+			lines = append(lines, clierr.Plain(clierr.Text("  remove its credential", clierr.Lead(" with: "), clierr.NewCommand("auth logout").Arg(n))))
 		}
-		lines = append(lines, clierr.Text("  remove the entry and its records", clierr.Lead(" with: "), deleteServerCommand(n)))
+		lines = append(lines, clierr.Plain(clierr.Text("  remove the entry and its records", clierr.Lead(" with: "), deleteServerCommand(n))))
 		lines = append(lines, recordLines(n, s, "  ")...)
 	}
 	return out, lines

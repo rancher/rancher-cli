@@ -372,7 +372,7 @@ func TestSignInMessagesKeepServerValuesOnTheirLines(t *testing.T) {
 			&AuthProvider{Type: "openLdapProvider", ID: hostileValue("chosenAuthConfig")},
 			&AuthProvider{Type: "openLdapProvider", ID: "other"},
 		}
-		msg := signInNotice(entries, entries[0])
+		msg := signInNotice(entries, entries[0]).Marked()
 		p.Notice(msg)
 		assertNotice(t, msg, written.String(), "chosenAuthConfig")
 	})
@@ -384,7 +384,7 @@ func TestSignInMessagesKeepServerValuesOnTheirLines(t *testing.T) {
 			&AuthProvider{Type: "oktaProvider", ID: hostileValue("chosenAuthConfig")},
 			&AuthProvider{Type: "oktaProvider", ID: "other"},
 		}
-		msg := signInNotice(entries, entries[0])
+		msg := signInNotice(entries, entries[0]).Marked()
 		require.Contains(t, msg, "Select \"", "the notice names the provider to select")
 		p.Notice(msg)
 		assertNotice(t, msg, written.String(), "chosenAuthConfig")
@@ -429,7 +429,7 @@ func TestSignInMessagesKeepServerValuesOnTheirLines(t *testing.T) {
 	t.Run("the expiry of a stored session token", func(t *testing.T) {
 		var written bytes.Buffer
 		p := newEventPrompter(ui.New(&written, nil, false, false))
-		msg := legacyFallbackNotice((*clierr.TokenFate)(nil).LoginTokenNoun(), hostileValue("expiresAt"))
+		msg := legacyFallbackNotice((*clierr.TokenFate)(nil).LoginTokenNoun(), hostileValue("expiresAt")).Marked()
 		p.Notice(msg)
 		assertNotice(t, msg, written.String(), "expiresAt")
 	})

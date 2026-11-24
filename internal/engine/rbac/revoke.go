@@ -248,20 +248,20 @@ func (c revokeCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 	}
 	exec := func(ctx context.Context) (runtime.Result, error) {
 		deleted := make([]string, 0, len(names))
-		var text strings.Builder
+		var text clierr.Builder
 		for i, name := range names {
 			if err := client.Delete(ctx, bindKind.GVR, scope.NS, name, rvByName[name], false); err != nil {
 				return runtime.Result{}, partialFailure(err, name, deleted, names[i+1:])
 			}
 			deleted = append(deleted, name)
-			text.WriteString(runtime.MutationText(bindKind.Name, name, "deleted").Text)
+			text.Write(clierr.Plain(runtime.MutationText(bindKind.Name, name, "deleted").Text))
 		}
-		final := text.String()
+		final := text.Filtered()
 		return runtime.Result{
 			Kind:       bindKind.K8sKind + "Delete",
 			Data:       map[string]any{"deleted": deleted},
-			Text:       final,
-			StyledText: runtime.StyleEveryLineBold(final),
+			Text:       final.Marked(),
+			StyledText: runtime.StyleEveryLineBoldOf(final),
 		}, nil
 	}
 	return eff, exec, nil

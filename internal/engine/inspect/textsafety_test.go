@@ -134,15 +134,15 @@ func TestClusterTextKeepsEveryServerValueOnItsLine(t *testing.T) {
 	require.True(t, ok)
 
 	textA := renderClusterText(full)
-	assertLineRule(t, textA, without(append(slices.Clone(classes.printed), keys(classes.rawByRule)...), "ProvisioningNote"))
-	assertAbsent(t, textA, classes.notPrinted)
+	assertLineRule(t, textA.Marked(), without(append(slices.Clone(classes.printed), keys(classes.rawByRule)...), "ProvisioningNote"))
+	assertAbsent(t, textA.Marked(), classes.notPrinted)
 
 	noSections := full
 	noSections.Status, noSections.MachinePools, noSections.Machines = nil, nil, nil
 	textB := renderClusterText(noSections)
-	assert.Equal(t, 3, strings.Count(textB, "<ProvisioningNote>"), "the three sections without data print the note")
-	assertLineRule(t, textB, []string{"ProvisioningNote"})
-	assertAbsent(t, textB, classes.notPrinted)
+	assert.Equal(t, 3, strings.Count(textB.Marked(), "<ProvisioningNote>"), "the three sections without data print the note")
+	assertLineRule(t, textB.Marked(), []string{"ProvisioningNote"})
+	assertAbsent(t, textB.Marked(), classes.notPrinted)
 }
 
 func TestProjectTextKeepsEveryServerValueOnItsLine(t *testing.T) {
@@ -174,7 +174,7 @@ func TestProjectTextKeepsEveryServerValueOnItsLine(t *testing.T) {
 	r, ok := reflect.TypeAssert[projectResult](planted)
 	require.True(t, ok)
 
-	text := renderProjectText(r)
+	text := renderProjectText(r).Marked()
 	assertLineRule(t, text, append(slices.Clone(classes.printed), keys(classes.rawByRule)...))
 	assertAbsent(t, text, classes.notPrinted)
 }
@@ -213,12 +213,12 @@ func TestUserTextKeepsEveryServerValueOnItsLine(t *testing.T) {
 	r, ok := reflect.TypeAssert[userResult](planted)
 	require.True(t, ok)
 
-	text := renderUserText(r, map[string]bool{})
+	text := renderUserText(r, map[string]bool{}).Marked()
 	assertLineRule(t, text, append(slices.Clone(classes.printed), keys(classes.rawByRule)...))
 	assertAbsent(t, text, classes.notPrinted)
 }
 
-func TestConditionMessageIsFilteredBeforeItIsCut(t *testing.T) {
+func TestConditionMessageIsCutBeforeItIsFiltered(t *testing.T) {
 	t.Parallel()
 	r := clusterResult{
 		Cluster: clusterIdentity{ID: "c-x"},
@@ -226,8 +226,8 @@ func TestConditionMessageIsFilteredBeforeItIsCut(t *testing.T) {
 			{Type: "Ready", Status: "False", Message: strings.Repeat("\x1b", 200) + "visible tail"},
 		}},
 	}
-	text := renderClusterText(r)
-	assert.Contains(t, text, "  Ready=False visible tail\n", "the escape characters are removed before the message is cut at 120 characters")
+	text := renderClusterText(r).Marked()
+	assert.Contains(t, text, "  Ready=False \u2026\n", "the message is cut at 120 characters, hidden characters included, before the filter removes them")
 	assertLineRule(t, text, nil)
 }
 
@@ -240,7 +240,7 @@ func TestProjectTextKeepsANestedQuotaKeyOnItsLine(t *testing.T) {
 			hostileValue("outer"): map[string]any{hostileValue("inner"): "5"},
 		},
 	}
-	text := renderProjectText(r)
+	text := renderProjectText(r).Marked()
 	assertLineRule(t, text, []string{"outer", "inner"})
 }
 
@@ -265,9 +265,9 @@ func TestAServerValueOfOnlyRemovedCharactersPrintsAsEmpty(t *testing.T) {
 		Registration: &registration{NodeCommand: "\x1b\n"},
 	}
 	text := renderClusterText(r)
-	assert.Contains(t, text, "  Ready=False reason= \n", "the empty reason and the empty message leave a trailing space")
-	assert.Contains(t, text, "  node command:\n    \n", "the label is followed by an empty indented line")
-	assertLineRule(t, text, nil)
+	assert.Contains(t, text.Marked(), "  Ready=False reason= \n", "the empty reason and the empty message leave a trailing space")
+	assert.Contains(t, text.Marked(), "  node command:\n    \n", "the label is followed by an empty indented line")
+	assertLineRule(t, text.Marked(), nil)
 }
 
 func TestInspectClusterJSONKeepsServerValuesAsTheyAre(t *testing.T) {

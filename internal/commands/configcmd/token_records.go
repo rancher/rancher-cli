@@ -2,7 +2,6 @@ package configcmd
 
 import (
 	"cmp"
-	"fmt"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
@@ -111,30 +110,32 @@ func entryReport(name string, s config.Server) map[string]any {
 // header per record, then state, last attempt, and the recovery sequence
 // with its assumption, or for a v3 token the administrator's delete. A server
 // URL that cannot be used gives the repair in words instead of the sequence.
-func recordLines(entry string, s config.Server, indent string) []string {
-	var lines []string
+func recordLines(entry string, s config.Server, indent string) []clierr.Filtered {
+	var lines []clierr.Filtered
 	for _, r := range s.SupersededTokens {
 		owner := r.UserID
 		if owner == "" {
 			owner = "unknown owner"
 		}
-		lines = append(lines, fmt.Sprintf("%ssuperseded token %s (%s, superseded %s)", indent, output.Printable(r.Ref.String()), clierr.IDText(owner), r.SupersededAt))
-		lines = append(lines, indent+"  state: "+recordState(s, r))
+		lines = append(lines, clierr.Sprintf("%ssuperseded token %s (%s, superseded %s)", indent, output.FilterValue(r.Ref.String()), clierr.IDText(owner), r.SupersededAt))
+		lines = append(lines, clierr.Plain(indent+"  state: "+recordState(s, r)))
 		if r.LastAttempt != nil {
-			lines = append(lines, indent+"  last attempt: "+string(r.LastAttempt.Result)+" ("+output.Printable(r.LastAttempt.Error)+")")
+			lines = append(lines, clierr.Plain(indent+"  last attempt: "+string(r.LastAttempt.Result)+" (").Append(output.FilterValue(r.LastAttempt.Error)).AppendString(")"))
 		}
 		ref := r.Ref
 		userID := r.UserID
 		if r.Ref.Kind == clierr.TokenKindV3 {
-			lines = append(lines, indent+"  "+administratorLine(s.URL, cmp.Or(r.Server, s.URL), ref))
+			lines = append(lines, clierr.Plain(indent+"  "+administratorLine(s.URL, cmp.Or(r.Server, s.URL), ref)))
 			continue
 		}
 		advice := config.AdviseRecord(config.RecordSite{Entry: entry, EntryURL: s.URL}, cmp.Or(r.Server, s.URL), userID, ref)
 		if advice.Text != "" {
-			lines = append(lines, indent+"  "+advice.Text)
+			lines = append(lines, clierr.Plain(indent+"  "+advice.Text))
 			continue
 		}
-		lines = append(lines, sequenceLines(indent+"  ", advice.LoginAs, advice.Sequence)...)
+		for _, line := range sequenceLines(indent+"  ", advice.LoginAs, advice.Sequence) {
+			lines = append(lines, clierr.Plain(line))
+		}
 	}
 	return lines
 }

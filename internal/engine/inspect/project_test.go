@@ -533,7 +533,7 @@ func TestRenderProjectTextSections(t *testing.T) {
 		ResourceQuota: map[string]any{"limit": map[string]any{"pods": "10", "configMaps": "5"}},
 		Usage:         &resourceTotals{CPURequest: "500m", CPULimit: "1", CPUUsage: "250m", MemoryRequest: "1Gi", MemoryLimit: "2Gi"},
 	}
-	text := renderProjectText(r)
+	text := renderProjectText(r).Marked()
 	assert.Contains(t, text, "PROJECT\n  id: p-cvrp4\n  displayName: Default\n  cluster: c-phmj7\n")
 	assert.Contains(t, text, "NAMESPACES\n  default (pods: 3, deployments: 1)\n")
 	assert.Contains(t, text, "MEMBERS\n  DevOps Team (github_org://8341)  project-member\n  Alice Ann (local://u-alice)  project-owner\n")
@@ -548,7 +548,7 @@ func TestRenderProjectTextSections(t *testing.T) {
 // a disabled Style returns text unchanged.
 func TestStyleProjectTextStripInvariant(t *testing.T) {
 	t.Parallel()
-	text := renderProjectText(projectResult{ID: "p-cvrp4", DisplayName: "Default", Cluster: "c-phmj7"})
+	text := renderProjectText(projectResult{ID: "p-cvrp4", DisplayName: "Default", Cluster: "c-phmj7"}).Marked()
 	enabled := style.Style{Enabled: true}
 
 	styled := styleProjectText(text, enabled)
@@ -566,7 +566,7 @@ func TestRenderProjectTextEmptyAndUnavailable(t *testing.T) {
 	t.Parallel()
 	// null namespaces is a failed read, which says nothing about usage.
 	r := projectResult{ID: "p-x", DisplayName: "X", Cluster: "c-x", Members: nil}
-	text := renderProjectText(r)
+	text := renderProjectText(r).Marked()
 	assert.Contains(t, text, "NAMESPACES\n  namespaces: unavailable\n")
 	assert.Contains(t, text, "MEMBERS\n  members: unavailable\n")
 	assert.Contains(t, text, "RESOURCE QUOTA\n  none\n")
@@ -574,18 +574,18 @@ func TestRenderProjectTextEmptyAndUnavailable(t *testing.T) {
 
 	// zero namespaces read successfully → verified-empty usage, NOT unavailable.
 	r.Namespaces = []projectNamespace{}
-	text = renderProjectText(r)
+	text = renderProjectText(r).Marked()
 	assert.Contains(t, text, "NAMESPACES\n  none\n")
 	assert.Contains(t, text, "USAGE\n  none (no namespaces)\n")
 
 	r.Members = []rbac.MemberRow{}
-	assert.Contains(t, renderProjectText(r), "MEMBERS\n  none\n")
+	assert.Contains(t, renderProjectText(r).Marked(), "MEMBERS\n  none\n")
 
 	// Defensive: Usage nil with non-empty Namespaces renders an explicit
 	// marker, not a bare header. Unreachable from Execute today but asserts the
 	// renderer contract independent of the seeding invariant.
 	r.Namespaces = []projectNamespace{{Name: "ns1"}}
-	assert.Contains(t, renderProjectText(r), "USAGE\n  usage: unavailable\n")
+	assert.Contains(t, renderProjectText(r).Marked(), "USAGE\n  usage: unavailable\n")
 }
 
 // TestInspectProjectZeroPodsVerifiedZero covers the case that triggered the
@@ -801,14 +801,14 @@ func TestRenderProjectTextEscapeStripping(t *testing.T) {
 			{Principal: "okta_user://evil", DisplayName: "Evil\x1b[2Jname", Role: "project-member"},
 		},
 	}
-	text := renderProjectText(r)
+	text := renderProjectText(r).Marked()
 	assert.NotContains(t, text, "\x1b", "ANSI escape sequences from IdP display names must be stripped")
 	assert.Contains(t, text, "Evil[2Jname", "printable chars around the escape are preserved")
 
 	r.Members = []rbac.MemberRow{
 		{Principal: "okta_user://evil", DisplayName: "abc\u202edef\u200bghi", Role: "project-member"},
 	}
-	text = renderProjectText(r)
+	text = renderProjectText(r).Marked()
 	assert.NotContains(t, text, "\u202e", "bidi-override format characters must be stripped")
 	assert.NotContains(t, text, "\u200b", "zero-width format characters must be stripped")
 	assert.Contains(t, text, "abcdefghi", "visible runes around format characters are preserved")

@@ -13,6 +13,15 @@ import (
 	"github.com/rancher/rancher-cli/internal/remedytest"
 )
 
+// markedLines is the text of each line, for an assertion on it.
+func markedLines(lines []clierr.Filtered) []string {
+	out := make([]string, len(lines))
+	for i, l := range lines {
+		out[i] = l.Marked()
+	}
+	return out
+}
+
 // TestRecordOwnerWithHiddenRunesIsShownAsEscapes asserts the text of config
 // status for a record whose recorded owner holds a direction override, a
 // zero-width space, a bell, a newline and the start of a remedy marker shows
@@ -31,7 +40,7 @@ func TestRecordOwnerWithHiddenRunesIsShownAsEscapes(t *testing.T) {
 	assert.Contains(t, field, "log in as user "+quoted+" (the token's owner), then run:")
 
 	s := config.Server{URL: server, SupersededTokens: []config.SupersededToken{{Ref: ext, UserID: owner, SupersededAt: "2026-09-03T00:00:00Z"}}}
-	record := strings.Join(recordLines("x", s, ""), "\n")
+	record := strings.Join(markedLines(recordLines("x", s, "")), "\n")
 	assert.Contains(t, record, "log in as user "+quoted+" (the token's owner), then revoke it with:")
 
 	for _, text := range []string{field, record} {
@@ -58,7 +67,7 @@ func TestAConfigStatusBlockWritesAnOwnerTheSameInEveryLine(t *testing.T) {
 			s := config.Server{URL: server, Provenance: clierr.ProvenanceDerived, TokenUserID: tc.owner, TokenRef: &ext, CredentialExpiresAt: "2026-12-01T00:00:00Z",
 				SupersededTokens: []config.SupersededToken{{Ref: ext, UserID: tc.owner, SupersededAt: "2026-09-03T00:00:00Z"}}}
 
-			lines := recordLines("x", s, "")
+			lines := markedLines(recordLines("x", s, ""))
 			require.GreaterOrEqual(t, len(lines), 3)
 			header, recovery := lines[0], ""
 			for _, l := range lines {
@@ -69,10 +78,11 @@ func TestAConfigStatusBlockWritesAnOwnerTheSameInEveryLine(t *testing.T) {
 			assert.Contains(t, header, "("+tc.shown+", superseded ")
 			assert.Contains(t, recovery, "log in as user "+clierr.ShellQuote(tc.shown)+" (the token's owner)")
 
-			var text strings.Builder
-			renderFields(entrySection("x", s), "", &text)
+			var b clierr.Builder
+			renderFields(entrySection("x", s), "", &b)
+			text := b.Filtered().Marked()
 			userIDLines := 0
-			for l := range strings.SplitSeq(text.String(), "\n") {
+			for l := range strings.SplitSeq(text, "\n") {
 				if strings.TrimSpace(l) == "userId: "+tc.shown {
 					userIDLines++
 				}
@@ -82,10 +92,10 @@ func TestAConfigStatusBlockWritesAnOwnerTheSameInEveryLine(t *testing.T) {
 				"tokenUserId: " + tc.shown + "\n",
 				"log in as user " + clierr.ShellQuote(tc.shown) + " (the token's owner), then run:",
 			} {
-				assert.Contains(t, text.String(), want)
+				assert.Contains(t, text, want)
 			}
 			if tc.owner != tc.shown {
-				remedytest.AssertIDShownWithEscapes(t, text.String(), tc.owner)
+				remedytest.AssertIDShownWithEscapes(t, text, tc.owner)
 				remedytest.AssertIDShownWithEscapes(t, strings.Join(lines, "\n"), tc.owner)
 			}
 		})
@@ -100,7 +110,7 @@ func TestRecordLinesEscapeAnOwnerWhenTheRecordServerCannotBeUsed(t *testing.T) {
 	const owner = "u-abc\u200b12"
 	ext := clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-abc12"}
 	s := config.Server{URL: "https://hostzq7", SupersededTokens: []config.SupersededToken{{Ref: ext, UserID: owner, Server: "not a url", SupersededAt: "2026-09-03T00:00:00Z"}}}
-	lines := recordLines("x", s, "")
+	lines := markedLines(recordLines("x", s, ""))
 	text := strings.Join(lines, "\n")
 	assert.Contains(t, text, "delete it there as user "+clierr.ShellQuote(strconv.Quote(owner))+" while signed in")
 	remedytest.AssertIDShownWithEscapes(t, text, owner)

@@ -366,10 +366,11 @@ var fieldManagerPackages = sync.OnceValues(func() ([]*packages.Package, error) {
 })
 
 // otherGOOSLoads holds the module type-checked once per process for each of
-// GOOS=windows and GOOS=linux.
+// GOOS=windows, GOOS=linux and GOOS=darwin, the systems the release builds.
 var otherGOOSLoads = map[string]func() ([]*packages.Package, error){
 	"windows": sync.OnceValues(func() ([]*packages.Package, error) { return loadPackages("./...", "windows") }),
 	"linux":   sync.OnceValues(func() ([]*packages.Package, error) { return loadPackages("./...", "linux") }),
+	"darwin":  sync.OnceValues(func() ([]*packages.Package, error) { return loadPackages("./...", "darwin") }),
 }
 
 // otherGOOSPackages is the module type-checked for goos, shared by every scan
@@ -384,11 +385,11 @@ func otherGOOSPackages(goos string) ([]*packages.Package, error) {
 }
 
 // loadPackages type-checks the packages of pattern. goos "" builds them for
-// the host; another value builds them for that GOOS without cgo.
+// the host; another value builds them for that GOOS and amd64 without cgo.
 func loadPackages(pattern, goos string) ([]*packages.Package, error) {
 	cfg := &packages.Config{Mode: packages.NeedName | packages.NeedTypes | packages.NeedSyntax | packages.NeedTypesInfo | packages.NeedFiles}
 	if goos != "" {
-		cfg.Env = append(testfs.EnvWithoutGit(), "GOOS="+goos, "CGO_ENABLED=0")
+		cfg.Env = append(testfs.EnvWithoutGit(), "GOOS="+goos, "GOARCH=amd64", "CGO_ENABLED=0")
 	}
 	pkgs, err := packages.Load(cfg, pattern)
 	if err != nil {

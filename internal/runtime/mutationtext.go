@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/output/style"
 )
@@ -121,4 +122,31 @@ func OnceOnlyLine(label, value, subject string) (line, notice string) {
 		return label + " " + QuotedValueNote + ": " + strconv.Quote(value) + ShownOnceSuffix, notice
 	}
 	return label + ": " + value + ShownOnceSuffix, notice
+}
+
+// TextLinesOf is TextLines over Filtered lines: the same text, built with a
+// clierr.Builder, and the same StyledText, which bolds the first line.
+func TextLinesOf(first clierr.Filtered, lines ...clierr.Filtered) Result {
+	var b clierr.Builder
+	b.Write(first)
+	b.WriteString("\n")
+	for _, l := range lines {
+		b.WriteString("  ")
+		b.Write(l)
+		b.WriteString("\n")
+	}
+	text := b.Filtered()
+	return Result{Text: text.Marked(), StyledText: func(s style.Style) string { return BoldFirstLine(text.WithoutMark(), s) }}
+}
+
+// MutationTextOf is MutationText with a Filtered name and Filtered lines.
+func MutationTextOf(kind string, name clierr.Filtered, verb string, lines ...clierr.Filtered) Result {
+	return TextLinesOf(clierr.Sprintf("%s/%s %s", kind, name, verb), lines...)
+}
+
+// StyleEveryLineBoldOf is StyleEveryLineBold over a Filtered text: the
+// styled form of a text, which printableText prints only when the plain
+// text has nothing to remove.
+func StyleEveryLineBoldOf(text clierr.Filtered) func(style.Style) string {
+	return StyleEveryLineBold(text.WithoutMark())
 }

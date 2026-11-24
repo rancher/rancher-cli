@@ -1,7 +1,6 @@
 package token
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -99,12 +98,12 @@ const (
 )
 
 // signInNotice is what a sign-in through chosen says before it asks
-// anyone to act, "" for none. A password or OAuth sign-in through a type
+// anyone to act, empty for none. A password or OAuth sign-in through a type
 // that has several auth configs on the server names the one it uses. A
 // SAML sign-in goes through the Rancher sign-in page, where the user selects
 // the provider; with several SAML auth configs the notice names the one to
 // select, as the page shows it.
-func signInNotice(entries []typedProvider, chosen typedProvider) string {
+func signInNotice(entries []typedProvider, chosen typedProvider) clierr.Filtered {
 	typ := chosen.GetType()
 	if samlProviders[typ] {
 		saml := 0
@@ -116,11 +115,11 @@ func signInNotice(entries []typedProvider, chosen typedProvider) string {
 		if saml > 1 {
 			name, labelForm := signInPageName(chosen.GetID(), providerName(typ))
 			if labelForm {
-				return fmt.Sprintf(samlNoticeLabel, name, output.Printable(authConfigName(chosen)))
+				return clierr.Sprintf(samlNoticeLabel, name, output.FilterValue(authConfigName(chosen)))
 			}
-			return fmt.Sprintf(samlNoticeID, output.Printable(name))
+			return clierr.Sprintf(samlNoticeID, output.FilterValue(name))
 		}
-		return ""
+		return clierr.Filtered{}
 	}
 	same := 0
 	for _, prov := range entries {
@@ -129,7 +128,7 @@ func signInNotice(entries []typedProvider, chosen typedProvider) string {
 		}
 	}
 	if same > 1 {
-		return "Signing in through auth config " + output.Printable(authConfigLabel(chosen)) + "."
+		return clierr.Plain("Signing in through auth config ").Append(output.FilterValue(authConfigLabel(chosen))).AppendString(".")
 	}
-	return ""
+	return clierr.Filtered{}
 }

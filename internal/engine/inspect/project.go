@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	projectscomplete "github.com/rancher/rancher-cli/internal/engine/projects/complete"
@@ -147,8 +148,8 @@ func (c *projectCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 	return runtime.Result{
 		Kind:       "ProjectInspection",
 		Data:       result,
-		Text:       text,
-		StyledText: func(s style.Style) string { return styleProjectText(text, s) },
+		Text:       text.Marked(),
+		StyledText: func(s style.Style) string { return styleProjectText(text.WithoutMark(), s) },
 		Warnings:   append(warnings, degradedWarnings...),
 	}, nil
 }
@@ -309,9 +310,9 @@ type projectResult struct {
 // renderProjectText is the default rendering: the same multi-section card
 // pattern as renderClusterText. Omitted sections render a concise
 // availability marker; detailed causes live in Result.Warnings (stderr).
-func renderProjectText(r projectResult) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "PROJECT\n  id: %s\n  displayName: %s\n  cluster: %s\n", r.ID, output.Printable(r.DisplayName), r.Cluster)
+func renderProjectText(r projectResult) clierr.Filtered {
+	var b clierr.Builder
+	b.Printf("PROJECT\n  id: %s\n  displayName: %s\n  cluster: %s\n", r.ID, output.FilterValue(r.DisplayName), r.Cluster)
 
 	b.WriteString("\nNAMESPACES\n")
 	switch {
@@ -321,7 +322,7 @@ func renderProjectText(r projectResult) string {
 		b.WriteString("  none\n")
 	default:
 		for _, ns := range r.Namespaces {
-			fmt.Fprintf(&b, "  %s (pods: %d, deployments: %d)\n", ns.Name, ns.Workloads.Pods, ns.Workloads.Deployments)
+			b.Printf("  %s (pods: %d, deployments: %d)\n", ns.Name, ns.Workloads.Pods, ns.Workloads.Deployments)
 		}
 	}
 
@@ -338,9 +339,9 @@ func renderProjectText(r projectResult) string {
 				suffix = " [system]"
 			}
 			if m.DisplayName != "" {
-				fmt.Fprintf(&b, "  %s (%s)  %s%s\n", output.Printable(m.DisplayName), output.Printable(m.Principal), output.Printable(m.Role), suffix)
+				b.Printf("  %s (%s)  %s%s\n", output.FilterValue(m.DisplayName), output.FilterValue(m.Principal), output.FilterValue(m.Role), suffix)
 			} else {
-				fmt.Fprintf(&b, "  %s  %s%s\n", output.Printable(m.Principal), output.Printable(m.Role), suffix)
+				b.Printf("  %s  %s%s\n", output.FilterValue(m.Principal), output.FilterValue(m.Role), suffix)
 			}
 		}
 	}
@@ -355,16 +356,16 @@ func renderProjectText(r projectResult) string {
 	b.WriteString("\nUSAGE\n")
 	switch {
 	case r.Usage != nil:
-		cpu := fmt.Sprintf("  cpu: request=%s limit=%s", output.Printable(cpuCell(r.Usage.CPURequest)), output.Printable(cpuCell(r.Usage.CPULimit)))
+		cpu := clierr.Sprintf("  cpu: request=%s limit=%s", output.FilterValue(cpuCell(r.Usage.CPURequest)), output.FilterValue(cpuCell(r.Usage.CPULimit)))
 		if r.Usage.CPUUsage != "" {
-			cpu += " usage=" + output.Printable(cpuCell(r.Usage.CPUUsage))
+			cpu = cpu.AppendString(" usage=").Append(output.FilterValue(cpuCell(r.Usage.CPUUsage)))
 		}
-		b.WriteString(cpu + "\n")
-		mem := fmt.Sprintf("  memory: request=%s limit=%s", output.Printable(memoryCell(r.Usage.MemoryRequest)), output.Printable(memoryCell(r.Usage.MemoryLimit)))
+		b.Write(cpu.AppendString("\n"))
+		mem := clierr.Sprintf("  memory: request=%s limit=%s", output.FilterValue(memoryCell(r.Usage.MemoryRequest)), output.FilterValue(memoryCell(r.Usage.MemoryLimit)))
 		if r.Usage.MemoryUsage != "" {
-			mem += " usage=" + output.Printable(memoryCell(r.Usage.MemoryUsage))
+			mem = mem.AppendString(" usage=").Append(output.FilterValue(memoryCell(r.Usage.MemoryUsage)))
 		}
-		b.WriteString(mem + "\n")
+		b.Write(mem.AppendString("\n"))
 	case r.Namespaces != nil && len(r.Namespaces) == 0:
 		// A project with zero namespaces has nothing to measure - a
 		// verified-empty state, not an unavailable one. Namespaces null is a
@@ -373,7 +374,7 @@ func renderProjectText(r projectResult) string {
 	default:
 		b.WriteString("  usage: unavailable\n")
 	}
-	return b.String()
+	return b.Filtered()
 }
 
 // projectSectionHeaders is the fixed, always-present section header set
@@ -392,7 +393,7 @@ func styleProjectText(text string, s style.Style) string {
 
 // writeSortedMap renders a nested map with recursively sorted keys -
 // canonical order, never Go map iteration order.
-func writeSortedMap(b *strings.Builder, m map[string]any, depth int) {
+func writeSortedMap(b *clierr.Builder, m map[string]any, depth int) {
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)
@@ -401,10 +402,10 @@ func writeSortedMap(b *strings.Builder, m map[string]any, depth int) {
 	indent := strings.Repeat("  ", depth)
 	for _, k := range keys {
 		if child, ok := m[k].(map[string]any); ok {
-			fmt.Fprintf(b, "%s%s:\n", indent, output.Printable(k))
+			b.Printf("%s%s:\n", indent, output.FilterValue(k))
 			writeSortedMap(b, child, depth+1)
 			continue
 		}
-		fmt.Fprintf(b, "%s%s: %s\n", indent, output.Printable(k), output.Printable(fmt.Sprint(m[k])))
+		b.Printf("%s%s: %s\n", indent, output.FilterValue(k), output.FilterValue(fmt.Sprint(m[k])))
 	}
 }

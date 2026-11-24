@@ -1007,7 +1007,7 @@ func TestRenderClusterTextEscapeStripping(t *testing.T) {
 		{Principal: "okta_user://evil", DisplayName: "Evil\x1b[2Jname", Role: "cluster-member"},
 	}
 	r := clusterResult{Cluster: clusterIdentity{ID: "c-x"}, Members: &members}
-	text := renderClusterText(r)
+	text := renderClusterText(r).Marked()
 	assert.NotContains(t, text, "\x1b", "ANSI escape sequences from IdP display names must be stripped")
 	assert.Contains(t, text, "Evil[2Jname", "printable chars around the escape are preserved")
 
@@ -1015,7 +1015,7 @@ func TestRenderClusterTextEscapeStripping(t *testing.T) {
 		{Principal: "okta_user://evil", DisplayName: "abc\u202edef\u200bghi", Role: "cluster-member"},
 	}
 	r.Members = &bidi
-	text = renderClusterText(r)
+	text = renderClusterText(r).Marked()
 	assert.NotContains(t, text, "\u202e", "bidi-override format characters must be stripped")
 	assert.NotContains(t, text, "\u200b", "zero-width format characters must be stripped")
 	assert.Contains(t, text, "abcdefghi", "visible runes around format characters are preserved")
@@ -1024,18 +1024,18 @@ func TestRenderClusterTextEscapeStripping(t *testing.T) {
 func TestRenderClusterTextMembersSection(t *testing.T) {
 	t.Parallel()
 	r := clusterResult{Cluster: clusterIdentity{ID: "c-x"}}
-	assert.Contains(t, renderClusterText(r), "MEMBERS\n  members: unavailable\n")
+	assert.Contains(t, renderClusterText(r).Marked(), "MEMBERS\n  members: unavailable\n")
 
 	empty := []rbac.MemberRow{}
 	r.Members = &empty
-	assert.Contains(t, renderClusterText(r), "MEMBERS\n  none\n")
+	assert.Contains(t, renderClusterText(r).Marked(), "MEMBERS\n  none\n")
 
 	members := []rbac.MemberRow{
 		{Principal: "github_org://8341", DisplayName: "DevOps Team", Role: "cluster-member"},
 		{Principal: "okta_user://never", Role: "cluster-member"},
 	}
 	r.Members = &members
-	text := renderClusterText(r)
+	text := renderClusterText(r).Marked()
 	assert.Contains(t, text, "MEMBERS\n  DevOps Team (github_org://8341)  cluster-member\n  okta_user://never  cluster-member\n")
 }
 
@@ -1191,18 +1191,18 @@ func TestClusterMachinesWithCreateError(t *testing.T) {
 func TestRenderClusterTextMachinesSection(t *testing.T) {
 	t.Parallel()
 	r := clusterResult{Cluster: clusterIdentity{ID: "c-x"}}
-	assert.Contains(t, renderClusterText(r), "MACHINES\n  machines: unavailable\n")
+	assert.Contains(t, renderClusterText(r).Marked(), "MACHINES\n  machines: unavailable\n")
 
 	empty := []clusterMachine{}
 	r.Machines = &empty
-	assert.Contains(t, renderClusterText(r), "MACHINES\n  none\n")
+	assert.Contains(t, renderClusterText(r).Marked(), "MACHINES\n  none\n")
 
 	machines := []clusterMachine{
 		{Name: "pool1-abc", Phase: "Running"},
 		{Name: "pool1-def", Phase: "Failed", Error: "CreateError: invalid image"},
 	}
 	r.Machines = &machines
-	text := renderClusterText(r)
+	text := renderClusterText(r).Marked()
 	assert.Contains(t, text,
 		"MACHINES\n  pool1-abc  Running\n  pool1-def  Failed\n    CreateError: invalid image\n")
 
@@ -1210,17 +1210,17 @@ func TestRenderClusterTextMachinesSection(t *testing.T) {
 	emptyPools := []machinePool{}
 	r.Machines = &emptyMachines
 	r.MachinePools = &emptyPools
-	assert.Contains(t, renderClusterText(r), "MACHINES\n  none (imported or custom cluster)\n",
+	assert.Contains(t, renderClusterText(r).Marked(), "MACHINES\n  none (imported or custom cluster)\n",
 		"verified-empty machines + verified-empty pools reads as expected for imported/custom")
 
 	pools := []machinePool{{Name: "pool1", Quantity: 1}}
 	r.MachinePools = &pools
-	assert.Contains(t, renderClusterText(r), "MACHINES\n  none\n",
+	assert.Contains(t, renderClusterText(r).Marked(), "MACHINES\n  none\n",
 		"empty machines with real pools stays a plain none")
 
 	r.MachinePools = nil
 	r.ProvisioningNote = ""
-	assert.Contains(t, renderClusterText(r), "MACHINES\n  none\n",
+	assert.Contains(t, renderClusterText(r).Marked(), "MACHINES\n  none\n",
 		"empty machines with pools unavailable stays a plain none")
 }
 
@@ -1262,7 +1262,7 @@ func TestMachineConditionMessageSanitized(t *testing.T) {
 		{Name: "pool1-abc", Phase: "Failed", Error: "Error\x1b[2J from provider"},
 	}
 	r := clusterResult{Cluster: clusterIdentity{ID: "c-x"}, Machines: &machines}
-	text := renderClusterText(r)
+	text := renderClusterText(r).Marked()
 	assert.NotContains(t, text, "\x1b", "ANSI escape sequences in machine error messages must be stripped")
 	assert.Contains(t, text, "Error[2J from provider", "printable chars around the escape are preserved")
 }
@@ -1732,7 +1732,7 @@ func TestRenderClusterTextSystemMemberTag(t *testing.T) {
 		{Principal: "okta_user://operator", Role: "cluster-member"},
 	}
 	r.Members = &members
-	text := renderClusterText(r)
+	text := renderClusterText(r).Marked()
 	assert.Contains(t, text, "  system://provisioning/fleet-default/imp  cluster-owner [system]\n")
 	assert.Contains(t, text, "  okta_user://operator  cluster-member\n")
 }
@@ -1985,10 +1985,10 @@ func TestStyleClusterTextStripInvariant(t *testing.T) {
 	text := renderClusterText(clusterResult{Cluster: clusterIdentity{ID: "c-abc", Name: "prod"}})
 	enabled := style.Style{Enabled: true}
 
-	styled := styleClusterText(text, enabled)
-	assert.NotEqual(t, text, styled)
-	assert.Equal(t, text, style.Unstyled(styled))
-	assert.Equal(t, text, styleClusterText(text, style.Style{}), "disabled style returns text unchanged")
+	styled := styleClusterText(text.Marked(), enabled)
+	assert.NotEqual(t, text.Marked(), styled)
+	assert.Equal(t, text.Marked(), style.Unstyled(styled))
+	assert.Equal(t, text.Marked(), styleClusterText(text.Marked(), style.Style{}), "disabled style returns text unchanged")
 
 	for _, header := range []string{"CLUSTER", "CONDITIONS", "MACHINE POOLS", "MEMBERS", "MACHINES", "REGISTRATION"} {
 		assert.Contains(t, styled, "\x1b[1m"+header+"\x1b[0m\n", "%s must be bold, whole line", header)

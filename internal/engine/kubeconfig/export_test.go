@@ -12,13 +12,13 @@ func NoOwnerNoticeForTest(cfg *config.Config, identified, entry, clusterID strin
 	_, notice := lookupCall{cfg: cfg, clusterID: clusterID}.recordedOwner(token.StoredLogin{
 		Outcome: token.LookupAnswered, Identified: identified, Entry: entry, PluginEntry: plugin,
 	})
-	return notice
+	return notice.Marked()
 }
 
 // NoStoredLoginNoticeForTest is the notice the kubeconfig for clusterID prints
 // when no stored login answers for it.
 func NoStoredLoginNoticeForTest(cfg *config.Config, dir, name, clusterID, serverID string) string {
-	return lookupNotice(lookupCall{cfg: cfg, dir: dir, name: name, clusterID: clusterID, serverID: serverID}, token.StoredLogin{Outcome: token.LookupNone})
+	return lookupNotice(lookupCall{cfg: cfg, dir: dir, name: name, clusterID: clusterID, serverID: serverID}, token.StoredLogin{Outcome: token.LookupNone}).Marked()
 }
 
 // ReservedNameRefusalForTest is the message that refuses a --name auth

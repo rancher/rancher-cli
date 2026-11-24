@@ -215,11 +215,11 @@ func (c *createCmd) execute(ctx context.Context, client engine.ClusterClient, k 
 	}
 
 	secretLine, shownOnce := runtime.OnceOnlyLine("client secret", plaintext, "client secret")
-	res := runtime.MutationText("oidcclient", name, "created",
-		"client id: "+output.Printable(clientID),
-		secretLine,
-		"secret name: "+output.Printable(secretName),
-		"issuer: "+issuer,
+	res := runtime.MutationTextOf("oidcclient", clierr.Plain(name), "created",
+		clierr.Plain("client id: ").Append(output.FilterValue(clientID)),
+		clierr.Plain(secretLine),
+		clierr.Plain("secret name: ").Append(output.FilterValue(secretName)),
+		clierr.Plain("issuer: "+issuer),
 	)
 	res.Kind = "OIDCClientCreated"
 	res.Data = data

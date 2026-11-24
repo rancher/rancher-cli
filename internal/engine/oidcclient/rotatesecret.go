@@ -150,9 +150,9 @@ func (c *rotateSecretCmd) execute(ctx context.Context, client engine.ClusterClie
 	}
 
 	secretLine, shownOnce := runtime.OnceOnlyLine("client secret", newValue, "client secret")
-	res := runtime.MutationText("oidcclient", clientName, "patched",
-		"secret "+output.Printable(secretName)+" regenerated",
-		secretLine,
+	res := runtime.MutationTextOf("oidcclient", clierr.Plain(clientName), "patched",
+		clierr.Plain("secret ").Append(output.FilterValue(secretName)).AppendString(" regenerated"),
+		clierr.Plain(secretLine),
 	)
 	res.Kind = "OIDCClientSecretRotated"
 	res.Data = map[string]any{"clientID": clientID, "secretName": secretName, "clientSecret": newValue}

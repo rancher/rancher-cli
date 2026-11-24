@@ -341,7 +341,7 @@ func (c *projectsCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.P
 		exit = exitUnknown
 	}
 	res := runtime.Result{Kind: "AccessProjects", Data: out, ExitStatus: exit,
-		Text: projectsText(out, false), WideText: projectsText(out, true)}
+		Text: projectsText(out, false).Marked(), WideText: projectsText(out, true).Marked()}
 	if warning != "" {
 		res.Warnings = []string{warning}
 	}
@@ -575,19 +575,19 @@ func (out *projectsResult) assemble(prov provenance, resolved bool) {
 }
 
 // projectsText renders the default and the wide view.
-func projectsText(out projectsResult, wide bool) string {
-	who := output.Printable(out.Subject.Name)
+func projectsText(out projectsResult, wide bool) clierr.Filtered {
+	who := output.FilterValue(out.Subject.Name)
 	if out.Identity == IdentityCaller {
-		who = "you"
+		who = clierr.Plain("you")
 	} else if out.Subject.DisplayName != "" {
-		who = fmt.Sprintf("%s (%s)", output.Printable(out.Subject.DisplayName), who)
+		who = clierr.Sprintf("%s (%s)", output.FilterValue(out.Subject.DisplayName), who)
 	}
-	var b strings.Builder
-	scope := "projects you can list"
+	var b clierr.Builder
+	scope := clierr.Plain("projects you can list")
 	if out.Cluster != "" {
-		scope = "projects you can list on " + output.Printable(out.Cluster)
+		scope = clierr.Plain("projects you can list on ").Append(output.FilterValue(out.Cluster))
 	}
-	fmt.Fprintf(&b, "%s, visibility for %s\n\n", scope, who)
+	b.Printf("%s, visibility for %s\n\n", scope, who)
 	header := []string{"CLUSTER", "PROJECT", "NAME", "VISIBILITY", "GRANTED BY", "NOTE"}
 	if wide {
 		header = []string{"CLUSTER", "PROJECT", "NAME", "VISIBILITY", "NAMESPACES", "GRANTED BY", "NOTE"}
@@ -617,23 +617,23 @@ func projectsText(out projectsResult, wide bool) string {
 			if wide {
 				row = append(row, "-")
 			}
-			rows = append(rows, append(row, "-", runtime.PrintableRemedies(cr.NamespaceDiscovery.Issue.Message)))
+			rows = append(rows, append(row, "-", cr.NamespaceDiscovery.Issue.Message))
 		}
 		for _, pr := range cr.Projects {
 			v := visibility{Visibility: pr.Visibility, AllowedIn: pr.AllowedIn, UnknownIn: pr.UnknownIn}
-			row := []string{cr.Cluster, pr.Project, output.Printable(pr.DisplayName), visibilityCell(v, len(pr.Namespaces))}
+			row := []string{cr.Cluster, pr.Project, pr.DisplayName, visibilityCell(v, len(pr.Namespaces))}
 			if wide {
 				cell := "-"
 				if len(pr.Namespaces) > 0 {
 					var ns []string
 					for _, n := range pr.Namespaces {
-						ns = append(ns, output.Printable(n.Namespace)+"="+n.Access)
+						ns = append(ns, n.Namespace+"="+n.Access)
 					}
 					cell = strings.Join(ns, " ")
 				}
 				row = append(row, cell)
 			}
-			row = append(row, projectGrantedByCell(pr.Bindings, out.BindingsDiscovery), runtime.PrintableRemedies(pr.Note))
+			row = append(row, projectGrantedByCell(pr.Bindings, out.BindingsDiscovery), pr.Note)
 			rows = append(rows, row)
 		}
 	}
@@ -641,82 +641,82 @@ func projectsText(out projectsResult, wide bool) string {
 	b.WriteString("\n")
 	switch {
 	case out.MemberOf == nil:
-		reason := "the ProjectRoleTemplateBinding read failed"
+		reason := clierr.Plain("the ProjectRoleTemplateBinding read failed")
 		for _, si := range out.BindingsDiscovery.Issues {
 			if si.Stage == "prtb" {
-				reason = runtime.PrintableRemedies(si.Issue.Message)
+				reason = runtime.FilterRemedies(si.Issue.Message)
 			}
 		}
-		fmt.Fprintf(&b, "%s%s\n", membershipNotDeterminedPrefix, reason)
+		b.Printf("%s%s\n", membershipNotDeterminedPrefix, reason)
 	case len(out.MemberOf.Projects) == 0:
-		fmt.Fprintf(&b, "%s a member of: none\n", memberPhrase(who))
+		b.Printf("%s a member of: none\n", memberPhrase(who))
 	default:
-		var items []string
+		var items []clierr.Filtered
 		for _, m := range out.MemberOf.Projects {
-			s := output.Printable(m.Cluster) + "/" + output.Printable(m.Project)
-			if names := grantNames(m.Grants); names != "" {
-				s += " (" + names + ")"
+			s := output.FilterValue(m.Cluster).AppendString("/").Append(output.FilterValue(m.Project))
+			if names := grantNames(m.Grants); !names.IsEmpty() {
+				s = s.AppendString(" (").Append(names).AppendString(")")
 			}
 			items = append(items, s)
 		}
-		fmt.Fprintf(&b, "%s a member of: %s\n", memberPhrase(who), strings.Join(items, ", "))
+		b.Printf("%s a member of: %s\n", memberPhrase(who), clierr.JoinFiltered(items, ", "))
 	}
-	var noBinding []string
+	var noBinding []clierr.Filtered
 	for _, cr := range out.Clusters {
 		for _, pr := range cr.Projects {
 			if pr.Note == noBindingNote {
-				entry := output.Printable(cr.Cluster) + "/" + output.Printable(pr.Project)
+				entry := output.FilterValue(cr.Cluster).AppendString("/").Append(output.FilterValue(pr.Project))
 				if len(pr.KubernetesBindings) > 0 {
-					names := make([]string, 0, len(pr.KubernetesBindings))
+					names := make([]clierr.Filtered, 0, len(pr.KubernetesBindings))
 					for _, n := range pr.KubernetesBindings {
-						names = append(names, output.Printable(n))
+						names = append(names, output.FilterValue(n))
 					}
-					entry += " (" + strings.Join(names, ", ") + ")"
+					entry = entry.AppendString(" (").Append(clierr.JoinFiltered(names, ", ")).AppendString(")")
 				}
 				noBinding = append(noBinding, entry)
 			}
 		}
 	}
 	if len(noBinding) > 0 {
-		fmt.Fprintf(&b, "visible through Kubernetes bindings, not a Rancher member: %s\n", strings.Join(noBinding, ", "))
+		b.Printf("visible through Kubernetes bindings, not a Rancher member: %s\n", clierr.JoinFiltered(noBinding, ", "))
 	}
-	fmt.Fprintf(&b, "%s\n", visibilityDefinition)
+	b.Printf("%s\n", visibilityDefinition)
 	if out.InheritedAccess == nil {
 		b.WriteString("inherited access not determined: a binding read the classification depends on failed\n")
 	}
 	if len(out.InheritedAccess) > 0 {
-		var items []string
+		var items []clierr.Filtered
 		for _, ia := range out.InheritedAccess {
-			s := output.Printable(ia.Cluster) + "/" + output.Printable(ia.Project)
-			if names := grantNames(ia.Grants); names != "" {
-				s += " (" + names + ")"
+			s := output.FilterValue(ia.Cluster).AppendString("/").Append(output.FilterValue(ia.Project))
+			if names := grantNames(ia.Grants); !names.IsEmpty() {
+				s = s.AppendString(" (").Append(names).AppendString(")")
 			}
 			items = append(items, s)
 		}
-		fmt.Fprintf(&b, "inherited access (cluster or global grants, not membership): %s\n", strings.Join(items, ", "))
+		b.Printf("inherited access (cluster or global grants, not membership): %s\n", clierr.JoinFiltered(items, ", "))
 	}
 	if out.GroupAliases.Status == "available" {
-		fmt.Fprintf(&b, "%s\n", groupsCachedNote)
+		b.Printf("%s\n", groupsCachedNote)
 	}
 	if out.BindingsDiscovery.Status != "complete" {
-		var reasons []string
+		var reasons []clierr.Filtered
 		for _, si := range out.BindingsDiscovery.Issues {
-			reasons = append(reasons, si.Stage+": "+runtime.PrintableRemedies(si.Issue.Message))
+			reasons = append(reasons, clierr.Plain(si.Stage+": ").Append(runtime.FilterRemedies(si.Issue.Message)))
 		}
-		fmt.Fprintf(&b, "bindings: %s (%s)\n", out.BindingsDiscovery.Status, strings.Join(reasons, "; "))
+		b.Printf("bindings: %s (%s)\n", out.BindingsDiscovery.Status, clierr.JoinFiltered(reasons, "; "))
 	}
 	r := out.Rollup
-	fmt.Fprintf(&b, "%d clusters: %d reachable, %d refused, %d unknown", r.Clusters, r.Reachable, r.Refused, r.ClustersUnknown)
+	b.Printf("%d clusters: %d reachable, %d refused, %d unknown", r.Clusters, r.Reachable, r.Refused, r.ClustersUnknown)
 	if r.ClustersNotApplicable > 0 {
-		fmt.Fprintf(&b, ", %d not applicable", r.ClustersNotApplicable)
+		b.Printf(", %d not applicable", r.ClustersNotApplicable)
 	}
-	fmt.Fprintf(&b, "; %d projects: %d all, %d partial, %d none, %d unknown", r.Projects, r.All, r.Partial, r.None, r.ProjectsUnknown)
+	b.Printf("; %d projects: %d all, %d partial, %d none, %d unknown", r.Projects, r.All, r.Partial, r.None, r.ProjectsUnknown)
 	if r.ProjectsNotApplicable > 0 {
-		fmt.Fprintf(&b, ", %d not applicable", r.ProjectsNotApplicable)
+		b.Printf(", %d not applicable", r.ProjectsNotApplicable)
 	}
-	fmt.Fprintf(&b, "; %d namespaces asked, %d unknown; %d memberships\n", r.NamespacesAsked, r.NamespacesUnknown, r.Members)
-	fmt.Fprintf(&b, "source: %s | identity: %s\n", out.ResultSource, out.Identity)
-	return b.String()
+	b.Printf("; %d namespaces asked, %d unknown; %d memberships\n", r.NamespacesAsked, r.NamespacesUnknown, r.Members)
+	b.Printf("source: %s | identity: %s\n", out.ResultSource, out.Identity)
+	return b.Filtered()
 }
 
 // projectGrantedByCell renders a project's bindings: its own
@@ -802,20 +802,20 @@ func kubernetesBindings(rows []namespaceRow) []string {
 
 // memberPhrase opens the membership line: "you are" for the caller, "<who>
 // is" for anyone else.
-func memberPhrase(who string) string {
-	if who == "you" {
-		return "you are"
+func memberPhrase(who clierr.Filtered) clierr.Filtered {
+	if who == clierr.Plain("you") {
+		return clierr.Plain("you are")
 	}
-	return who + " is"
+	return who.AppendString(" is")
 }
 
-func grantNames(gs []grant) string {
+func grantNames(gs []grant) clierr.Filtered {
 	if gs == nil {
-		return ""
+		return clierr.Filtered{}
 	}
-	names := make([]string, 0, len(gs))
+	names := make([]clierr.Filtered, 0, len(gs))
 	for _, g := range gs {
-		names = append(names, output.Printable(g.Name))
+		names = append(names, output.FilterValue(g.Name))
 	}
-	return strings.Join(names, ", ")
+	return clierr.JoinFiltered(names, ", ")
 }

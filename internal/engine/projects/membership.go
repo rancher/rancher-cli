@@ -3,7 +3,6 @@ package projects
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -78,7 +77,7 @@ func (c addNamespaceCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 	SetMembership(after, cluster, projectID)
 
 	return planMembershipUpdate(ctx, client, before, after, cluster, func(res runtime.Result) runtime.Result {
-		return withContextLine(res, fmt.Sprintf("added to project %s", projectID))
+		return withContextLine(res, clierr.Plain(fmt.Sprintf("added to project %s", projectID)))
 	})
 }
 
@@ -167,7 +166,7 @@ func (c removeNamespaceCmd) Plan(ctx context.Context, in runtime.Input) (safety.
 	ClearMembership(after)
 
 	return planMembershipUpdate(ctx, client, before, after, cluster, func(res runtime.Result) runtime.Result {
-		return withContextLine(res, fmt.Sprintf("removed from project %s", output.Printable(current)))
+		return withContextLine(res, clierr.Sprintf("removed from project %s", output.FilterValue(current)))
 	})
 }
 
@@ -223,8 +222,8 @@ func hasProjectLabelWithoutAnnotation(ns *unstructured.Unstructured) bool {
 
 // withContextLine appends the bespoke, already-worded detail line,
 // indented, below the shared "namespace/<ns> patched" text.
-func withContextLine(res runtime.Result, contextLine string) runtime.Result {
-	tr := runtime.TextLines(strings.TrimSuffix(res.Text, "\n"), contextLine)
+func withContextLine(res runtime.Result, contextLine clierr.Filtered) runtime.Result {
+	tr := runtime.TextLinesOf(clierr.Plain(res.Text).TrimSuffix("\n"), contextLine)
 	res.Text, res.StyledText = tr.Text, tr.StyledText
 	return res
 }

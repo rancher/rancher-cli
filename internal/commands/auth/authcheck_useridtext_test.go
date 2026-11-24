@@ -26,13 +26,13 @@ func TestAuthStatusShowsAnOwnerWithHiddenRunesAsEscapes(t *testing.T) {
 			s := config.Server{Provenance: clierr.ProvenanceDerived, TokenUserID: tc.id}
 			data, line := credentialReport(s)
 			assert.Equal(t, tc.id, data["userId"], "the data keeps the owner as it is")
-			assert.Equal(t, "credential: derived (user "+tc.shown+")", line)
+			assert.Equal(t, "credential: derived (user "+tc.shown+")", line.Marked())
 
-			text := renderAuthCheckText(true, "default", "v1", nil, nil, map[string]any{"userID": tc.id}, nil, storeReport{policy: "auto"}, line)
+			text := renderAuthCheckText(true, "default", "v1", nil, nil, map[string]any{"userID": tc.id}, nil, storeReport{policy: "auto"}, line).Marked()
 			assert.Contains(t, text, "  userID: "+tc.shown+"\n")
 			if tc.id != tc.shown {
 				remedytest.AssertIDShownWithEscapes(t, text, tc.id)
-				remedytest.AssertIDShownWithEscapes(t, line, tc.id)
+				remedytest.AssertIDShownWithEscapes(t, line.Marked(), tc.id)
 			}
 		})
 	}

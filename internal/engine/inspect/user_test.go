@@ -563,7 +563,7 @@ func TestStyleUserTextStripInvariant(t *testing.T) {
 		},
 	}
 	own := map[string]bool{"local://u-1": true}
-	text := renderUserText(r, own)
+	text := renderUserText(r, own).Marked()
 	require.Contains(t, text, "USER [system] [disabled]\n")
 
 	enabled := style.Style{Enabled: true}

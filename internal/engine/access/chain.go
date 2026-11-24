@@ -966,28 +966,32 @@ func (w *chainWalker) prtbFor(projectName, name string, depth int) chainNode {
 
 // renderTree renders a node and its children as ASCII lines: "+--" per
 // child, "|" continuation, node text "<Kind> <ns>/<name>" with the note
-// after "-". mark ("[allowed]" or "[denied]") prefixes the root only.
-func renderTree(node chainNode, mark string) []string {
-	var lines []string
+// after "-". mark ("[allowed]" or "[denied]") prefixes the root only. The
+// kind (a server value for a role node), namespace, name and note are
+// filtered where they are written; the prefixes, the mark and the
+// separators are the CLI's own text.
+func renderTree(node chainNode, mark string) []clierr.Filtered {
+	var lines []clierr.Filtered
 	var walk func(n chainNode, prefix string, last bool, root bool)
 	walk = func(n chainNode, prefix string, last bool, root bool) {
-		label := n.Kind
+		label := runtime.FilterRemedies(n.Kind)
+		name := runtime.FilterRemedies(n.Name)
 		switch {
 		case n.Namespace != "" && n.Name != "":
-			label += " " + n.Namespace + "/" + n.Name
+			label = label.AppendString(" ").Append(runtime.FilterRemedies(n.Namespace)).AppendString("/").Append(name)
 		case n.Name != "":
-			label += " " + n.Name
+			label = label.AppendString(" ").Append(name)
 		}
 		if root && mark != "" {
-			label = mark + " " + label
+			label = clierr.Plain(mark + " ").Append(label)
 		}
 		if n.Note != "" {
-			label += " - " + runtime.PrintableRemedies(n.Note)
+			label = label.AppendString(" - ").Append(runtime.FilterRemedies(n.Note))
 		}
 		if root {
 			lines = append(lines, label)
 		} else {
-			lines = append(lines, prefix+"+-- "+label)
+			lines = append(lines, clierr.Plain(prefix+"+-- ").Append(label))
 		}
 		childPrefix := prefix
 		if !root {

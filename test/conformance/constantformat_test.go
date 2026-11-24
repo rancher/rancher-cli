@@ -183,8 +183,9 @@ func formatTargets(pkgs []*packages.Package) map[string]bool {
 // function or in the initializer of a package-level variable: the marker
 // joins the text as an argument, or by a + outside the format. The family is
 // the functions of fmt and every callee whose signature ends in format string
-// and ...any, a closure bound to a variable included; the four of them in the
-// module outside fmt are listed, so a callee the check stops seeing fails.
+// and ...any, a closure bound to a variable included; the callees in the
+// module outside fmt are listed once per package that calls them: a callee
+// the check stops seeing fails.
 func TestNoFormatIsBuiltFromTheRemedyMarker(t *testing.T) {
 	t.Parallel()
 	pkgs, err := fieldManagerPackages()
@@ -205,6 +206,18 @@ func TestNoFormatIsBuiltFromTheRemedyMarker(t *testing.T) {
 	assert.Equal(t, []string{
 		"credhelper.fail",
 		"internal/cli.completionDebugf",
+		"internal/clierr.Printf",
+		"internal/clierr.Printf",
+		"internal/clierr.Printf",
+		"internal/clierr.Printf",
+		"internal/clierr.Printf",
+		"internal/clierr.Sprintf",
+		"internal/clierr.Sprintf",
+		"internal/clierr.Sprintf",
+		"internal/clierr.Sprintf",
+		"internal/clierr.Sprintf",
+		"internal/clierr.Sprintf",
+		"internal/clierr.Sprintf",
 		"internal/telemetry.w",
 		"internal/telemetry.w",
 	}, byShape)

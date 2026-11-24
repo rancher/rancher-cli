@@ -296,10 +296,10 @@ func TestKubeconfigNoticesFollowTheExecPluginsLookup(t *testing.T) {
 			store, _ := envValue(e, config.EnvCredentialStore)
 			machine := machineNotice(dir, store, "rancher", false)
 			if want == "" {
-				assert.Equal(t, []string{machine}, lines)
+				assert.Equal(t, []string{machine.Marked()}, lines)
 				return
 			}
-			assert.Equal(t, []string{want, machine}, lines)
+			assert.Equal(t, []string{want, machine.Marked()}, lines)
 		})
 	}
 }
@@ -355,7 +355,7 @@ func TestKubeconfigLookupReadsTheDeclaredStore(t *testing.T) {
 	assert.Empty(t, store)
 	assert.Equal(t, []string{
 		"this kubeconfig authenticates through the stored login of 'prod', not through RANCHER_CLI_TOKEN",
-		machineNotice(dir, "", "rancher", false),
+		machineNotice(dir, "", "rancher", false).Marked(),
 	}, lines)
 }
 

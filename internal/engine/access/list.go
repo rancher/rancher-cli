@@ -8,7 +8,6 @@ import (
 	"maps"
 	"slices"
 	"strings"
-	"unicode/utf8"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
@@ -166,7 +165,7 @@ func (c *listCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Promp
 		out.Note = fmt.Sprintf("project %s has no namespaces on cluster %s", scope.Project, clusterID)
 		out.ResultSource = SourceScopeDiscovery
 		out.Rollup = listRollup{Complete: true}
-		return runtime.Result{Kind: "AccessRules", Data: out, ExitStatus: 0, Text: listText(out, implicitDefault), WideText: listWideText(out)}, nil
+		return runtime.Result{Kind: "AccessRules", Data: out, ExitStatus: 0, Text: listText(out, implicitDefault).Marked(), WideText: listWideText(out).Marked()}, nil
 	}
 	if plan.Denied != nil {
 		// The proxy refused the subject before any rules review: report
@@ -174,7 +173,7 @@ func (c *listCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Promp
 		out.Note = plan.Denied.Note
 		out.ResultSource = SourceRancherProxy
 		out.Rollup = listRollup{Namespaces: len(scope.targets)}
-		return runtime.Result{Kind: "AccessRules", Data: out, ExitStatus: exitUnknown, Text: listText(out, implicitDefault), WideText: listWideText(out)}, nil
+		return runtime.Result{Kind: "AccessRules", Data: out, ExitStatus: exitUnknown, Text: listText(out, implicitDefault).Marked(), WideText: listWideText(out).Marked()}, nil
 	}
 	ask := func(ctx context.Context, ns string) (listNamespace, reviewResult) {
 		r := postReview(ctx, plan.Client, engine.ReviewSelfSubjectRules, rulesReviewObject(ns))
@@ -215,7 +214,7 @@ func (c *listCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Promp
 	if !out.Rollup.Complete {
 		exit = exitUnknown
 	}
-	return runtime.Result{Kind: "AccessRules", Data: out, ExitStatus: exit, Text: listText(out, implicitDefault), WideText: listWideText(out)}, nil
+	return runtime.Result{Kind: "AccessRules", Data: out, ExitStatus: exit, Text: listText(out, implicitDefault).Marked(), WideText: listWideText(out).Marked()}, nil
 }
 
 // rulesFrom canonicalizes one SelfSubjectRulesReview status.
@@ -361,59 +360,58 @@ func groupLabel(g string) string {
 // prefixed with indent. The header is the first line and every later line
 // is one row in order, so a caller that writes its own text between rows
 // still measures the columns over the whole table.
-func tableLines(indent string, header []string, rows [][]string) []string {
+func tableLines(indent string, header []string, rows [][]string) []clierr.Filtered {
 	// Cells carry server text (resource names, subject names, display
 	// names); each passes the terminal-safety boundary before it is
 	// measured or written, so widths are computed on what is printed.
-	header = printableAll(header)
-	safe := make([][]string, len(rows))
+	head := printableAll(header)
+	safe := make([][]clierr.Filtered, len(rows))
 	for i, r := range rows {
 		safe[i] = printableAll(r)
 	}
-	rows = safe
-	widths := make([]int, len(header))
-	for i, h := range header {
-		widths[i] = utf8.RuneCountInString(h)
+	widths := make([]int, len(head))
+	for i, h := range head {
+		widths[i] = h.Width()
 	}
-	for _, r := range rows {
+	for _, r := range safe {
 		for i, c := range r {
-			widths[i] = max(widths[i], utf8.RuneCountInString(c))
+			widths[i] = max(widths[i], c.Width())
 		}
 	}
-	line := func(cells []string) string {
-		var l strings.Builder
+	line := func(cells []clierr.Filtered) clierr.Filtered {
+		var l clierr.Builder
 		l.WriteString(indent)
 		for i, c := range cells {
-			l.WriteString(c)
+			l.Write(c)
 			if i < len(cells)-1 {
-				l.WriteString(strings.Repeat(" ", widths[i]-utf8.RuneCountInString(c)+2))
+				l.WriteString(strings.Repeat(" ", widths[i]-c.Width()+2))
 			}
 		}
 		// An empty last cell (a row without NAMES) leaves no trailing pad.
-		return strings.TrimRight(l.String(), " ")
+		return l.Filtered().TrimRight(" ")
 	}
-	out := make([]string, 0, len(rows)+1)
-	out = append(out, line(header))
-	for _, r := range rows {
+	out := make([]clierr.Filtered, 0, len(safe)+1)
+	out = append(out, line(head))
+	for _, r := range safe {
 		out = append(out, line(r))
 	}
 	return out
 }
 
 // printableAll returns cells with every entry passed through
-// runtime.PrintableRemedies, leaving the input untouched.
-func printableAll(cells []string) []string {
-	out := make([]string, len(cells))
+// runtime.FilterRemedies, leaving the input untouched.
+func printableAll(cells []string) []clierr.Filtered {
+	out := make([]clierr.Filtered, len(cells))
 	for i, c := range cells {
-		out[i] = runtime.PrintableRemedies(c)
+		out[i] = runtime.FilterRemedies(c)
 	}
 	return out
 }
 
 // writeTable writes the fitted table as one block.
-func writeTable(b *strings.Builder, indent string, header []string, rows [][]string) {
+func writeTable(b *clierr.Builder, indent string, header []string, rows [][]string) {
 	for _, l := range tableLines(indent, header, rows) {
-		b.WriteString(l)
+		b.Write(l)
 		b.WriteString("\n")
 	}
 }
@@ -428,7 +426,7 @@ type namespaceRows struct {
 // resourceTable writes the resource rows of one or several namespaces;
 // namespaced, when set, prefixes a NAMESPACE column. The NAMES column
 // appears only when some row carries resource names.
-func resourceTable(b *strings.Builder, indent string, groups []namespaceRows, namespaced bool) {
+func resourceTable(b *clierr.Builder, indent string, groups []namespaceRows, namespaced bool) {
 	hasNames := false
 	for _, g := range groups {
 		for _, r := range g.rows {
@@ -461,7 +459,7 @@ func resourceTable(b *strings.Builder, indent string, groups []namespaceRows, na
 }
 
 // nonResourceTable is resourceTable's twin for non-resource URLs.
-func nonResourceTable(b *strings.Builder, indent string, groups []namespaceRows, namespaced bool) {
+func nonResourceTable(b *clierr.Builder, indent string, groups []namespaceRows, namespaced bool) {
 	header := []string{"NON-RESOURCE URL", "VERBS"}
 	if namespaced {
 		header = append([]string{"NAMESPACE"}, header...)
@@ -482,22 +480,22 @@ func nonResourceTable(b *strings.Builder, indent string, groups []namespaceRows,
 // listText renders one block per distinct rule set; namespaces with an
 // identical set are listed once under "also in". Each block is one row
 // per API group and resource, then the non-resource URLs when any.
-func listText(out listResult, implicitDefault bool) string {
+func listText(out listResult, implicitDefault bool) clierr.Filtered {
 	// The subject name, the note, namespace names, and issue messages are
 	// the server's text: each passes the terminal-safety boundary at
 	// insertion, as the cells do inside tableLines.
-	who := output.Printable(out.Subject.Name)
+	who := output.FilterValue(out.Subject.Name)
 	if out.Identity == IdentityCaller {
-		who = "you"
+		who = clierr.Plain("you")
 	}
-	var b strings.Builder
+	var b clierr.Builder
 	if out.Note != "" {
-		fmt.Fprintf(&b, "note: %s\n\n", runtime.PrintableRemedies(out.Note))
+		b.Printf("note: %s\n\n", runtime.FilterRemedies(out.Note))
 	}
 	printed := map[string]bool{}
 	for i, ns := range out.Namespaces {
 		if !ns.Evaluated {
-			fmt.Fprintf(&b, "namespace %s: not evaluated (%s: %s)\n\n", output.Printable(ns.Namespace), ns.Issue.Code, runtime.PrintableRemedies(ns.Issue.Message))
+			b.Printf("namespace %s: not evaluated (%s: %s)\n\n", output.FilterValue(ns.Namespace), ns.Issue.Code, runtime.FilterRemedies(ns.Issue.Message))
 			continue
 		}
 		key := listGroupKey(ns)
@@ -511,16 +509,16 @@ func listText(out listResult, implicitDefault bool) string {
 				also = append(also, other.Namespace)
 			}
 		}
-		fmt.Fprintf(&b, "rules for %s in namespace %s on %s", who, output.Printable(ns.Namespace), output.Printable(out.Scope.Cluster))
+		b.Printf("rules for %s in namespace %s on %s", who, output.FilterValue(ns.Namespace), output.FilterValue(out.Scope.Cluster))
 		if implicitDefault {
 			b.WriteString(", including every cluster-wide rule")
 		}
 		if len(also) > 0 {
-			fmt.Fprintf(&b, " (also in: %s)", output.Printable(strings.Join(also, ", ")))
+			b.Printf(" (also in: %s)", output.FilterValue(strings.Join(also, ", ")))
 		}
 		b.WriteString("\n")
 		if ns.Incomplete {
-			fmt.Fprintf(&b, "  incomplete: the server could not enumerate every rule (%s)\n", output.Printable(ns.EvaluationError))
+			b.Printf("  incomplete: the server could not enumerate every rule (%s)\n", output.FilterValue(ns.EvaluationError))
 		}
 		resourceTable(&b, "  ", []namespaceRows{{namespace: ns.Namespace, rows: resourceRows(ns.ResourceRules)}}, false)
 		if len(ns.NonResourceRules) > 0 {
@@ -528,8 +526,8 @@ func listText(out listResult, implicitDefault bool) string {
 		}
 		b.WriteString("\n")
 	}
-	fmt.Fprintf(&b, "source: %s | identity: %s\n", out.ResultSource, out.Identity)
-	return b.String()
+	b.Printf("source: %s | identity: %s\n", out.ResultSource, out.Identity)
+	return b.Filtered()
 }
 
 // listGroupKey identifies rows the text view may fold into one block:
@@ -554,19 +552,19 @@ func listGroupKey(ns listNamespace) string {
 // listWideText is the -o wide projection: one row per namespace, API
 // group, and resource, never grouped, a NAMESPACE column first, so every
 // row is attributable.
-func listWideText(out listResult) string {
-	var b strings.Builder
+func listWideText(out listResult) clierr.Filtered {
+	var b clierr.Builder
 	if out.Note != "" {
-		fmt.Fprintf(&b, "note: %s\n\n", runtime.PrintableRemedies(out.Note))
+		b.Printf("note: %s\n\n", runtime.FilterRemedies(out.Note))
 	}
 	var resources, nonResources []namespaceRows
 	for _, ns := range out.Namespaces {
 		switch {
 		case !ns.Evaluated:
-			fmt.Fprintf(&b, "namespace %s: not evaluated (%s: %s)\n", output.Printable(ns.Namespace), ns.Issue.Code, runtime.PrintableRemedies(ns.Issue.Message))
+			b.Printf("namespace %s: not evaluated (%s: %s)\n", output.FilterValue(ns.Namespace), ns.Issue.Code, runtime.FilterRemedies(ns.Issue.Message))
 			continue
 		case ns.Incomplete:
-			fmt.Fprintf(&b, "namespace %s: incomplete, the server could not enumerate every rule (%s)\n", output.Printable(ns.Namespace), output.Printable(ns.EvaluationError))
+			b.Printf("namespace %s: incomplete, the server could not enumerate every rule (%s)\n", output.FilterValue(ns.Namespace), output.FilterValue(ns.EvaluationError))
 		}
 		resources = append(resources, namespaceRows{namespace: ns.Namespace, rows: resourceRows(ns.ResourceRules)})
 		if len(ns.NonResourceRules) > 0 {
@@ -578,6 +576,6 @@ func listWideText(out listResult) string {
 		b.WriteString("\n")
 		nonResourceTable(&b, "", nonResources, true)
 	}
-	fmt.Fprintf(&b, "\nsource: %s | identity: %s\n", out.ResultSource, out.Identity)
-	return b.String()
+	b.Printf("\nsource: %s | identity: %s\n", out.ResultSource, out.Identity)
+	return b.Filtered()
 }

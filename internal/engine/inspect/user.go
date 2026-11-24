@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/rbac"
@@ -126,8 +127,8 @@ func (c *userCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Promp
 	return runtime.Result{
 		Kind:       "UserInspection",
 		Data:       result,
-		Text:       text,
-		StyledText: func(s style.Style) string { return styleUserText(text, s) },
+		Text:       text.Marked(),
+		StyledText: func(s style.Style) string { return styleUserText(text.WithoutMark(), s) },
 		Warnings:   warnings,
 	}, nil
 }
@@ -478,12 +479,12 @@ type userResult struct {
 // identity section's own, later Get: two reads of the same user can
 // disagree (a concurrent IdP login changing principalIds) and a rebuilt
 // set would mislabel a direct row as group-held.
-func renderUserText(r userResult, own map[string]bool) string {
-	var b strings.Builder
+func renderUserText(r userResult, own map[string]bool) clierr.Filtered {
+	var b clierr.Builder
 	renderUserIdentity(&b, r.User)
 	renderUserGroups(&b, r.User)
 	renderRoles(&b, r, own)
-	return b.String()
+	return b.Filtered()
 }
 
 // userSectionHeaders is the fixed, always-present exact header set
@@ -538,7 +539,7 @@ func styleUserText(text string, s style.Style) string {
 	})
 }
 
-func renderUserIdentity(b *strings.Builder, u userIdentity) {
+func renderUserIdentity(b *clierr.Builder, u userIdentity) {
 	header := "USER"
 	if u.System {
 		header += " [system]"
@@ -546,14 +547,14 @@ func renderUserIdentity(b *strings.Builder, u userIdentity) {
 	if u.Enabled != nil && !*u.Enabled {
 		header += " [disabled]"
 	}
-	fmt.Fprintf(b, "%s\n  id: %s\n  username: %s\n  displayName: %s\n",
-		header, u.ID, output.Printable(u.Username), output.Printable(u.DisplayName))
+	b.Printf("%s\n  id: %s\n  username: %s\n  displayName: %s\n",
+		header, u.ID, output.FilterValue(u.Username), output.FilterValue(u.DisplayName))
 	// Text always states the effective value: an absent wire field means
 	// enabled in Rancher, and the card should say so rather than stay
 	// silent. The wire keeps the raw presence/absence tri-state.
-	fmt.Fprintf(b, "  enabled: %t\n", u.Enabled == nil || *u.Enabled)
-	fmt.Fprintf(b, "  principals: %s\n  created: %s\n",
-		output.Printable(strings.Join(u.Principals, ", ")), output.Printable(u.Created))
+	b.Printf("  enabled: %t\n", u.Enabled == nil || *u.Enabled)
+	b.Printf("  principals: %s\n  created: %s\n",
+		output.FilterValue(strings.Join(u.Principals, ", ")), output.FilterValue(u.Created))
 	switch {
 	case u.Groups == nil:
 		// The UserAttribute read degraded: lastLogin is unknown, never
@@ -562,13 +563,13 @@ func renderUserIdentity(b *strings.Builder, u userIdentity) {
 		// so no unavailable marker distinguishes anything for them.
 		b.WriteString("  lastLogin: unavailable\n")
 	case u.LastLogin != "":
-		fmt.Fprintf(b, "  lastLogin: %s\n", output.Printable(u.LastLogin))
+		b.Printf("  lastLogin: %s\n", output.FilterValue(u.LastLogin))
 	}
 	if u.DisableAfter != "" {
-		fmt.Fprintf(b, "  disableAfter: %s\n", output.Printable(u.DisableAfter))
+		b.Printf("  disableAfter: %s\n", output.FilterValue(u.DisableAfter))
 	}
 	if u.DeleteAfter != "" {
-		fmt.Fprintf(b, "  deleteAfter: %s\n", output.Printable(u.DeleteAfter))
+		b.Printf("  deleteAfter: %s\n", output.FilterValue(u.DeleteAfter))
 	}
 	for _, provider := range slices.Sorted(maps.Keys(u.Extra)) {
 		inner := u.Extra[provider]
@@ -576,11 +577,11 @@ func renderUserIdentity(b *strings.Builder, u userIdentity) {
 		for _, key := range slices.Sorted(maps.Keys(inner)) {
 			pairs = append(pairs, fmt.Sprintf("%s=%s", key, strings.Join(inner[key], ",")))
 		}
-		fmt.Fprintf(b, "  extra (%s): %s\n", output.Printable(provider), output.Printable(strings.Join(pairs, "  ")))
+		b.Printf("  extra (%s): %s\n", output.FilterValue(provider), output.FilterValue(strings.Join(pairs, "  ")))
 	}
 }
 
-func renderUserGroups(b *strings.Builder, u userIdentity) {
+func renderUserGroups(b *clierr.Builder, u userIdentity) {
 	b.WriteString("\nGROUPS\n")
 	switch {
 	case u.Groups == nil:
@@ -591,21 +592,21 @@ func renderUserGroups(b *strings.Builder, u userIdentity) {
 	default:
 		for _, g := range *u.Groups {
 			if g.DisplayName != "" {
-				fmt.Fprintf(b, "  %s (%s)  [%s]\n", output.Printable(g.DisplayName), output.Printable(g.Principal), output.Printable(g.Provider))
+				b.Printf("  %s (%s)  [%s]\n", output.FilterValue(g.DisplayName), output.FilterValue(g.Principal), output.FilterValue(g.Provider))
 			} else {
-				fmt.Fprintf(b, "  %s  [%s]\n", output.Printable(g.Principal), output.Printable(g.Provider))
+				b.Printf("  %s  [%s]\n", output.FilterValue(g.Principal), output.FilterValue(g.Provider))
 			}
 		}
 	}
 	if u.LastRefresh != "" {
-		fmt.Fprintf(b, "  lastRefresh: %s\n", output.Printable(u.LastRefresh))
+		b.Printf("  lastRefresh: %s\n", output.FilterValue(u.LastRefresh))
 	}
 	if u.NeedsRefresh != nil {
-		fmt.Fprintf(b, "  needsRefresh: %t\n", *u.NeedsRefresh)
+		b.Printf("  needsRefresh: %t\n", *u.NeedsRefresh)
 	}
 }
 
-func renderRoles(b *strings.Builder, r userResult, own map[string]bool) {
+func renderRoles(b *clierr.Builder, r userResult, own map[string]bool) {
 	b.WriteString("\nROLE BINDINGS\n")
 	allKnown := r.Roles.Global != nil && r.Roles.Clusters != nil && r.Roles.Projects != nil
 	allEmpty := allKnown && len(*r.Roles.Global) == 0 && len(*r.Roles.Clusters) == 0 && len(*r.Roles.Projects) == 0
@@ -629,7 +630,7 @@ func renderRoles(b *strings.Builder, r userResult, own map[string]bool) {
 		b.WriteString("  CLUSTER: unavailable\n")
 	default:
 		for _, entry := range *r.Roles.Clusters {
-			fmt.Fprintf(b, "  CLUSTER %s\n", scopeLabel(entry.Cluster, entry.DisplayName))
+			b.Printf("  CLUSTER %s\n", scopeLabel(entry.Cluster, entry.DisplayName))
 			for _, row := range entry.Roles {
 				renderRoleRow(b, row, own)
 			}
@@ -641,7 +642,7 @@ func renderRoles(b *strings.Builder, r userResult, own map[string]bool) {
 		b.WriteString("  PROJECT: unavailable\n")
 	default:
 		for _, entry := range *r.Roles.Projects {
-			fmt.Fprintf(b, "  PROJECT %s\n", scopeLabel(entry.Project, entry.DisplayName))
+			b.Printf("  PROJECT %s\n", scopeLabel(entry.Project, entry.DisplayName))
 			for _, row := range entry.Roles {
 				renderRoleRow(b, row, own)
 			}
@@ -651,11 +652,11 @@ func renderRoles(b *strings.Builder, r userResult, own map[string]bool) {
 
 // scopeLabel renders "displayName (id)" when enriched, "id" otherwise - an
 // id is never replaced by a display name, only accompanied by it.
-func scopeLabel(id, displayName string) string {
+func scopeLabel(id, displayName string) clierr.Filtered {
 	if displayName == "" {
-		return output.Printable(id)
+		return output.FilterValue(id)
 	}
-	return fmt.Sprintf("%s (%s)", output.Printable(displayName), output.Printable(id))
+	return clierr.Sprintf("%s (%s)", output.FilterValue(displayName), output.FilterValue(id))
 }
 
 // renderRoleRow prints one memberRow. The parenthetical names the holding
@@ -663,14 +664,14 @@ func scopeLabel(id, displayName string) string {
 // already the user's own and would otherwise state the obvious (or, for
 // the empty-principalIds fallback row, misleadingly show the user's own
 // id as if it were a separate holder).
-func renderRoleRow(b *strings.Builder, row rbac.MemberRow, own map[string]bool) {
+func renderRoleRow(b *clierr.Builder, row rbac.MemberRow, own map[string]bool) {
 	suffix := ""
 	if row.System {
 		suffix = " [system]"
 	}
 	if !own[row.Principal] {
-		fmt.Fprintf(b, "    %s  (via %s)  [%s]%s\n", output.Printable(row.Role), output.Printable(row.Principal), output.Printable(row.Binding), suffix)
+		b.Printf("    %s  (via %s)  [%s]%s\n", output.FilterValue(row.Role), output.FilterValue(row.Principal), output.FilterValue(row.Binding), suffix)
 		return
 	}
-	fmt.Fprintf(b, "    %s  [%s]%s\n", output.Printable(row.Role), output.Printable(row.Binding), suffix)
+	b.Printf("    %s  [%s]%s\n", output.FilterValue(row.Role), output.FilterValue(row.Binding), suffix)
 }

@@ -28,7 +28,7 @@ func cutRows(t *testing.T) map[string][]struct{ text, fact string } {
 	exec := config.ExecLoginPrefix + "r.example.test"
 	owner := func(lk tokenpkg.StoredLogin) string {
 		_, notice := lookupCall{cfg: cfg, clusterID: "c-1"}.recordedOwner(lk)
-		return notice
+		return notice.Marked()
 	}
 	const noOwner = "records no owner; the exec plugin does not check the user"
 	reserved := reservedName(config.LegacyCachePrefix+"x", "c-1", "https://r.example.test", "", config.CASource{})
@@ -41,7 +41,7 @@ func cutRows(t *testing.T) map[string][]struct{ text, fact string } {
 			{owner(tokenpkg.StoredLogin{Outcome: tokenpkg.LookupAnswered, Entry: exec, Identified: exec, PluginEntry: true}), noOwner},
 		},
 		"lookupNotice": {
-			{lookupNotice(lookupCall{cfg: cfg, dir: "/x", name: "prod", clusterID: "c-1", serverID: "https://r.example.test"}, tokenpkg.StoredLogin{Outcome: tokenpkg.LookupNone}),
+			{lookupNotice(lookupCall{cfg: cfg, dir: "/x", name: "prod", clusterID: "c-1", serverID: "https://r.example.test"}, tokenpkg.StoredLogin{Outcome: tokenpkg.LookupNone}).Marked(),
 				"kubectl will sign in on first use when it has a terminal"},
 		},
 		"reservedName": {

@@ -32,7 +32,7 @@ func TestRecordsOfAnEntryThatHoldsAnAtSignAfterTheHostShowNoHost(t *testing.T) {
 		s := config.Server{URL: "https://admin:1234/pwzq7@x", Provenance: prov, SupersededTokens: records}
 		t.Run("provenance "+string(prov), func(t *testing.T) {
 			t.Parallel()
-			lines := strings.Join(recordLines(name, s, "  "), "\n")
+			lines := strings.Join(markedLines(recordLines(name, s, "  ")), "\n")
 			assert.NotRegexp(t, hostRead, lines)
 			assert.Contains(t, lines, "an administrator logged in to <unusable URL> can delete it; run: ")
 			assert.NotRegexp(t, hostRead, fmt.Sprintf("%+v", entrySection(name, s)))

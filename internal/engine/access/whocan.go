@@ -203,7 +203,7 @@ func (c *whoCanCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 		// is evaluated for anyone.
 		out.Note = fmt.Sprintf("project %s has no namespaces on cluster %s", scope.Project, clusterID)
 		out.ResultSource = SourceScopeDiscovery
-		res := runtime.Result{Kind: "AccessSubjects", Data: out, ExitStatus: 0, Text: whoCanText(out, showDenied, allNamespaces)}
+		res := runtime.Result{Kind: "AccessSubjects", Data: out, ExitStatus: 0, Text: whoCanText(out, showDenied, allNamespaces).Marked()}
 		return withDiscoveryWarning(res, discoveryWarning), nil
 	}
 	cands, warnings, err := listCandidates(ctx, callerClient, scope)
@@ -350,7 +350,7 @@ func (c *whoCanCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 	if out.Rollup.Issues > 0 || out.Rollup.Unknown > out.Rollup.GroupsUnknown {
 		exit = exitUnknown
 	}
-	return runtime.Result{Kind: "AccessSubjects", Data: out, ExitStatus: exit, Warnings: warnings, Text: whoCanText(out, showDenied, allNamespaces)}, nil
+	return runtime.Result{Kind: "AccessSubjects", Data: out, ExitStatus: exit, Warnings: warnings, Text: whoCanText(out, showDenied, allNamespaces).Marked()}, nil
 }
 
 // indexKeys are the fan-out keys for n slice positions: decimal indexes,
@@ -454,7 +454,7 @@ func collapseClusterWide(rows []subjectRow, multi bool) []subjectRow {
 // line for the subjects whose groups are unknown, then (with --show-denied)
 // the denied rows or their count, then the source line. Authored text is
 // plain ASCII; names and reasons are printed verbatim.
-func whoCanText(out subjectsResult, showDenied, allNamespaces bool) string {
+func whoCanText(out subjectsResult, showDenied, allNamespaces bool) clierr.Filtered {
 	target := out.Question.Resource
 	if out.Question.Name != "" {
 		target += "/" + out.Question.Name
@@ -474,10 +474,10 @@ func whoCanText(out subjectsResult, showDenied, allNamespaces bool) string {
 	case out.Scope.AllNamespaces || allNamespaces:
 		where = " in all namespaces" + where
 	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "who can %s %s%s\n", out.Question.Verb, target, where)
+	var b clierr.Builder
+	b.Printf("who can %s %s%s\n", out.Question.Verb, target, where)
 	if out.Note != "" {
-		fmt.Fprintf(&b, "  note: %s\n", runtime.PrintableRemedies(out.Note))
+		b.Printf("  note: %s\n", runtime.FilterRemedies(out.Note))
 	}
 	multi := out.Scope.Project != "" || out.Scope.AllNamespaces
 	var shown []subjectRow
@@ -535,25 +535,27 @@ func whoCanText(out subjectsResult, showDenied, allNamespaces bool) string {
 	}
 	if len(shown) > 0 {
 		lines := tableLines("  ", header, cells)
-		b.WriteString(lines[0] + "\n")
+		b.Write(lines[0])
+		b.WriteString("\n")
 		for i, r := range shown {
-			b.WriteString(lines[i+1] + "\n")
+			b.Write(lines[i+1])
+			b.WriteString("\n")
 			if len(r.KnownMembers) > 0 {
-				fmt.Fprintf(&b, "  known members: %s\n", output.Printable(strings.Join(r.KnownMembers, ", ")))
+				b.Printf("  known members: %s\n", output.FilterValue(strings.Join(r.KnownMembers, ", ")))
 			}
 		}
 		if fixedShown {
-			fmt.Fprintf(&b, "  fixed: %s\n", strings.TrimPrefix(fixedMastersNote, "fixed candidate: "))
+			b.Printf("  fixed: %s\n", strings.TrimPrefix(fixedMastersNote, "fixed candidate: "))
 		}
 	}
 	if len(groupsUnknown) > 0 {
-		fmt.Fprintf(&b, "  %d subject(s) with unknown groups could not be ruled out: %s\n", len(groupsUnknown), output.Printable(strings.Join(groupsUnknown, ", ")))
+		b.Printf("  %d subject(s) with unknown groups could not be ruled out: %s\n", len(groupsUnknown), output.FilterValue(strings.Join(groupsUnknown, ", ")))
 	}
 	if hiddenDenied > 0 {
-		fmt.Fprintf(&b, "  %d denied not shown; pass --show-denied to list them\n", hiddenDenied)
+		b.Printf("  %d denied not shown; pass --show-denied to list them\n", hiddenDenied)
 	}
-	fmt.Fprintf(&b, "source: %s | identity: %s\n", out.ResultSource, out.Identity)
-	return b.String()
+	b.Printf("source: %s | identity: %s\n", out.ResultSource, out.Identity)
+	return b.Filtered()
 }
 
 func decisionRank(d Decision) int {

@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -23,9 +24,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// conditionMessageLimit is the text-view truncation bound for condition
-// messages (truncated sanely); the JSON envelope always carries
-// the full message. Join commands are exempt - they are copy-pasted.
+// conditionMessageLimit is the text-view truncation bound for condition and
+// agent messages (truncated sanely). The message is cut before the filter
+// removes hidden characters, and a hidden character counts toward the
+// limit. The JSON envelope always carries the full message. Join commands
+// are exempt - they are copy-pasted.
 const conditionMessageLimit = 120
 
 // capiClusterNameLabel is the CAPI label key used to filter Machine objects
@@ -339,8 +342,8 @@ func (c *clusterCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 	return runtime.Result{
 		Kind:       "ClusterInspection",
 		Data:       res,
-		Text:       text,
-		StyledText: func(s style.Style) string { return styleClusterText(text, s) },
+		Text:       text.Marked(),
+		StyledText: func(s style.Style) string { return styleClusterText(text.WithoutMark(), s) },
 		Warnings:   warnings,
 	}, nil
 }
@@ -1104,10 +1107,10 @@ func regLabel(label string, notApplicable bool) string {
 // and join commands). Omitted sections render a CONCISE availability
 // marker in place; the detailed cause lives only in Result.Warnings,
 // which the runtime prints to stderr - never duplicated here.
-func renderClusterText(r clusterResult) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "CLUSTER\n  id: %s\n  name: %s\n  kubernetesVersion: %s\n  state: %s\n",
-		r.Cluster.ID, output.Printable(r.Cluster.Name), output.Printable(r.Cluster.KubernetesVersion), output.Printable(r.Cluster.State))
+func renderClusterText(r clusterResult) clierr.Filtered {
+	var b clierr.Builder
+	b.Printf("CLUSTER\n  id: %s\n  name: %s\n  kubernetesVersion: %s\n  state: %s\n",
+		r.Cluster.ID, output.FilterValue(r.Cluster.Name), output.FilterValue(r.Cluster.KubernetesVersion), output.FilterValue(r.Cluster.State))
 	renderAgentLine(&b, r.Agent)
 	renderConditionsSection(&b, r)
 	renderMachinePoolsSection(&b, r)
@@ -1134,7 +1137,7 @@ func renderClusterText(r clusterResult) string {
 			writeRegistrationField(&b, "Windows node command with options (insecure)", w.InsecureWindowsNodeCommand)
 		}
 	}
-	return b.String()
+	return b.Filtered()
 }
 
 // clusterSectionHeaders is the fixed, always-present section header set
@@ -1156,27 +1159,27 @@ func styleClusterText(text string, s style.Style) string {
 // section. Each clause renders only what the server explicitly reported:
 // no Connected/Ready verdicts, no line. Ready=True alone renders nothing -
 // "ready" without a connectivity verdict would overstate the report.
-func renderAgentLine(b *strings.Builder, ag *agentStatus) {
+func renderAgentLine(b *clierr.Builder, ag *agentStatus) {
 	if ag == nil {
 		return
 	}
-	msg := ""
+	msg := clierr.Filtered{}
 	if ag.Message != "" {
-		msg = " - " + truncateRunes(output.Printable(ag.Message), conditionMessageLimit)
+		msg = clierr.Plain(" - ").Append(output.FilterValue(truncateRunes(ag.Message, conditionMessageLimit)))
 	}
 	switch ag.verdict() {
 	case agentDisconnected:
-		b.WriteString("  agent: not connected" + msg + "\n")
+		b.Write(clierr.Plain("  agent: not connected").Append(msg).AppendString("\n"))
 	case agentConnectedNotReady:
-		b.WriteString("  agent: connected, cluster not ready" + msg + "\n")
+		b.Write(clierr.Plain("  agent: connected, cluster not ready").Append(msg).AppendString("\n"))
 	case agentConnected:
 		b.WriteString("  agent: connected\n")
 	case agentNotReady:
-		b.WriteString("  agent: connection not reported, cluster not ready" + msg + "\n")
+		b.Write(clierr.Plain("  agent: connection not reported, cluster not ready").Append(msg).AppendString("\n"))
 	}
 }
 
-func renderConditionsSection(b *strings.Builder, r clusterResult) {
+func renderConditionsSection(b *clierr.Builder, r clusterResult) {
 	b.WriteString("\nCONDITIONS\n")
 	switch {
 	case r.Status == nil && r.ProvisioningNote != "":
@@ -1184,21 +1187,21 @@ func renderConditionsSection(b *strings.Builder, r clusterResult) {
 	case r.Status == nil:
 		b.WriteString("  status: unavailable\n")
 	default:
-		fmt.Fprintf(b, "  ready: %t\n", r.Status.Ready)
+		b.Printf("  ready: %t\n", r.Status.Ready)
 		for _, c := range orderedConditions(r.Status.Conditions) {
-			line := fmt.Sprintf("  %s=%s", output.Printable(c.Type), output.Printable(c.Status))
+			line := clierr.Sprintf("  %s=%s", output.FilterValue(c.Type), output.FilterValue(c.Status))
 			if c.Reason != "" {
-				line += " reason=" + output.Printable(c.Reason)
+				line = line.AppendString(" reason=").Append(output.FilterValue(c.Reason))
 			}
 			if c.Message != "" {
-				line += " " + truncateRunes(output.Printable(c.Message), conditionMessageLimit)
+				line = line.AppendString(" ").Append(output.FilterValue(truncateRunes(c.Message, conditionMessageLimit)))
 			}
-			b.WriteString(line + "\n")
+			b.Write(line.AppendString("\n"))
 		}
 	}
 }
 
-func renderMachinePoolsSection(b *strings.Builder, r clusterResult) {
+func renderMachinePoolsSection(b *clierr.Builder, r clusterResult) {
 	b.WriteString("\nMACHINE POOLS\n")
 	switch {
 	case r.MachinePools == nil && r.ProvisioningNote != "":
@@ -1209,18 +1212,18 @@ func renderMachinePoolsSection(b *strings.Builder, r clusterResult) {
 		b.WriteString("  none (imported or custom cluster)\n")
 	default:
 		for _, p := range *r.MachinePools {
-			line := fmt.Sprintf("  %s: %s/%s quantity=%d roles=%s",
-				output.Printable(p.Name), output.Printable(p.MachineConfigKind), output.Printable(p.MachineConfigName), p.Quantity, strings.Join(p.Roles, ","))
+			line := clierr.Sprintf("  %s: %s/%s quantity=%d roles=%s",
+				output.FilterValue(p.Name), output.FilterValue(p.MachineConfigKind), output.FilterValue(p.MachineConfigName), p.Quantity, strings.Join(p.Roles, ","))
 			if p.AutoscalingMinSize != nil && p.AutoscalingMaxSize != nil {
-				line += fmt.Sprintf(" autoscaling=%d-%d (quantity is the autoscaler's current count)",
-					*p.AutoscalingMinSize, *p.AutoscalingMaxSize)
+				line = line.AppendString(fmt.Sprintf(" autoscaling=%d-%d (quantity is the autoscaler's current count)",
+					*p.AutoscalingMinSize, *p.AutoscalingMaxSize))
 			}
-			b.WriteString(line + "\n")
+			b.Write(line.AppendString("\n"))
 		}
 	}
 }
 
-func renderMembersSection(b *strings.Builder, r clusterResult) {
+func renderMembersSection(b *clierr.Builder, r clusterResult) {
 	b.WriteString("\nMEMBERS\n")
 	switch {
 	case r.Members == nil:
@@ -1234,15 +1237,15 @@ func renderMembersSection(b *strings.Builder, r clusterResult) {
 				suffix = " [system]"
 			}
 			if m.DisplayName != "" {
-				fmt.Fprintf(b, "  %s (%s)  %s%s\n", output.Printable(m.DisplayName), output.Printable(m.Principal), output.Printable(m.Role), suffix)
+				b.Printf("  %s (%s)  %s%s\n", output.FilterValue(m.DisplayName), output.FilterValue(m.Principal), output.FilterValue(m.Role), suffix)
 			} else {
-				fmt.Fprintf(b, "  %s  %s%s\n", output.Printable(m.Principal), output.Printable(m.Role), suffix)
+				b.Printf("  %s  %s%s\n", output.FilterValue(m.Principal), output.FilterValue(m.Role), suffix)
 			}
 		}
 	}
 }
 
-func renderMachinesSection(b *strings.Builder, r clusterResult) {
+func renderMachinesSection(b *clierr.Builder, r clusterResult) {
 	b.WriteString("\nMACHINES\n")
 	switch {
 	case r.Machines == nil && r.ProvisioningNote != "":
@@ -1260,19 +1263,19 @@ func renderMachinesSection(b *strings.Builder, r clusterResult) {
 		for _, m := range *r.Machines {
 			// Name and phase are server-sourced strings too - same
 			// sanitizer as the error message and the members section.
-			fmt.Fprintf(b, "  %s  %s\n", output.Printable(m.Name), output.Printable(m.Phase))
+			b.Printf("  %s  %s\n", output.FilterValue(m.Name), output.FilterValue(m.Phase))
 			if m.Error != "" {
-				fmt.Fprintf(b, "    %s\n", output.Printable(m.Error))
+				b.Printf("    %s\n", output.FilterValue(m.Error))
 			}
 		}
 	}
 }
 
-func writeRegistrationField(b *strings.Builder, label, value string) {
+func writeRegistrationField(b *clierr.Builder, label, value string) {
 	if value == "" {
 		return // dropped or server-empty: absent in place; detail is in Warnings
 	}
-	fmt.Fprintf(b, "  %s:\n    %s\n", label, output.Printable(value))
+	b.Printf("  %s:\n    %s\n", label, output.FilterValue(value))
 }
 
 // orderedConditions is the one place inspect cluster derives a trouble
@@ -1292,10 +1295,19 @@ func orderedConditions(conds []clusterCondition) []clusterCondition {
 	return append(trouble, rest...)
 }
 
+// truncateRunes cuts s after limit characters and appends an ellipsis. It
+// counts with utf8.DecodeRuneInString, where an invalid byte is one
+// character, and returns the bytes before the cut as they are: the filter
+// that runs after the cut sees an invalid byte and a hidden character as
+// the server wrote them.
 func truncateRunes(s string, limit int) string {
-	r := []rune(s)
-	if len(r) <= limit {
-		return s
+	i := 0
+	for n := 0; i < len(s); n++ {
+		if n == limit {
+			return s[:i] + "…"
+		}
+		_, size := utf8.DecodeRuneInString(s[i:])
+		i += size
 	}
-	return string(r[:limit]) + "…"
+	return s
 }

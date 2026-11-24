@@ -97,8 +97,10 @@ type quotedFormAllowance struct {
 // caller passes a command in, the walk treats the quoted value of every other
 // caller as built from that command too.
 var quotedFormAllowlist = map[string]quotedFormAllowance{
-	"internal/clierr.IDText":        {1, []string{"piece"}, "the double-quoted piece never has a single quote; an argument quoted by ShellQuote is therefore never inside it, and a command in the text reaches IDText only through clauses LineText has already cut at the remedy marker"},
-	"internal/cli.completionDebugf": {1, []string{"args"}, "a wrapper whose format is not constant. Every argument of every caller is checked; a %q of a command in a caller is reported at that caller's own call, and the one caller that passes clierr.Rancher (the text that begins every remedy command) prints it with %s"},
+	"internal/clierr.IDText":         {1, []string{"piece"}, "the double-quoted piece never has a single quote; an argument quoted by ShellQuote is therefore never inside it, and a command in the text reaches IDText only through clauses LineText has already cut at the remedy marker"},
+	"internal/cli.completionDebugf":  {1, []string{"args"}, "a wrapper whose format is not constant. Every argument of every caller is checked; a %q of a command in a caller is reported at that caller's own call, and the one caller that passes clierr.Rancher (the text that begins every remedy command) prints it with %s"},
+	"internal/clierr.Sprintf":        {1, []string{"args"}, "a wrapper whose format is not constant. Every argument of every caller is checked; a %q of a command in a caller is reported at that caller's own call, and a clierr.Filtered argument under %q prints the refusal, never its text"},
+	"internal/clierr.Builder.Printf": {1, []string{"args"}, "a wrapper of clierr.Sprintf whose format is not constant. Every argument of every caller is checked; a %q of a command in a caller is reported at that caller's own call, and a clierr.Filtered argument under %q prints the refusal, never its text"},
 }
 
 // quotedFormValue is an expression with the type information of its package.

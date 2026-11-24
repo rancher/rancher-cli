@@ -54,9 +54,9 @@ func TestConfigStatusLeavesOutTheDeleteOfATokenNameThatCannotBePrinted(t *testin
 				t.Parallel()
 				s := recordedTokenServer(kind, name)
 
-				var b strings.Builder
+				var b clierr.Builder
 				renderFields(entrySection("e", s), "  ", &b)
-				text := clierr.ExpandRemedies(b.String(), "")
+				text := clierr.ExpandRemedies(b.Filtered().Marked(), "")
 				assert.NotContains(t, text, "delete token")
 				assert.NotContains(t, text, "delete management-token")
 				assert.Contains(t, text, listCommand(kind))
@@ -89,7 +89,7 @@ func TestSetTokenReuseLeavesOutTheDeleteOfATokenNameThatCannotBePrinted(t *testi
 				"exec-login-r": recordedTokenServer(clierr.TokenKindExt, name),
 			}}
 			_, lines := dormantPluginLogins(cfg)
-			text := clierr.ExpandRemedies(strings.Join(lines, "\n"), "")
+			text := clierr.ExpandRemedies(strings.Join(markedLines(lines), "\n"), "")
 			assert.NotContains(t, text, "delete token")
 			assert.Contains(t, text, "rancher get tokens")
 			assert.Contains(t, text, clierr.LeftOutNote)

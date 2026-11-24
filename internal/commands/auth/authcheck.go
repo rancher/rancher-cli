@@ -128,7 +128,7 @@ func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Pr
 	// credential describes the stored credential when it is the effective one
 	// (no RANCHER_CLI_TOKEN override) and has provenance (CLI-created).
 	var credential any
-	var credentialLine string
+	var credentialLine clierr.Filtered
 	if os.Getenv(config.EnvToken) == "" {
 		if s, ok := cfg.Servers[eff.ServerName]; ok && s.Provenance != "" {
 			credential, credentialLine = credentialReport(s)
@@ -182,8 +182,8 @@ func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Pr
 		conflict = storeConflict.Error()
 	}
 	text := renderAuthCheckText(true, eff.ServerName, ver, rancherVersion, supported, identity, token,
-		storeReport{policy: credentialPolicy, pinned: pinned, inUse: inUse, err: storeError, conflict: conflict}, credentialLine) +
-		renderChangeSection(change)
+		storeReport{policy: credentialPolicy, pinned: pinned, inUse: inUse, err: storeError, conflict: conflict}, credentialLine).
+		AppendString(renderChangeSection(change))
 	store := map[string]any{
 		"policy": credentialPolicy,
 		"pinned": pinned,
@@ -212,8 +212,8 @@ func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Pr
 	res := runtime.Result{
 		Kind:       "AuthCheck",
 		Data:       data,
-		Text:       text,
-		StyledText: func(s style.Style) string { return styleAuthCheckText(text, true, s) },
+		Text:       text.Marked(),
+		StyledText: func(s style.Style) string { return styleAuthCheckText(text.WithoutMark(), true, s) },
 	}
 	for _, w := range []string{warning, idWarning, tokenWarn} {
 		if w != "" {
@@ -249,8 +249,8 @@ func renderAuthCheckText(
 	supported *bool,
 	identity, token any,
 	store storeReport,
-	credentialLine string,
-) string {
+	credentialLine clierr.Filtered,
+) clierr.Filtered {
 	ptrStr := func(p *string) string {
 		if p == nil {
 			return "-"
@@ -273,61 +273,61 @@ func renderAuthCheckText(
 		return s
 	}
 
-	var b strings.Builder
-	fmt.Fprintf(&b, "AUTH STATUS\n")
-	fmt.Fprintf(&b, "  ok: %v\n", ok)
-	fmt.Fprintf(&b, "  server: %s\n", serverName)
+	var b clierr.Builder
+	b.Printf("AUTH STATUS\n")
+	b.Printf("  ok: %v\n", ok)
+	b.Printf("  server: %s\n", serverName)
 
-	fmt.Fprintf(&b, "\nVERSIONS\n")
-	fmt.Fprintf(&b, "  serverVersion: %s\n", output.Printable(serverVersion))
-	fmt.Fprintf(&b, "  rancherVersion: %s\n", output.Printable(ptrStr(rancherVersion)))
-	fmt.Fprintf(&b, "  supported: %s\n", ptrBool(supported))
+	b.Printf("\nVERSIONS\n")
+	b.Printf("  serverVersion: %s\n", output.FilterValue(serverVersion))
+	b.Printf("  rancherVersion: %s\n", output.FilterValue(ptrStr(rancherVersion)))
+	b.Printf("  supported: %s\n", ptrBool(supported))
 
-	fmt.Fprintf(&b, "\nIDENTITY\n")
+	b.Printf("\nIDENTITY\n")
 	if idMap, idOK := identity.(map[string]any); idOK {
 		userID, _ := idMap["userID"].(string)
-		fmt.Fprintf(&b, "  userID: %s\n", clierr.IDText(userID))
+		b.Printf("  userID: %s\n", clierr.IDText(userID))
 	} else {
-		fmt.Fprintf(&b, "  identity: unavailable\n")
+		b.Printf("  identity: unavailable\n")
 	}
 
-	fmt.Fprintf(&b, "\nTOKEN\n")
+	b.Printf("\nTOKEN\n")
 	if tokMap, tokOK := token.(map[string]any); tokOK {
 		name, _ := tokMap["name"].(string)
 		kind, _ := tokMap["kind"].(string)
 		prov, _ := tokMap["provider"].(string)
 		expiresAt, _ := tokMap["expiresAt"].(string)
 		current, _ := tokMap["current"].(bool)
-		fmt.Fprintf(&b, "  name: %s\n", output.Printable(name))
-		fmt.Fprintf(&b, "  kind: %s\n", kind)
-		fmt.Fprintf(&b, "  provider: %s\n", output.Printable(prov))
-		fmt.Fprintf(&b, "  expiresAt: %s\n", output.Printable(expiresAt))
-		fmt.Fprintf(&b, "  current: %v\n", current)
+		b.Printf("  name: %s\n", output.FilterValue(name))
+		b.Printf("  kind: %s\n", kind)
+		b.Printf("  provider: %s\n", output.FilterValue(prov))
+		b.Printf("  expiresAt: %s\n", output.FilterValue(expiresAt))
+		b.Printf("  current: %v\n", current)
 	} else {
-		fmt.Fprintf(&b, "  token: unavailable\n")
+		b.Printf("  token: unavailable\n")
 	}
-	if credentialLine != "" {
-		fmt.Fprintf(&b, "  %s\n", credentialLine)
+	if !credentialLine.IsEmpty() {
+		b.Printf("  %s\n", credentialLine)
 	}
 
-	fmt.Fprintf(&b, "\nCREDENTIAL STORE\n")
-	fmt.Fprintf(&b, "  policy: %s\n", store.policy)
-	fmt.Fprintf(&b, "  pinned: %s\n", emptyStr(store.pinned))
+	b.Printf("\nCREDENTIAL STORE\n")
+	b.Printf("  policy: %s\n", store.policy)
+	b.Printf("  pinned: %s\n", emptyStr(store.pinned))
 	if store.inUse != "" {
-		fmt.Fprintf(&b, "  in use: %s\n", store.inUse)
+		b.Printf("  in use: %s\n", store.inUse)
 	}
 	if store.err != "" {
-		fmt.Fprintf(&b, "  error: %s\n", store.err)
+		b.Printf("  error: %s\n", store.err)
 	}
 	// A conflict is the one store state an environment token lets a command
 	// run through instead of failing on, so the text view names it beside
 	// the policy the directory declared; the structured result carries the
 	// same string.
 	if store.conflict != "" {
-		fmt.Fprintf(&b, "  conflict: %s\n", store.conflict)
+		b.Printf("  conflict: %s\n", store.conflict)
 	}
 
-	return b.String()
+	return b.Filtered()
 }
 
 // renderChangeSection is the CREDENTIAL STORE CHANGE section: the same
@@ -542,28 +542,28 @@ func degradeWarning(field string, err error) string {
 // credentialReport projects the stored credential auth status reports when
 // the CLI created it: the JSON block and the one text line, built together
 // so the two cannot disagree.
-func credentialReport(s config.Server) (map[string]any, string) {
+func credentialReport(s config.Server) (map[string]any, clierr.Filtered) {
 	m := map[string]any{"provenance": string(s.Provenance)}
-	var facts []string
+	var facts []clierr.Filtered
 	if s.TokenUserID != "" {
 		m["userId"] = s.TokenUserID
-		facts = append(facts, "user "+clierr.IDText(s.TokenUserID))
+		facts = append(facts, clierr.Plain("user "+clierr.IDText(s.TokenUserID)))
 	}
 	if s.TokenAuthConfig != "" {
 		m["authConfig"] = s.TokenAuthConfig
-		facts = append(facts, "auth config "+output.Printable(s.TokenAuthConfig))
+		facts = append(facts, clierr.Plain("auth config ").Append(output.FilterValue(s.TokenAuthConfig)))
 	}
 	if s.TokenRef != nil {
 		m["tokenRef"] = map[string]any{"kind": string(s.TokenRef.Kind), "name": s.TokenRef.Name}
-		facts = append(facts, "token "+output.Printable(s.TokenRef.String()))
+		facts = append(facts, clierr.Plain("token ").Append(output.FilterValue(s.TokenRef.String())))
 	}
 	if s.CredentialExpiresAt != "" {
 		m["expiresAt"] = s.CredentialExpiresAt
-		facts = append(facts, "expires "+output.Printable(s.CredentialExpiresAt))
+		facts = append(facts, clierr.Plain("expires ").Append(output.FilterValue(s.CredentialExpiresAt)))
 	}
-	line := "credential: " + string(s.Provenance)
+	line := clierr.Plain("credential: " + string(s.Provenance))
 	if len(facts) > 0 {
-		line += " (" + strings.Join(facts, ", ") + ")"
+		line = line.AppendString(" (").Append(clierr.JoinFiltered(facts, ", ")).AppendString(")")
 	}
 	return m, line
 }

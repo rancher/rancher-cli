@@ -505,8 +505,9 @@ func evNamedIs(n *types.Named, pkgRel, name string) bool {
 }
 
 // evImplements reports whether t or *t has every method of iface with the
-// same signature, compared as text: the loads hold more than one copy of a
-// package's types, so types.Implements cannot be used across packages.
+// same parameter and result types (types.Identical, which ignores the names
+// of the parameters and the receiver). Each load type-checks a package once,
+// and t and iface come from the same load.
 func evImplements(t types.Type, iface *types.Interface) bool {
 	if iface.NumMethods() == 0 {
 		return false
@@ -516,7 +517,7 @@ func evImplements(t types.Type, iface *types.Interface) bool {
 		found := false
 		for method := range ms.Methods() {
 			o := method.Obj()
-			if o.Name() == m.Name() && types.TypeString(o.Type(), nil) == types.TypeString(m.Type(), nil) {
+			if o.Name() == m.Name() && types.Identical(o.Type(), m.Type()) {
 				found = true
 				break
 			}

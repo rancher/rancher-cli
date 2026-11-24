@@ -13,7 +13,6 @@ package provisioning
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -329,8 +328,8 @@ func (p *day2Plan) wrap(exec runtime.ExecuteFunc) runtime.ExecuteFunc {
 		done := runtime.MutationText("cluster", t.name, p.op.done)
 		if t.waiting {
 			first := fmt.Sprintf("cluster/%s changed nothing; waiting for the %s already requested", t.name, p.op.kind)
-			text := first + "\n" + strings.TrimSuffix(done.Text, "\n") + "\n"
-			done = runtime.Result{Text: text, StyledText: runtime.StyleEveryLineBold(text)}
+			text := clierr.Plain(first + "\n").Append(clierr.Plain(done.Text).TrimSuffix("\n")).AppendString("\n")
+			done = runtime.Result{Text: text.Marked(), StyledText: runtime.StyleEveryLineBoldOf(text)}
 		}
 		return set(done, warnings...), nil
 	}

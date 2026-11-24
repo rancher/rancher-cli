@@ -29,7 +29,7 @@ func TestConfigTokenRecoveryTextsNameTheTokenTheCommandAndWhoRunsIt(t *testing.T
 	v3 := clierr.TokenRef{Kind: clierr.TokenKindV3, Name: "kubeconfig-u-x"}
 	record := func(url, recordServer, userID string, ref clierr.TokenRef) string {
 		s := config.Server{URL: url, SupersededTokens: []config.SupersededToken{{Ref: ref, UserID: userID, SupersededAt: "2026-09-03T00:00:00Z", Server: recordServer}}}
-		return strings.Join(recordLines("x", s, ""), "\n")
+		return strings.Join(markedLines(recordLines("x", s, "")), "\n")
 	}
 	fieldText := func(entryURL, serverURL, userID string, ref clierr.TokenRef) string {
 		lines, ok := recoveryField("x", entryURL, serverURL, userID, ref).val.([]string)

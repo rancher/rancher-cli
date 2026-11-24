@@ -224,22 +224,22 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 		}
 	}
 	if len(direct.Omitted) > 0 && p != nil {
-		reasons := make([]string, len(direct.Omitted))
+		reasons := make([]clierr.Filtered, len(direct.Omitted))
 		for i, r := range direct.Omitted {
 			// A reason can relay a remedy (a timed-out read names
 			// rancher inspect cluster), which the prompter expands.
-			reasons[i] = runtime.PrintableRemedies(r)
+			reasons[i] = runtime.FilterRemedies(r)
 		}
-		p.Notice("direct endpoint contexts omitted: " + strings.Join(reasons, "; "))
+		p.Notice(clierr.Plain("direct endpoint contexts omitted: ").Append(clierr.JoinFiltered(reasons, "; ")).Marked())
 	}
 	if p != nil {
-		if n := lookupNotice(lc, lk); n != "" {
-			p.Notice(n)
+		if n := lookupNotice(lc, lk); !n.IsEmpty() {
+			p.Notice(n.Marked())
 		}
-		if ownerNotice != "" {
-			p.Notice(ownerNotice)
+		if !ownerNotice.IsEmpty() {
+			p.Notice(ownerNotice.Marked())
 		}
-		p.Notice(machineNotice(dir, store, command, commandIsPath))
+		p.Notice(machineNotice(dir, store, command, commandIsPath).Marked())
 	}
 
 	b, err := writeKubeconfig(kc)

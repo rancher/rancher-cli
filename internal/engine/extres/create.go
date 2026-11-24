@@ -105,11 +105,11 @@ func (c createTokenCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effe
 		}
 		expiresAt, _, _ := unstructured.NestedString(created.Object, "status", "expiresAt")
 		bearerLine, shownOnce := runtime.OnceOnlyLine("bearer token", bearer, "bearer token")
-		lines := []string{bearerLine}
+		lines := []clierr.Filtered{clierr.Plain(bearerLine)}
 		if expiresAt != "" {
-			lines = append(lines, "expires: "+output.Printable(expiresAt))
+			lines = append(lines, clierr.Plain("expires: ").Append(output.FilterValue(expiresAt)))
 		}
-		res := runtime.MutationText("token", output.Printable(name), "created", lines...)
+		res := runtime.MutationTextOf("token", output.FilterValue(name), "created", lines...)
 		res.Kind = "TokenCreated"
 		res.Data = map[string]string{
 			"name":        name,

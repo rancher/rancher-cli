@@ -280,7 +280,7 @@ func (c *canCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompt
 		out.Decision, out.ResultSource = DecisionUnknown, SourceScopeDiscovery
 		out.Note = fmt.Sprintf("project %s has no namespaces on cluster %s", scope.Project, clusterID)
 		out.Namespaces, out.Rollup = []canNamespace{}, &canRollup{}
-		res := runtime.Result{Kind: "AccessDecision", Data: out, ExitStatus: exitUnknown, Text: canText(out, false)}
+		res := runtime.Result{Kind: "AccessDecision", Data: out, ExitStatus: exitUnknown, Text: canText(out, false).Marked()}
 		return withDiscoveryWarning(res, discoveryWarning), nil
 	}
 	if plan.Denied != nil {
@@ -329,7 +329,7 @@ func (c *canCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompt
 		if outcome.EvaluationError != "" && outcome.Decision == DecisionAllowed {
 			res.Warnings = append(res.Warnings, "the authorizer reported an evaluation error: "+outcome.EvaluationError)
 		}
-		res.Text = canText(out, allNamespaces)
+		res.Text = canText(out, allNamespaces).Marked()
 		return res, nil
 	}
 	members, failure := runFanOut(ctx, scope.targets, ask)
@@ -375,7 +375,7 @@ func (c *canCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompt
 	default:
 		out.Decision = DecisionAllowed
 	}
-	res := runtime.Result{Kind: "AccessDecision", Data: out, ExitStatus: exitFor(out.Decision), Text: canText(out, false), Warnings: slices.Clone(plan.Warnings)}
+	res := runtime.Result{Kind: "AccessDecision", Data: out, ExitStatus: exitFor(out.Decision), Text: canText(out, false).Marked(), Warnings: slices.Clone(plan.Warnings)}
 	return withDiscoveryWarning(res, discoveryWarning), nil
 }
 
@@ -392,7 +392,7 @@ func (c *canCmd) renderDenial(out canResult, scope Scope, plan identityPlan, clu
 		}
 		out.Rollup = &rollup
 	}
-	return runtime.Result{Kind: "AccessDecision", Data: out, ExitStatus: exitDenied, Text: canText(out, false)}
+	return runtime.Result{Kind: "AccessDecision", Data: out, ExitStatus: exitDenied, Text: canText(out, false).Marked()}
 }
 
 // sarUser is the SubjectAccessReview's spec.user for a subject: empty for
@@ -431,7 +431,7 @@ func exitFor(d Decision) int {
 // canText renders the decision first, then the reason or note, one line
 // per namespace for a project, then the source line. Authored text is
 // plain ASCII; subject names and reasons are printed verbatim.
-func canText(out canResult, allNamespaces bool) string {
+func canText(out canResult, allNamespaces bool) clierr.Filtered {
 	who := out.Subject.Name
 	if out.Identity == IdentityCaller {
 		who = "you"
@@ -456,31 +456,31 @@ func canText(out canResult, allNamespaces bool) string {
 		where = " in all namespaces" + where
 	}
 	verbPhrase := map[Decision]string{DecisionAllowed: "can", DecisionDenied: "cannot", DecisionUnknown: "may or may not"}[out.Decision]
-	var b strings.Builder
-	fmt.Fprintf(&b, "%s  %s %s %s %s%s\n", out.Decision, who, verbPhrase, out.Question.Verb, target, where)
+	var b clierr.Builder
+	b.Printf("%s  %s %s %s %s%s\n", out.Decision, who, verbPhrase, out.Question.Verb, target, where)
 	// The reason, note, evaluation error, namespace names, and issue
 	// messages are the server's text: each passes the terminal-safety
 	// boundary at insertion.
 	if out.Reason != "" {
-		fmt.Fprintf(&b, "  reason: %s\n", output.Printable(out.Reason))
+		b.Printf("  reason: %s\n", output.FilterValue(out.Reason))
 	}
 	if out.Note != "" {
-		fmt.Fprintf(&b, "  note: %s\n", runtime.PrintableRemedies(out.Note))
+		b.Printf("  note: %s\n", runtime.FilterRemedies(out.Note))
 	}
 	if out.EvaluationError != "" {
-		fmt.Fprintf(&b, "  evaluation error: %s\n", output.Printable(out.EvaluationError))
+		b.Printf("  evaluation error: %s\n", output.FilterValue(out.EvaluationError))
 	}
 	for _, ns := range out.Namespaces {
-		fmt.Fprintf(&b, "  %-24s %s", output.Printable(ns.Namespace), ns.Decision)
+		b.Printf("  %-24s %s", output.FilterValue(ns.Namespace), ns.Decision)
 		if ns.Issue != nil {
-			fmt.Fprintf(&b, "  (%s: %s)", ns.Issue.Code, runtime.PrintableRemedies(ns.Issue.Message))
+			b.Printf("  (%s: %s)", ns.Issue.Code, runtime.FilterRemedies(ns.Issue.Message))
 		}
 		b.WriteString("\n")
 	}
-	fmt.Fprintf(&b, "source: %s | identity: %s", out.ResultSource, out.Identity)
+	b.Printf("source: %s | identity: %s", out.ResultSource, out.Identity)
 	if out.GroupsFrom != "" {
-		fmt.Fprintf(&b, " | groups from %s%s", out.GroupsFrom, groupsUnavailableMark(out.GroupAliases))
+		b.Printf(" | groups from %s%s", out.GroupsFrom, groupsUnavailableMark(out.GroupAliases))
 	}
 	b.WriteString("\n")
-	return b.String()
+	return b.Filtered()
 }

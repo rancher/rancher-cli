@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/resources"
@@ -113,18 +114,18 @@ func renderDeploymentText(name, ns, cluster string, dep map[string]any, pods []m
 		return f.Section == sectionPods && f.State == stateUnavailable
 	})
 
-	var lines []string
-	lines = append(lines, fmt.Sprintf("replicas: %d/%d ready", ready, desired))
+	var lines []clierr.Filtered
+	lines = append(lines, clierr.Plain(fmt.Sprintf("replicas: %d/%d ready", ready, desired)))
 	switch {
 	case podsUnavailable:
-		lines = append(lines, "pods: unavailable")
+		lines = append(lines, clierr.Plain("pods: unavailable"))
 	case len(pods) == 0:
-		lines = append(lines, "pods: none")
+		lines = append(lines, clierr.Plain("pods: none"))
 	default:
 		for _, p := range pods {
 			podName, _, _ := unstructured.NestedString(p, "metadata", "name")
 			phase, _, _ := unstructured.NestedString(p, "status", "phase")
-			lines = append(lines, fmt.Sprintf("pod %s: %s", podName, output.Printable(phase)))
+			lines = append(lines, clierr.Sprintf("pod %s: %s", podName, output.FilterValue(phase)))
 		}
 	}
 	for _, f := range degraded {
@@ -133,7 +134,7 @@ func renderDeploymentText(name, ns, cluster string, dep map[string]any, pods []m
 			finding += " for " + f.Target
 		}
 		finding += " (" + f.Code + ")"
-		lines = append(lines, "degraded: "+finding)
+		lines = append(lines, clierr.Plain("degraded: "+finding))
 	}
-	return runtime.TextLines(fmt.Sprintf("deployment/%s (namespace %s, cluster %s)", name, ns, cluster), lines...)
+	return runtime.TextLinesOf(clierr.Plain(fmt.Sprintf("deployment/%s (namespace %s, cluster %s)", name, ns, cluster)), lines...)
 }

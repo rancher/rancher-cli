@@ -153,9 +153,9 @@ func TestConfigStatusKeepsStoredTokenValuesOnTheirLines(t *testing.T) {
 			rec.Server = run.recordServer
 			rec.LastAttempt.Result = clierr.ResultFailed
 
-			var b strings.Builder
+			var b clierr.Builder
 			renderFields(entrySection("e", s), "  ", &b)
-			text := b.String()
+			text := b.Filtered().Marked()
 			assertLineRule(t, text)
 			for p := range classes.notPrinted {
 				assert.NotContains(t, text, "<"+p+">", "the text does not print %s", p)
@@ -228,7 +228,7 @@ func TestTokenRecordLinesKeepStoredTokenValuesOnTheirLines(t *testing.T) {
 			rec.LastAttempt.Result = clierr.ResultFailed
 
 			s := config.Server{URL: run.url, TokenUserID: "u-1", SupersededTokens: []config.SupersededToken{rec}}
-			text := strings.Join(recordLines("e", s, "  "), "\n") + "\n"
+			text := strings.Join(markedLines(recordLines("e", s, "  ")), "\n") + "\n"
 			assertLineRule(t, text)
 			for p := range classes.notPrinted {
 				assert.NotContains(t, text, "<"+p+">", "the text does not print %s", p)

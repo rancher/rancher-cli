@@ -328,7 +328,7 @@ func TestSignInNoticeNamesTheProviderToSelect(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tc.want, signInNotice(tc.entries, tc.chosen))
+			assert.Equal(t, tc.want, signInNotice(tc.entries, tc.chosen).Marked())
 		})
 	}
 
@@ -373,13 +373,13 @@ func TestEverySAMLTypeNamesTheProviderToSelect(t *testing.T) {
 			other := &AuthProvider{Type: "oktaProvider", ID: "other-saml"}
 
 			byLabel := &AuthProvider{Type: typ, ID: name}
-			got := signInNotice([]typedProvider{byLabel, other}, byLabel)
+			got := signInNotice([]typedProvider{byLabel, other}, byLabel).Marked()
 			assert.Equal(t, `Select "`+label+`" (auth config `+name+`)`+samlNoticeTail, got)
 			assert.NotContains(t, got, "offers its own choice")
 			assert.Equal(t, "on the sign-in page, select '"+label+"' (auth config '"+name+"')", userCheck{authConfig: name}.signInPageChoice())
 
 			byID := &AuthProvider{Type: typ, ID: name + "-2"}
-			got = signInNotice([]typedProvider{byID, other}, byID)
+			got = signInNotice([]typedProvider{byID, other}, byID).Marked()
 			assert.Equal(t, `Select "`+name+`-2"`+samlNoticeTail, got)
 			assert.NotContains(t, got, "offers its own choice")
 			assert.Equal(t, "on the sign-in page, select auth config '"+name+"-2'", userCheck{authConfig: name + "-2"}.signInPageChoice())

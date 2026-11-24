@@ -12,7 +12,10 @@ import (
 // the columns.
 func TestTableLinesStripControlCharacters(t *testing.T) {
 	t.Parallel()
-	lines := tableLines("  ", []string{"NAME", "VIA"}, [][]string{{"u-1\nFAKE", "ClusterRoleBinding \x1b[2Jx"}})
+	var lines []string
+	for _, l := range tableLines("  ", []string{"NAME", "VIA"}, [][]string{{"u-1\nFAKE", "ClusterRoleBinding \x1b[2Jx"}}) {
+		lines = append(lines, l.Marked())
+	}
 	assert.Equal(t, []string{"  NAME     VIA", "  u-1FAKE  ClusterRoleBinding [2Jx"}, lines)
 }
 
@@ -24,7 +27,7 @@ func TestCanTextStripsControlCharacters(t *testing.T) {
 		Subject: AccessSubject{Name: "u-1"}, Question: Question{Verb: "get", Resource: "pods"},
 		Scope: Scope{Cluster: "local"}, Decision: DecisionDenied,
 		Reason: "RBAC: a\x1b[2Jb", Note: "n\nforged", EvaluationError: "e\rx",
-	}, false)
+	}, false).Marked()
 	assert.NotContains(t, out, "\x1b")
 	assert.Contains(t, out, "  reason: RBAC: a[2Jb\n")
 	assert.Contains(t, out, "  note: nforged\n")
@@ -45,7 +48,7 @@ func TestListTextStripsControlCharacters(t *testing.T) {
 		},
 		ResultSource: SourceAuthorizer, Identity: IdentitySAR,
 	}
-	for name, text := range map[string]string{"default": listText(out, false), "wide": listWideText(out)} {
+	for name, text := range map[string]string{"default": listText(out, false).Marked(), "wide": listWideText(out).Marked()} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			assert.NotContains(t, text, "\x1b")
@@ -55,7 +58,7 @@ func TestListTextStripsControlCharacters(t *testing.T) {
 			assert.Contains(t, text, "every rule (ex)")
 		})
 	}
-	assert.Contains(t, listText(out, false), "rules for u-1[2J in namespace ns-2 on local")
+	assert.Contains(t, listText(out, false).Marked(), "rules for u-1[2J in namespace ns-2 on local")
 }
 
 // TestWhoCanTextStripsControlCharacters asserts the note and the known
@@ -67,7 +70,7 @@ func TestWhoCanTextStripsControlCharacters(t *testing.T) {
 		Question: Question{Verb: "get", Resource: "pods"}, Scope: Scope{Cluster: "local"},
 		Note:     "n\x1b[2J",
 		Subjects: []subjectRow{{Kind: KindGroup, Name: "g", Decision: DecisionAllowed, KnownMembers: []string{"u-1\nFAKE", "u-2"}}},
-	}, false, false)
+	}, false, false).Marked()
 	assert.NotContains(t, out, "\x1b")
 	assert.Contains(t, out, "  note: n[2J\n")
 	assert.Contains(t, out, "  known members: u-1FAKE, u-2\n")

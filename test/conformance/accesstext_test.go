@@ -21,18 +21,18 @@ const accessPath = modulePrefix + "internal/engine/access"
 var accessMessageFields = []string{"Message", "Note"}
 
 // accessTextFindings reports, for the access package among pkgs, every call
-// of output.Printable that filters a message or a note field of one of its
-// own types, every call of it on a line of renderTree (the range variable of
-// a loop over renderTree, or the call itself), and a printableAll that
-// filters through output.Printable or never through
-// runtime.PrintableRemedies: output.Printable removes the remedy marker the
-// text of those fields can hold.
+// of output.Printable or output.FilterValue that filters a message or a note
+// field of one of its own types, every call of one on a line of renderTree
+// (the range variable of a loop over renderTree, or the call itself), and a
+// printableAll that filters through one of them or never through
+// runtime.FilterRemedies: output.Printable and output.FilterValue remove the
+// remedy marker the text of those fields can have.
 //
-// Limits: only a call of output.Printable is read, and only an argument that
-// reads the field or the line itself. A builder that writes a message field
-// through another function, a field read into a variable first
-// (m := ns.Issue.Message; output.Printable(m)), a line of renderTree copied
-// into a variable first, a result of renderTree that is stored anywhere but
+// Limits: only a call of output.Printable or output.FilterValue is read, and
+// only an argument that reads the field or the line itself. A builder that
+// writes a message field through another function, a field read into a
+// variable first (m := ns.Issue.Message; output.FilterValue(m)), a line of
+// renderTree copied into a variable first, a result of renderTree that is stored anywhere but
 // a variable of the same function or passed to another function, a stored
 // result that is read by index, copied to a second variable or sliced
 // (renderTree(n, mark)[1:]) instead of ranged over, and a marked cell in a
@@ -94,23 +94,23 @@ func findAccessText(pkgs []*packages.Package, pkgPath string) []string {
 						return true
 					}
 					fn := calledFunction(pkg.TypesInfo, call)
-					if isFunc && fd.Name.Name == "printableAll" && isPackageFunction(fn, runtimePath, "PrintableRemedies") {
+					if isFunc && fd.Name.Name == "printableAll" && isPackageFunction(fn, runtimePath, "FilterRemedies") {
 						printableAllCalls++
 					}
-					if !isPackageFunction(fn, outputPath, "Printable") {
+					if !isPackageFunction(fn, outputPath, "Printable") && !isPackageFunction(fn, outputPath, "FilterValue") {
 						return true
 					}
 					at := pkg.Fset.Position(call.Pos())
 					if isFunc && fd.Name.Name == "printableAll" {
-						out = append(out, at.Filename+":"+strconv.Itoa(at.Line)+": printableAll filters with output.Printable; use runtime.PrintableRemedies")
+						out = append(out, at.Filename+":"+strconv.Itoa(at.Line)+": printableAll filters with output."+fn.Name()+"; use runtime.FilterRemedies")
 					}
 					for _, arg := range call.Args {
 						if readsMessageField(pkg.TypesInfo, arg, pkgPath) {
-							out = append(out, at.Filename+":"+strconv.Itoa(at.Line)+": output.Printable removes the remedy marker from a message or a note; use runtime.PrintableRemedies")
+							out = append(out, at.Filename+":"+strconv.Itoa(at.Line)+": output."+fn.Name()+" removes the remedy marker from a message or a note; use runtime.FilterRemedies")
 							break
 						}
 						if readsTreeLine(pkg.TypesInfo, arg, treeLines, pkgPath) {
-							out = append(out, at.Filename+":"+strconv.Itoa(at.Line)+": output.Printable removes the remedy marker from a line of renderTree; use runtime.PrintableRemedies")
+							out = append(out, at.Filename+":"+strconv.Itoa(at.Line)+": output."+fn.Name()+" removes the remedy marker from a line of renderTree; use runtime.FilterRemedies")
 							break
 						}
 					}
@@ -118,7 +118,7 @@ func findAccessText(pkgs []*packages.Package, pkgPath string) []string {
 				})
 				if isFunc && fd.Name.Name == "printableAll" && printableAllCalls == 0 {
 					at := pkg.Fset.Position(fd.Pos())
-					out = append(out, at.Filename+":"+strconv.Itoa(at.Line)+": printableAll never calls runtime.PrintableRemedies")
+					out = append(out, at.Filename+":"+strconv.Itoa(at.Line)+": printableAll never calls runtime.FilterRemedies")
 				}
 			}
 		}
@@ -172,12 +172,12 @@ func readsMessageField(info *types.Info, e ast.Expr, pkgPath string) bool {
 	return found
 }
 
-// TestAccessTextPrintsMessagesThroughPrintableRemedies asserts the access
+// TestAccessTextPrintsMessagesThroughFilterRemedies asserts the access
 // commands' text keeps the remedy marker in every message and note it
 // prints, so the invocation can name its config directory in a command
-// they name: no call of output.Printable on such a field, and the table
-// cells filtered through runtime.PrintableRemedies.
-func TestAccessTextPrintsMessagesThroughPrintableRemedies(t *testing.T) {
+// they name: no call of output.Printable or output.FilterValue on such a
+// field, and the table cells filtered through runtime.FilterRemedies.
+func TestAccessTextPrintsMessagesThroughFilterRemedies(t *testing.T) {
 	t.Parallel()
 	pkgs, err := fieldManagerPackages()
 	require.NoError(t, err)

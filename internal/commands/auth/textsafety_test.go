@@ -295,8 +295,8 @@ func TestAuthStatusKeepsStoredCredentialValuesOnTheirLines(t *testing.T) {
 	planted.TokenRef.Kind = clierr.TokenKindExt
 
 	data, line := credentialReport(planted)
-	text := renderAuthCheckText(true, "default", "v1", nil, nil, nil, nil, storeReport{policy: "auto"}, line)
-	assertLineRule(t, line)
+	text := renderAuthCheckText(true, "default", "v1", nil, nil, nil, nil, storeReport{policy: "auto"}, line).Marked()
+	assertLineRule(t, line.Marked())
 	assertLineRule(t, text)
 	classes.assertShown(t, text)
 

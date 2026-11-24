@@ -82,18 +82,18 @@ func installHint(command, entry, clusterID, dir, serverURL string, carriesCA boo
 // machineNotice says what of this machine the file records: its config
 // directory always, the store variable when it is not empty, and the
 // command when it is a path.
-func machineNotice(dir, store, command string, commandIsPath bool) string {
-	msg := "this kubeconfig records this machine's config directory " + output.Printable(dir)
+func machineNotice(dir, store, command string, commandIsPath bool) clierr.Filtered {
+	msg := clierr.Plain("this kubeconfig records this machine's config directory ").Append(output.FilterValue(dir))
 	if output.Printable(dir) != dir {
-		msg += " (its path has characters a terminal cannot show)"
+		msg = msg.AppendString(" (its path has characters a terminal cannot show)")
 	}
 	if store != "" {
-		msg += ", credential store " + output.Printable(store)
+		msg = msg.AppendString(", credential store ").Append(output.FilterValue(store))
 	}
 	if commandIsPath {
-		msg += " and command " + output.Printable(command)
+		msg = msg.AppendString(" and command ").Append(output.FilterValue(command))
 	}
-	return msg + "; it works for this user on this machine only"
+	return msg.AppendString("; it works for this user on this machine only")
 }
 
 // effectiveRead answers the stored login of the entry Effective already
@@ -171,20 +171,20 @@ func (l lookupCall) recordedAuthConfig(lk token.StoredLogin) string {
 // login that answers records, when it is a user id - or why it carries
 // none: the answering login records no owner. Any other outcome of the
 // lookup gives neither; its notice says what it is.
-func (l lookupCall) recordedOwner(lk token.StoredLogin) (owner, notice string) {
+func (l lookupCall) recordedOwner(lk token.StoredLogin) (owner string, notice clierr.Filtered) {
 	if lk.Outcome != token.LookupAnswered {
-		return "", ""
+		return "", clierr.Filtered{}
 	}
 	recorded := l.cfg.Servers[lk.Entry].TokenUserID
 	if token.ValidUserID(recorded) {
-		return recorded, ""
+		return recorded, clierr.Filtered{}
 	}
 	whose := "the stored login of " + clierr.ShellQuote(lk.Entry)
 	if lk.PluginEntry {
 		whose = "the stored login of the exec plugin's own login entry " + clierr.ShellQuote(lk.Entry)
 	}
 	if recorded != "" {
-		return "", runtime.PrintableRemedies("this kubeconfig names no Rancher user: " + whose + " records the owner " +
+		return "", runtime.FilterRemedies("this kubeconfig names no Rancher user: " + whose + " records the owner " +
 			clierr.ShellQuote(clierr.IDText(recorded)) + ", which --user-id does not accept; the exec plugin does not check the user")
 	}
 	head := "this kubeconfig names no Rancher user: " + whose + " records no owner; the exec plugin does not check the user; "
@@ -193,11 +193,11 @@ func (l lookupCall) recordedOwner(lk token.StoredLogin) (owner, notice string) {
 	// the login target.
 	switch {
 	case !lk.PluginEntry && !config.IsExecLoginEntryName(lk.Entry):
-		return "", runtime.PrintableRemedies(clierr.Text(head+"pipe an API token", clierr.Lead(" to: "), pipeThenWrite(lk.Entry, l.clusterID)))
+		return "", runtime.FilterRemedies(clierr.Text(head+"pipe an API token", clierr.Lead(" to: "), pipeThenWrite(lk.Entry, l.clusterID)))
 	case lk.Identified != "" && lk.Identified != lk.Entry && !config.IsExecLoginEntryName(lk.Identified):
 		// The identified entry fell back to the plugin login entry: its
 		// own login, which records its owner, then answers.
-		return "", runtime.PrintableRemedies(clierr.Text(head+"pipe an API token", clierr.Lead(" to: "), pipeThenWrite(lk.Identified, l.clusterID)))
+		return "", runtime.FilterRemedies(clierr.Text(head+"pipe an API token", clierr.Lead(" to: "), pipeThenWrite(lk.Identified, l.clusterID)))
 	}
 	// The exec plugin's own login entry: auth login refuses its name, and the
 	// next sign-in makes it again with its owner.
@@ -205,7 +205,7 @@ func (l lookupCall) recordedOwner(lk token.StoredLogin) (owner, notice string) {
 		Then("", config.LogoutHintFor(lk.Entry)).
 		Then("then ", clierr.NewCommand(config.DeleteServerWords).Arg(lk.Entry)).
 		Then(kubeconfigAgainLead, kubeconfigAgain(l.clusterID))
-	return "", runtime.PrintableRemedies(clierr.Text(head+"remove "+clierr.ShellQuote(lk.Entry), clierr.Lead(" with: "), removal))
+	return "", runtime.FilterRemedies(clierr.Text(head+"remove "+clierr.ShellQuote(lk.Entry), clierr.Lead(" with: "), removal))
 }
 
 // pipeThenWrite is the login of entry that takes a piped API token, then the
@@ -222,11 +222,11 @@ func pipeThenWrite(entry, clusterID string) clierr.Sequence {
 // how to get one when none answers; the plugin's refusal with its
 // remedies; or that the store could not be read. A store failure is a
 // notice, so RANCHER_CLI_TOKEN still writes the file.
-func lookupNotice(l lookupCall, lk token.StoredLogin) string {
+func lookupNotice(l lookupCall, lk token.StoredLogin) clierr.Filtered {
 	switch lk.Outcome {
 	case token.LookupAnswered:
 		if !l.envToken && lk.Entry == l.eff.ServerName {
-			return ""
+			return clierr.Filtered{}
 		}
 		through := "the stored login of " + clierr.ShellQuote(lk.Entry)
 		if lk.PluginEntry {
@@ -236,12 +236,12 @@ func lookupNotice(l lookupCall, lk token.StoredLogin) string {
 		if !l.envToken {
 			not = "the login of " + clierr.ShellQuote(l.eff.ServerName)
 		}
-		return runtime.PrintableRemedies("this kubeconfig authenticates through " + through + ", not through " + not)
+		return runtime.FilterRemedies("this kubeconfig authenticates through " + through + ", not through " + not)
 	case token.LookupNone:
 		login := token.NoTerminalLogin(l.cfg, l.name, l.clusterID, l.serverID, l.caSource, l.eff.CASource, false)
 		unattended := fmt.Sprintf("no stored login in %s answers for this kubeconfig: kubectl will sign in on first use when it has a terminal; %s",
 			l.dir, login.Instruction("for unattended use, pipe an API token"))
-		return runtime.PrintableRemedies(clierr.NoteOnce(clierr.Text(unattended,
+		return runtime.FilterRemedies(clierr.NoteOnce(clierr.Text(unattended,
 			clierr.Lead("; or, for a kubeconfig that carries its own token, run: "), token.CreateKubeconfigRemedy(l.clusterID))))
 	case token.LookupRefused:
 		// The lookup's refusals carry their remedies in the message; none
@@ -250,13 +250,13 @@ func lookupNotice(l lookupCall, lk token.StoredLogin) string {
 		if ce, ok := errors.AsType[*clierr.Error](lk.Err); ok {
 			msg = ce.Message
 		}
-		return runtime.PrintableRemedies("kubectl's exec plugin will refuse this kubeconfig: " + msg)
+		return runtime.FilterRemedies("kubectl's exec plugin will refuse this kubeconfig: " + msg)
 	}
 	entry := lk.Identified
 	if entry == "" {
 		entry = l.name
 	}
-	return runtime.PrintableRemedies(fmt.Sprintf("could not check the stored login for %s (%v); kubectl's exec plugin fails the same way until it can",
+	return runtime.FilterRemedies(fmt.Sprintf("could not check the stored login for %s (%v); kubectl's exec plugin fails the same way until it can",
 		clierr.ShellQuote(entry), lk.Err))
 }
 

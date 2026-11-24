@@ -171,7 +171,7 @@ func oauthAuthCodeAuth(
 	input.signInStarts(p)
 	p.Notice("\nOpening browser for authentication...\n")
 	if err := openBrowser(authURL); err != nil {
-		p.Notice(fmt.Sprintf("Failed to open browser automatically (%v). Please open the following URL manually:\n%s\n", err, output.Printable(authURL)))
+		p.Notice(clierr.Sprintf("Failed to open browser automatically (%v). Please open the following URL manually:\n%s\n", err, output.FilterValue(authURL)).Marked())
 	}
 
 	timeout := time.NewTimer(timeoutAfter)
@@ -314,11 +314,11 @@ func oauthDeviceCodeAuth(ctx context.Context, client *http.Client, input *loginI
 	}
 
 	input.signInStarts(p)
-	p.Notice(fmt.Sprintf(
+	p.Notice(clierr.Sprintf(
 		"\nTo sign in, use a web browser to open the page %s and enter the code %s to authenticate.\n",
-		output.Printable(deviceAuthResp.VerificationURI),
-		output.Printable(deviceAuthResp.UserCode),
-	))
+		output.FilterValue(deviceAuthResp.VerificationURI),
+		output.FilterValue(deviceAuthResp.UserCode),
+	).Marked())
 
 	oauthToken, err := oauthConfig.DeviceAccessToken(ctxWithClient, deviceAuthResp)
 	if err != nil {

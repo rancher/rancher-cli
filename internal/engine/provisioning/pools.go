@@ -11,7 +11,6 @@ package provisioning
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -202,7 +201,7 @@ func wrapWithContextLine(exec runtime.ExecuteFunc, contextLine string) runtime.E
 		if err != nil {
 			return res, err
 		}
-		tr := runtime.TextLines(strings.TrimSuffix(res.Text, "\n"), contextLine)
+		tr := runtime.TextLinesOf(clierr.Plain(res.Text).TrimSuffix("\n"), clierr.Plain(contextLine))
 		res.Text, res.StyledText = tr.Text, tr.StyledText
 		return res, nil
 	}
