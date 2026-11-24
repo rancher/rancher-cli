@@ -39,7 +39,7 @@ func fetchOIDCClient(ctx context.Context, clients engine.ClusterClientFactory, c
 	}
 	orig, err := client.Get(ctx, k.GVR, "", clientName)
 	if err != nil {
-		return nil, kinds.Kind{}, nil, err
+		return nil, kinds.Kind{}, nil, engine.WithMissingGetHint(err, "command", "oidc-client", k.GVR, "", clientName, "update")
 	}
 	return client, k, orig, nil
 }

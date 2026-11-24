@@ -109,7 +109,7 @@ func (c *upgradeCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect,
 		return safety.Effect{}, nil, err
 	}
 
-	client, prov, ns, name, err := fetchClusterFamilyTarget(ctx, c.clients, in)
+	client, prov, ns, name, err := fetchClusterFamilyTarget(ctx, c.clients, in, "")
 	if err != nil {
 		if clierr.IsNotFound(err) {
 			return safety.Effect{}, nil, noProvisioningClusterError(in.Args()[0], resolveClusterNamespace(in), "its version is set in spec.rke2Config or spec.k3sConfig of its management cluster").WithCause(err)

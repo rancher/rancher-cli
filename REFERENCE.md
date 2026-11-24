@@ -1240,6 +1240,34 @@ carries them. A merge patch (`--type merge`) that sets or removes either field
 is refused the same way. The server sets both fields; the CLI always sends them
 back exactly as fetched.
 
+`patch` reads the object before it updates it: your role needs `get` as well as
+`update` on the resource. When the Kubernetes authorizer refuses that get, the
+command returns the `RBAC` error (exit 6) before any write, with the hint `this
+patch reads the <kind> first; your role needs permission to get <resource> as
+well as update` (the resource with its group, for example
+`clusters.provisioning.cattle.io`); `patch cluster` keeps the hint `rancher
+inspect cluster <name>` that every refused get of a management cluster has.
+
+The commands that change a provisioning cluster (`cluster scale`, `cluster
+set-autoscaling`, `cluster clear-autoscaling`, `cluster pause-autoscaling`,
+`cluster resume-autoscaling`, `cluster save-etcd-snapshot`, `cluster upgrade`,
+`cluster set-upgrade-strategy`), the `oidc-client` secret commands and `project
+add-namespace` and `project remove-namespace` read their object first in the
+same way, and their hint starts `this command reads the <kind> first`. The hint
+of `cluster upgrade` and `cluster set-upgrade-strategy` names only `get`: for an
+imported cluster they write its management cluster, not the provisioning cluster
+they read. For an imported cluster they also read its management cluster through
+the Steve API; a refusal of that read says `you cannot read cluster <id>` and
+has the hint `rancher access clusters`.
+
+The hint of a command that reads another object before the one it acts on names
+only `get`. `create secret --project`, and `get`, `patch`, `delete`, `grant` and
+`revoke` with `--project` for a project's role bindings, read the project; the
+hint is `this command reads the project first; your role needs permission to
+get projects.management.cattle.io`. `create cluster` reads the cloud credential
+it uses; the hint is `this command reads the cloud-credential first; your role
+needs permission to get secrets`.
+
 Every `diff[].path` a dry-run reports (in `-o json` and in the default text
 output) is an RFC 6901 JSON Pointer - `~1` for a literal `/` and `~0` for a
 literal `~` inside a key; a domain-prefixed label or annotation key therefore

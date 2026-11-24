@@ -54,13 +54,23 @@ type CloudCredRef struct {
 // after one GET by id for a credential the List did not carry. When the List
 // is refused with RBAC, a value that is a Secret name resolves through that
 // GET alone, with no warning. Reads Secret objects but retains ONLY key
-// names + metadata - never a data value.
+// names + metadata - never a data value. The Kubernetes authorizer's refusal
+// of the GET by id gets the hint that names get on secrets: the command reads
+// the credential before it writes the object that uses it.
 func ResolveCloudCredential(ctx context.Context, clients engine.ClusterClientFactory, nameOrID string) (CloudCredRef, string, error) {
 	obj, warning, err := resolveCredentialObj(ctx, clients, nameOrID, "--cloud-credential")
 	if err != nil {
-		return CloudCredRef{}, "", err
+		return CloudCredRef{}, "", engine.WithMissingGetHint(err, "command", "cloud-credential", secretsGVR, cloudCredNamespace, credentialSecretName(nameOrID), "")
 	}
 	return refFrom(obj), warning, nil
+}
+
+// credentialSecretName is the name of the Secret that nameOrID names. The
+// namespaced id form (cattle-global-data:cc-...) names the same Secret as the
+// name without the namespace. The hint of a refused GET must name what the GET
+// asked for; the GET and the hint both take the name from here.
+func credentialSecretName(nameOrID string) string {
+	return strings.TrimPrefix(nameOrID, cloudCredNamespace+":")
 }
 
 // resolveCredentialObj is ResolveCloudCredential's shared innards, returning
@@ -79,8 +89,7 @@ func resolveCredentialObj(ctx context.Context, clients engine.ClusterClientFacto
 	if err != nil {
 		return nil, "", err
 	}
-	// The namespaced id form names the same Secret.
-	name := strings.TrimPrefix(nameOrID, cloudCredNamespace+":")
+	name := credentialSecretName(nameOrID)
 	t := engine.MatchText{Noun: "cloud credential", Plural: "cloud credentials", Flag: flag,
 		NotFound: "cloud credential not found: " + nameOrID, NotFoundHint: clierr.NewCommand("get cloud-credential")}
 

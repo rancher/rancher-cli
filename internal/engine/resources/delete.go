@@ -2,7 +2,6 @@ package resources
 
 import (
 	"context"
-	"errors"
 	"slices"
 	"time"
 
@@ -333,13 +332,5 @@ func (c deleteCmd) planWithUID(ctx context.Context, client engine.ClusterClient,
 // the missing verb. Any other error, and one that already has a hint, is
 // returned as it is.
 func WithGetHint(k kinds.Kind, ns, name string, err error) error {
-	ce, ok := errors.AsType[*clierr.Error](err)
-	if !ok || ce.Hint != "" || !clierr.AuthorizerRefused(err, "get", k.GVR.Group, k.GVR.Resource, ns, name) {
-		return err
-	}
-	resource := k.GVR.Resource
-	if k.GVR.Group != "" {
-		resource += "." + k.GVR.Group
-	}
-	return ce.WithMessage(ce.Message).WithHint("this delete reads the " + k.Name + " first; your role needs permission to get " + resource + " as well as delete")
+	return engine.WithMissingGetHint(err, "delete", k.Name, k.GVR, ns, name, "delete")
 }

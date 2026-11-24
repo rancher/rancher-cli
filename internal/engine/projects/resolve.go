@@ -28,7 +28,9 @@ const projectKey = "field.cattle.io/projectId"
 // statusEmpty reports whether that fallback fired, for callers that need to
 // know precisely (a project could coincidentally set backingNamespace to
 // the project id itself; comparing ns == projectID can't distinguish that
-// from an actually-empty status field).
+// from an actually-empty status field). The Kubernetes authorizer's refusal
+// of the project read gets the hint that names get on projects: every caller
+// reads the project before it reads or writes another object.
 func BackingNamespace(ctx context.Context, clients engine.ClusterClientFactory, clusterID, projectID string) (ns string, statusEmpty bool, err error) {
 	client, err := clients.Cluster(ctx, engine.LocalCluster)
 	if err != nil {
@@ -37,7 +39,7 @@ func BackingNamespace(ctx context.Context, clients engine.ClusterClientFactory, 
 	projectKind, _ := kinds.Lookup("project")
 	obj, err := client.Get(ctx, projectKind.GVR, clusterID, projectID)
 	if err != nil {
-		return "", false, err
+		return "", false, engine.WithMissingGetHint(err, "command", projectKind.Name, projectKind.GVR, clusterID, projectID, "")
 	}
 	backing, _, _ := unstructured.NestedString(obj.Object, "status", "backingNamespace")
 	if backing == "" {

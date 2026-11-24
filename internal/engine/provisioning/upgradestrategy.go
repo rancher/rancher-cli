@@ -246,7 +246,7 @@ func (c *upgradeStrategyCmd) Plan(ctx context.Context, in runtime.Input) (safety
 		return safety.Effect{}, nil, err
 	}
 
-	client, prov, ns, name, err := fetchClusterFamilyTarget(ctx, c.clients, in)
+	client, prov, ns, name, err := fetchClusterFamilyTarget(ctx, c.clients, in, "")
 	if err != nil {
 		if clierr.IsNotFound(err) {
 			return safety.Effect{}, nil, noProvisioningClusterError(in.Args()[0], resolveClusterNamespace(in),

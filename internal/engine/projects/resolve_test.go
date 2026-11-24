@@ -10,6 +10,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -211,4 +212,26 @@ func TestMemberSelectorIsTheLabelEquality(t *testing.T) {
 	assert.Equal(t, "field.cattle.io/projectId=p-1", got)
 	_, err = MemberSelector("bad id!")
 	require.ErrorContains(t, err, "invalid project id")
+}
+
+// TestBackingNamespaceNamesTheMissingGetOnTheAuthorizersRefusal asserts that
+// the Kubernetes authorizer's refusal of the project read is returned with
+// the hint that names get on projects and no verb of a write: every caller
+// (create secret --project, the --project route of a project's role
+// bindings, grant and revoke with --project) reads the project before it
+// reads or writes another object.
+func TestBackingNamespaceNamesTheMissingGetOnTheAuthorizersRefusal(t *testing.T) {
+	t.Parallel()
+	projectKind, _ := kinds.Lookup("project")
+	se := apierrors.NewForbidden(schema.GroupResource{Group: projectKind.GVR.Group, Resource: projectKind.GVR.Resource}, "p-1",
+		errors.New(`User "u-1" cannot get resource "projects" in API group "management.cattle.io" in the namespace "c-x"`))
+	refusal := clierr.FromStatus(se, &clierr.Request{Verb: "get", Group: projectKind.GVR.Group, Resource: projectKind.GVR.Resource, Name: "p-1"})
+	client := &listClient{getErrs: map[string]error{"c-x/p-1": refusal}}
+
+	_, _, err := BackingNamespace(t.Context(), stubFactory{c: client}, "c-x", "p-1")
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "a clierr error: %v", err)
+	assert.Equal(t, clierr.CodeRBAC, ce.Code)
+	require.ErrorContains(t, err, `cannot get resource "projects" in API group "management.cattle.io" in the namespace "c-x"`)
+	assert.Equal(t, "this command reads the project first; your role needs permission to get projects.management.cattle.io", ce.Hint)
 }

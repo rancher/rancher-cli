@@ -426,6 +426,21 @@ rancher delete project web --cluster prod --apply --yes       # 3. destructive e
   verb. When a delete fails with a `CONFLICT` that says the object was deleted
   and created again after the preview, nothing was deleted: run the delete
   with `--dry-run` again before you apply it.
+- `patch` reads the object before it updates it, and needs `get` as well as
+  `update`. The same is true of `cluster scale`, `cluster set-autoscaling`,
+  `cluster clear-autoscaling`, `cluster pause-autoscaling`, `cluster
+  resume-autoscaling` and `cluster save-etcd-snapshot` (they read the
+  provisioning cluster), the three `oidc-client` secret commands (they read the
+  OIDC client) and `project add-namespace|remove-namespace` (they read the
+  namespace). `cluster upgrade` and `cluster set-upgrade-strategy` read the
+  provisioning cluster and need `get` on it; for an imported cluster they also
+  read and update its management cluster. `create secret --project` and the
+  commands for a project's role bindings with `--project` read the project and
+  need `get` on it; `create cluster` reads the Secret of its cloud credential
+  and needs `get` on `secrets`. When your role cannot get the object, the
+  command stops with `RBAC` (exit 6) before any write, and the hint names the
+  missing verb (`patch cluster` keeps its own hint, `rancher inspect cluster
+  <name>`).
 - The dry-run's `resourceVersion`/`conflictDetection` fields describe THAT
   invocation only. An Effect with `previewSource: serverReads` carries no
   resourceVersion and no conflict detection at all; for an action `--apply` reads the state

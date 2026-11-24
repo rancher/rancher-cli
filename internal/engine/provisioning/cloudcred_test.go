@@ -13,6 +13,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -595,4 +596,34 @@ func TestResolveCloudCredentialListRefusedFallsBackToOneGet(t *testing.T) {
 	_, _, err = ResolveCloudCredential(t.Context(), fakeFactory{c: client}, "cc-own12")
 	assert.Same(t, serverErr, err, "a List failure other than RBAC is returned")
 	assert.Empty(t, client.gets)
+}
+
+// TestResolveCloudCredentialRefusedGetNamesTheMissingGet asserts that the
+// authorizer's refusal of the GET by id gets the hint that names get on
+// secrets, for the bare id and the namespaced id alike (both ask for the same
+// Secret), and that a refusal of another Secret keeps the server's text alone.
+func TestResolveCloudCredentialRefusedGetNamesTheMissingGet(t *testing.T) {
+	t.Parallel()
+	listErr := clierr.New(clierr.CodeRBAC, "secrets is forbidden: cannot list resource \"secrets\"")
+	refusal := func(name string) error {
+		se := apierrors.NewForbidden(schema.GroupResource{Resource: "secrets"}, name,
+			fmt.Errorf("User %q cannot get resource %q in API group %q in the namespace %q", "u", "secrets", "", "cattle-global-data"))
+		return clierr.FromStatus(se, &clierr.Request{Verb: "get", Resource: "secrets", Name: name})
+	}
+	const hint = "this command reads the cloud-credential first; your role needs permission to get secrets"
+	for _, value := range []string{"cc-abc12", "cattle-global-data:cc-abc12"} {
+		client := &fakeClient{listErr: listErr, getErr: refusal("cc-abc12")}
+		_, _, err := ResolveCloudCredential(t.Context(), fakeFactory{c: client}, value)
+		ce, ok := errors.AsType[*clierr.Error](err)
+		require.True(t, ok, "%s: %v", value, err)
+		assert.Equal(t, clierr.CodeRBAC, ce.Code, value)
+		assert.Equal(t, hint, ce.Hint, value)
+		assert.Equal(t, []string{"cc-abc12"}, client.gets, value)
+	}
+
+	client := &fakeClient{listErr: listErr, getErr: refusal("cc-other")}
+	_, _, err := ResolveCloudCredential(t.Context(), fakeFactory{c: client}, "cattle-global-data:cc-abc12")
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "%v", err)
+	assert.Empty(t, ce.Hint, "a refusal of another Secret is not the refusal of this GET")
 }

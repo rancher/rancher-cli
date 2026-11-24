@@ -366,6 +366,28 @@ type scrubFake struct {
 	// deleted, and the backing namespace of a deleted Project, which Rancher
 	// deletes with the project: a GET of one responds NOT_FOUND.
 	gone map[string]bool
+	// refuseGets makes every Get return the refusal the Kubernetes
+	// authorizer writes for that request, and refused records each one.
+	refuseGets bool
+	refused    []scrubRequest
+	// writes are the creates, updates and deletes received, dry runs
+	// included, in order.
+	writes []scrubRequest
+}
+
+// scrubRequest is one request the fake received: the verb, the resource,
+// the namespace and the name.
+type scrubRequest struct {
+	verb     string
+	gvr      schema.GroupVersionResource
+	ns, name string
+}
+
+// record appends a request to list under the fake's lock.
+func (f *scrubFake) record(list *[]scrubRequest, verb string, gvr schema.GroupVersionResource, ns, name string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	*list = append(*list, scrubRequest{verb: verb, gvr: gvr, ns: ns, name: name})
 }
 
 // scrubListCall is one List the fake received: the resource and the label
@@ -459,6 +481,10 @@ func walkStrings(v any, visit func(string)) {
 }
 
 func (f *scrubFake) Get(_ context.Context, gvr schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {
+	if f.refuseGets {
+		f.record(&f.refused, "get", gvr, ns, name)
+		return nil, scrubRefusal(gvr, ns, name)
+	}
 	f.mu.Lock()
 	gone := f.gone[ns+"/"+name]
 	f.mu.Unlock()
@@ -551,6 +577,7 @@ func (f *scrubFake) List(_ context.Context, gvr schema.GroupVersionResource, ns,
 }
 
 func (f *scrubFake) Create(_ context.Context, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, _ bool) (*unstructured.Unstructured, error) {
+	f.record(&f.writes, "create", gvr, ns, obj.GetName())
 	out := obj.DeepCopy()
 	if out.GetName() == "" {
 		if gn := out.GetGenerateName(); gn != "" {
@@ -571,7 +598,8 @@ func (f *scrubFake) Create(_ context.Context, gvr schema.GroupVersionResource, n
 	return f.answer(gvr, out), nil
 }
 
-func (f *scrubFake) Update(_ context.Context, gvr schema.GroupVersionResource, _ string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
+func (f *scrubFake) Update(_ context.Context, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
+	f.record(&f.writes, "update", gvr, ns, obj.GetName())
 	if !dryRun {
 		f.mu.Lock()
 		f.updates++
@@ -582,6 +610,7 @@ func (f *scrubFake) Update(_ context.Context, gvr schema.GroupVersionResource, _
 }
 
 func (f *scrubFake) Delete(_ context.Context, gvr schema.GroupVersionResource, ns, name, _ string, dryRun bool) error {
+	f.record(&f.writes, "delete", gvr, ns, name)
 	if dryRun {
 		return nil
 	}
@@ -597,6 +626,16 @@ func (f *scrubFake) Delete(_ context.Context, gvr schema.GroupVersionResource, n
 		f.gone["/"+ns+"-"+name] = true
 	}
 	return nil
+}
+
+var _ engine.UIDDeleter = (*scrubFake)(nil)
+
+// DeleteWithUID deletes as Delete does; a dry run responds with the uid u1.
+func (f *scrubFake) DeleteWithUID(ctx context.Context, gvr schema.GroupVersionResource, ns, name, _ string, dryRun bool) (string, error) {
+	if err := f.Delete(ctx, gvr, ns, name, "", dryRun); err != nil || !dryRun {
+		return "", err
+	}
+	return "u1", nil
 }
 
 func (f *scrubFake) Logs(context.Context, string, string, engine.LogOptions) (string, error) {
@@ -1490,7 +1529,7 @@ func (l linkedScrubClients) Cluster(context.Context, string) (engine.ClusterClie
 type linkedScrubClient struct{ *scrubFake }
 
 func (c linkedScrubClient) Get(ctx context.Context, gvr schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {
-	if gvr.Group == "provisioning.cattle.io" && gvr.Resource == "clusters" {
+	if gvr.Group == "provisioning.cattle.io" && gvr.Resource == "clusters" && !c.refuseGets {
 		obj := c.base(gvr, ns, name)
 		_ = unstructured.SetNestedField(obj.Object, "c-m-scrub", "status", "clusterName")
 		return obj, nil

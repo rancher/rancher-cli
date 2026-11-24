@@ -1587,6 +1587,28 @@ token and Vault requests, and a source scan that allows a call of
 `DeleteWithUID` only in `planWithUID`, and of `planWithUID` only in
 `planWith`.
 
+**A command that reads an object before it writes names the missing `get`.**
+`patch` and the dedicated commands that read the object they change (the
+commands that change a provisioning cluster, the `oidc-client` secret commands,
+`project add-namespace` and `project remove-namespace`) keep the read: the
+preview is a diff against the object they read and the update is bound to its
+resourceVersion. When the Kubernetes authorizer refuses that get
+(`clierr.AuthorizerRefused`), the command adds a hint
+(`engine.WithMissingGetHint`) that names get on the resource and the verb of the
+write, and sends no write; a hint the cluster client already set for that kind
+and verb is kept. The refusal of a read of another object before the write (the
+project that `--project` names, `projects.BackingNamespace`; the cloud
+credential of `create cluster`) gets the same hint with get alone; so does the
+refusal of the read in `cluster upgrade` and `cluster set-upgrade-strategy`,
+which write the management Cluster of an imported cluster. A refused read
+through the Steve API, or a refused list, is not the authorizer's refusal of a
+get and keeps its own error. Guard: a table with a row for every mutating
+command, run with a client that refuses every get
+(`TestEveryCommandThatReadsBeforeItWritesNamesTheMissingVerb`), and the rows of
+`cluster upgrade` and `cluster set-upgrade-strategy` for an imported cluster,
+run with a refused Steve read
+(`TestACommandThatReadsThroughSteveBeforeItWritesNamesTheRead`).
+
 **`delete project --delete-namespaces` waits for the namespaces before it
 deletes the project.** The project's role bindings still exist while the CLI
 reads the namespaces, and the project owner can no longer read the namespaces

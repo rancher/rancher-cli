@@ -198,7 +198,11 @@ func membershipCluster(ctx context.Context, clients engine.ClusterClientFactory,
 // mutate.
 func getNamespace(ctx context.Context, client engine.ClusterClient, nsName string) (*unstructured.Unstructured, error) {
 	nsKind, _ := kinds.Lookup("namespace")
-	return client.Get(ctx, nsKind.GVR, "", nsName)
+	obj, err := client.Get(ctx, nsKind.GVR, "", nsName)
+	if err != nil {
+		return nil, engine.WithMissingGetHint(err, "command", nsKind.Name, nsKind.GVR, "", nsName, "update")
+	}
+	return obj, nil
 }
 
 // projectOn is the project a namespace belongs to on cluster, from its

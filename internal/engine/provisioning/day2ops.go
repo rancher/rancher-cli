@@ -115,7 +115,7 @@ func notReadyError(name, condType, status, message string) *clierr.Error {
 // UI and Rancher's one operation at a time refuse. It returns the target of a
 // request, or of a waiting run when the operation is already in progress.
 func readDay2Target(ctx context.Context, clients engine.ClusterClientFactory, roots engine.RootClientFactory, in runtime.Input, op day2Operation) (*day2Target, error) {
-	client, prov, ns, name, err := fetchClusterFamilyTarget(ctx, clients, in)
+	client, prov, ns, name, err := fetchClusterFamilyTarget(ctx, clients, in, "update")
 	if err != nil {
 		if clierr.IsNotFound(err) {
 			return nil, noClusterError(in.Args()[0], resolveClusterNamespace(in)).WithCause(err)

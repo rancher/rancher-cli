@@ -117,7 +117,8 @@ func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	}
 	orig, err := client.Get(ctx, c.k.GVR, ns, name)
 	if err != nil {
-		return safety.Effect{}, nil, lookupHandle(ctx, c.clients, client, c.k, ns, name, err)
+		// The write is an update; the read before it needs get.
+		return safety.Effect{}, nil, engine.WithMissingGetHint(lookupHandle(ctx, c.clients, client, c.k, ns, name, err), "patch", c.k.Name, c.k.GVR, ns, name, "update")
 	}
 	rv := orig.GetResourceVersion()
 

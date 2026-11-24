@@ -93,7 +93,7 @@ var _ runtime.MutatingCommand = (*resumeAutoscalingCmd)(nil)
 // already in the target state - the same retry contract clear-autoscaling
 // gives an agent that finds nothing left to do.
 func planAutoscalerPause(ctx context.Context, clients engine.ClusterClientFactory, in runtime.Input, pause bool) (safety.Effect, runtime.ExecuteFunc, error) {
-	client, obj, ns, name, err := fetchClusterFamilyTarget(ctx, clients, in)
+	client, obj, ns, name, err := fetchClusterFamilyTarget(ctx, clients, in, "update")
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}

@@ -48,8 +48,11 @@ func resolveClusterNamespace(in runtime.Input) string {
 // fetchClusterFamilyTarget validates the required <cluster> positional and
 // GETs the provisioning Cluster object every family verb mutates, on the
 // local management cluster (the provisioning Cluster is a management-plane
-// resource, not a downstream one).
-func fetchClusterFamilyTarget(ctx context.Context, clients engine.ClusterClientFactory, in runtime.Input) (client engine.ClusterClient, obj *unstructured.Unstructured, ns, name string, err error) {
+// resource, not a downstream one). verb is the verb of the write when the
+// command writes the provisioning Cluster it reads, and "" when the write can
+// go to the management Cluster. The hint of the authorizer's refusal of the
+// read names get, and also verb when verb is not "".
+func fetchClusterFamilyTarget(ctx context.Context, clients engine.ClusterClientFactory, in runtime.Input, verb string) (client engine.ClusterClient, obj *unstructured.Unstructured, ns, name string, err error) {
 	args := in.Args()
 	if len(args) == 0 || args[0] == "" {
 		return nil, nil, "", "", clierr.New(clierr.CodeValidation, "argument <cluster> is required")
@@ -62,7 +65,7 @@ func fetchClusterFamilyTarget(ctx context.Context, clients engine.ClusterClientF
 	}
 	obj, err = client.Get(ctx, provisioningClusterGVR, ns, name)
 	if err != nil {
-		return nil, nil, "", "", err
+		return nil, nil, "", "", engine.WithMissingGetHint(err, "command", provisioningClusterDisplayKind, provisioningClusterGVR, ns, name, verb)
 	}
 	return client, obj, ns, name, nil
 }
@@ -223,7 +226,7 @@ func planClusterFamilyMutation(
 	verb string,
 	mutate func(cluster *unstructured.Unstructured, pool map[string]any, clusterName, poolName string) ([]string, error),
 ) (safety.Effect, runtime.ExecuteFunc, error) {
-	client, obj, ns, name, err := fetchClusterFamilyTarget(ctx, clients, in)
+	client, obj, ns, name, err := fetchClusterFamilyTarget(ctx, clients, in, "update")
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
