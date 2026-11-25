@@ -388,7 +388,8 @@ func TestSumPodResourcesSinglePod(t *testing.T) {
 	pods := []unstructured.Unstructured{
 		*podWithResources("ns1", "p1", "100m", "128Mi", "200m", "256Mi"),
 	}
-	cpuReq, cpuLim, memReq, memLim := sumPodResources(pods)
+	cpuReq, cpuLim, memReq, memLim, err := sumPodResources(pods)
+	require.NoError(t, err)
 	assert.Equal(t, "100m", cpuReq.String())
 	assert.Equal(t, "200m", cpuLim.String())
 	assert.Equal(t, "128Mi", memReq.String())
@@ -418,7 +419,8 @@ func TestSumPodResourcesMultiContainer(t *testing.T) {
 			},
 		},
 	}}
-	cpuReq, cpuLim, memReq, memLim := sumPodResources([]unstructured.Unstructured{*pod})
+	cpuReq, cpuLim, memReq, memLim, err := sumPodResources([]unstructured.Unstructured{*pod})
+	require.NoError(t, err)
 	assert.Equal(t, "150m", cpuReq.String())
 	assert.Equal(t, "300m", cpuLim.String())
 	assert.Equal(t, "96Mi", memReq.String())

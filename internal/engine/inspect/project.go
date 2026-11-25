@@ -53,7 +53,8 @@ func (c *projectCmd) Describe() runtime.Descriptor {
 			"(the name of the ProjectRoleTemplateBinding), and system; unavailable - a failure to read " +
 			"the project's role bindings from the local cluster; a failure reading the downstream cluster " +
 			"does not affect it), usage (unavailable - a failure to connect to the downstream cluster, " +
-			"to read the project's namespaces, or to list pods), metrics (unavailable - the CPU and memory " +
+			"to read the project's namespaces, or to list pods, " +
+			"or a pod with a value this CLI cannot parse), metrics (unavailable - the CPU and memory " +
 			"usage figures are left out; the request and limit totals are still shown). " +
 			"If the project has zero namespaces, there is nothing more to read: no workload or usage read is made, " +
 			"and namespaces, usage and metrics are not named in data.degraded.",
@@ -158,10 +159,11 @@ func (c *projectCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 // the downstream cluster. Membership defines both domains, so a membership
 // failure degrades them together; a pod-list failure additionally blocks
 // usage (it aggregates pods), while a deployment-list failure leaves usage
-// intact. A membership set proven empty short-circuits both workload lists:
-// the caller established the scope, and reads that could not have
-// contributed rows must not turn a verified-empty project into an RBAC
-// failure.
+// intact. A pod with a value this CLI cannot parse leaves usage unavailable
+// and keeps the namespace rows, because the pod list was read. A membership
+// set proven empty short-circuits both workload lists: the caller established
+// the scope, and reads that could not have contributed rows must not turn a
+// verified-empty project into an RBAC failure.
 func (c *projectCmd) downstreamSections(ctx context.Context, client engine.ClusterClient, get steve.Getter, clusterID, projectID string, sec *sections) ([]projectNamespace, *resourceTotals, error) {
 	members, err := steve.ProjectNamespaces(ctx, client, get, clusterID, projectID)
 	if err != nil {
@@ -246,7 +248,14 @@ func (c *projectCmd) downstreamSections(ctx context.Context, client engine.Clust
 
 	rows, err := aggregateUsage(ctx, client, sec, allPods, namespaces)
 	if err != nil {
-		return nil, nil, err
+		// A pod with a value this CLI cannot parse leaves the usage totals
+		// unknown: usage is recorded as unavailable, and the namespaces and
+		// members stay, because the pod list was read. A canceled caller is
+		// still an error.
+		if herr := sec.Unavailable(sectionUsage, err); herr != nil {
+			return nil, nil, herr
+		}
+		return nsRows, nil, nil
 	}
 	var usage *resourceTotals
 	if totals, ok := rows[projectID]; ok {

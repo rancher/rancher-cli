@@ -46,7 +46,10 @@ func (c *usageCmd) collectByNode(ctx context.Context, client engine.ClusterClien
 				nodePods = append(nodePods, pod)
 			}
 		}
-		cpuReq, cpuLim, memReq, memLim := sumPodResources(nodePods)
+		cpuReq, cpuLim, memReq, memLim, err := sumPodResources(nodePods)
+		if err != nil {
+			return runtime.Result{}, err
+		}
 		totals := resourceTotals{
 			CPURequest: cpuReq.String(), CPULimit: cpuLim.String(),
 			MemoryRequest: memReq.String(), MemoryLimit: memLim.String(),
@@ -115,7 +118,10 @@ func (c *usageCmd) collectByNode(ctx context.Context, client engine.ClusterClien
 	}
 
 	for _, nn := range nodeNames {
-		cpuReq, cpuLim, memReq, memLim := sumPodResources(grouped[nn])
+		cpuReq, cpuLim, memReq, memLim, err := sumPodResources(grouped[nn])
+		if err != nil {
+			return runtime.Result{}, err
+		}
 		totals := resourceTotals{
 			CPURequest: cpuReq.String(), CPULimit: cpuLim.String(),
 			MemoryRequest: memReq.String(), MemoryLimit: memLim.String(),

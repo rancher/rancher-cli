@@ -85,7 +85,10 @@ func (c *usageCmd) collectByProject(ctx context.Context, client engine.ClusterCl
 	// project owns no namespace, is a verified-empty scope: the bucket is a
 	// verified zero, so no pod or metrics read is issued.
 	if filterID != "" && !ownsAnyNamespace(nsByProject, filterID) {
-		cpuReq, cpuLim, memReq, memLim := sumPodResources(nil)
+		cpuReq, cpuLim, memReq, memLim, err := sumPodResources(nil)
+		if err != nil {
+			return runtime.Result{}, err
+		}
 		rows := usageRows{filterID: {
 			CPURequest: cpuReq.String(), CPULimit: cpuLim.String(),
 			MemoryRequest: memReq.String(), MemoryLimit: memLim.String(),

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
 	"strconv"
@@ -14,8 +15,11 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/projects"
 	"github.com/rancher/rancher-cli/internal/engine/resources"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	k8sruntime "k8s.io/apimachinery/pkg/runtime"
+	resourcehelper "k8s.io/component-helpers/resource"
 )
 
 type usageCmd struct {
@@ -49,6 +53,10 @@ func (c *usageCmd) Describe() runtime.Descriptor {
 			"--by node accepts only --node; combining --by node with --namespace or --project is a validation error. " +
 			"--project without --by returns one row for each of the project's namespaces (namespace grouping filtered to the project). " +
 			"--by project --project X returns a single row for that project. " +
+			"A pod's requests and limits are counted as Kubernetes counts them for scheduling, " +
+			"the figures kubectl describe node shows: init containers, restartable init containers (sidecars) " +
+			"and spec.overhead are included. " +
+			"A pod in phase Succeeded or Failed is not counted. " +
 			"If no pods match --namespace or --node, the command reads the namespace or node you named: " +
 			"a missing one is NOT_FOUND, and one you are not allowed to read adds a warning to the result " +
 			"(with --project, a namespace outside the project is a validation error; " +
@@ -312,7 +320,8 @@ func fetchPodMetrics(ctx context.Context, client engine.ClusterClient, namespace
 // section is the accumulator's programmer-error panic. One row is emitted
 // per key present in grouped, even for nil (empty) pod slices - callers
 // that need a guaranteed row for a scope with no pods must seed the key
-// first.
+// first. A pod with a value this CLI cannot parse is returned as an error:
+// usage fails with it, and inspect project records its usage as unavailable.
 func aggregateUsage(ctx context.Context, client engine.ClusterClient, sec *sections, grouped map[string][]unstructured.Unstructured, namespaces []string) (usageRows, error) {
 	metricsOK := true
 	metricsByKey, merr := fetchPodMetrics(ctx, client, namespaces)
@@ -324,8 +333,12 @@ func aggregateUsage(ctx context.Context, client engine.ClusterClient, sec *secti
 	}
 
 	result := usageRows{}
-	for scope, pods := range grouped {
-		cpuReq, cpuLim, memReq, memLim := sumPodResources(pods)
+	for _, scope := range slices.Sorted(maps.Keys(grouped)) {
+		pods := grouped[scope]
+		cpuReq, cpuLim, memReq, memLim, err := sumPodResources(pods)
+		if err != nil {
+			return nil, err
+		}
 		var cpuUse, memUse resource.Quantity
 		if metricsOK {
 			for _, pod := range pods {
@@ -358,9 +371,9 @@ func aggregateUsage(ctx context.Context, client engine.ClusterClient, sec *secti
 }
 
 // addQuantity parses the string quantity at path within container (a
-// map[string]any decoded from spec.containers[i] or a pod-metrics
-// containers[i] entry) and adds it to q. A missing or unparsable value is a
-// silent no-op - an absent request/limit/usage contributes zero.
+// map[string]any decoded from a pod-metrics containers[i] entry) and adds it
+// to q. A missing or unparsable value is a silent no-op - an absent usage
+// contributes zero.
 func addQuantity(q *resource.Quantity, container map[string]any, path ...string) {
 	v, found, _ := unstructured.NestedString(container, path...)
 	if !found || v == "" {
@@ -373,23 +386,43 @@ func addQuantity(q *resource.Quantity, container map[string]any, path ...string)
 	q.Add(parsed)
 }
 
-// sumPodResources walks pods' spec.containers and sums CPU/memory requests
-// and limits. It is intentionally request/limit-only: usage (metrics.k8s.io)
-// is a per-pod lookup that aggregateUsage handles after this call, and the
-// node collector fetches node-level usage via nodeMetricsGVR instead.
-func sumPodResources(pods []unstructured.Unstructured) (cpuReq, cpuLim, memReq, memLim resource.Quantity) {
-	for _, pod := range pods {
-		containers, _, _ := unstructured.NestedSlice(pod.Object, "spec", "containers")
-		for _, item := range containers {
-			cm, ok := item.(map[string]any)
-			if !ok {
-				continue
-			}
-			addQuantity(&cpuReq, cm, "resources", "requests", "cpu")
-			addQuantity(&cpuLim, cm, "resources", "limits", "cpu")
-			addQuantity(&memReq, cm, "resources", "requests", "memory")
-			addQuantity(&memLim, cm, "resources", "limits", "memory")
+// podResourcesOptions are the options `kubectl describe node` passes to the
+// pod resource helpers for the line of each pod: pod-level resources count,
+// and so do the resources the pod's status reports for an in-place resize. A
+// pod that was never resized reports its spec values in its status, and the
+// helpers use those.
+var podResourcesOptions = resourcehelper.PodResourcesOptions{UseStatusResources: true}
+
+// sumPodResources sums the CPU and memory requests and limits of pods, each
+// computed as Kubernetes computes it: the larger of two figures, the app
+// containers added to the restartable init containers (restartPolicy Always),
+// and each init container added to the restartable init containers that start
+// before it; then spec.overhead, added to a limit only when the limit is set.
+// The computation is that of k8s.io/component-helpers/resource, applied once
+// to each pod. A pod in phase Succeeded or Failed reserves no resources on its
+// node and adds nothing, as in `kubectl describe node` and ResourceQuota; it
+// is skipped before it is converted to a Pod. Any other pod that does not
+// convert is an error that names the pod: a total never leaves a pod out
+// without saying so. It is intentionally request/limit-only: usage
+// (metrics.k8s.io) is a per-pod lookup that aggregateUsage handles after this
+// call, and the node collector fetches node-level usage via nodeMetricsGVR
+// instead.
+func sumPodResources(pods []unstructured.Unstructured) (cpuReq, cpuLim, memReq, memLim resource.Quantity, err error) {
+	for _, item := range pods {
+		if phase, _, _ := unstructured.NestedString(item.Object, "status", "phase"); phase == string(corev1.PodSucceeded) || phase == string(corev1.PodFailed) {
+			continue
 		}
+		var pod corev1.Pod
+		if cerr := k8sruntime.DefaultUnstructuredConverter.FromUnstructured(item.Object, &pod); cerr != nil {
+			return resource.Quantity{}, resource.Quantity{}, resource.Quantity{}, resource.Quantity{},
+				clierr.New(clierr.CodeGeneric, fmt.Sprintf("pod %s/%s has a value this CLI cannot parse: %v", item.GetNamespace(), item.GetName(), cerr))
+		}
+		requests := resourcehelper.PodRequests(&pod, podResourcesOptions)
+		limits := resourcehelper.PodLimits(&pod, podResourcesOptions)
+		cpuReq.Add(requests[corev1.ResourceCPU])
+		cpuLim.Add(limits[corev1.ResourceCPU])
+		memReq.Add(requests[corev1.ResourceMemory])
+		memLim.Add(limits[corev1.ResourceMemory])
 	}
 	return
 }

@@ -12,11 +12,12 @@ import (
 )
 
 // collectByPod produces one usageRow per pod keyed by namespace/name.
-// Requests/limits come from spec.containers; usage from pod metrics. An absent
-// pod-metrics entry reports zero usage (not an error), matching how the
-// namespace grouping treats pods without metrics. --namespace narrows the pod
-// List; --node filters pods by spec.nodeName client-side; --project scopes to
-// member namespaces.
+// Requests/limits are computed from the pod as Kubernetes does (see
+// sumPodResources); usage comes from pod metrics. An absent pod-metrics entry
+// reports zero usage (not an error), matching how the namespace grouping
+// treats pods without metrics. --namespace narrows the pod List; --node
+// filters pods by spec.nodeName client-side; --project scopes to member
+// namespaces.
 func (c *usageCmd) collectByPod(ctx context.Context, client engine.ClusterClient, clusterID string, sec *sections, in runtime.Input) (runtime.Result, error) {
 	namespace := in.String(resources.FlagNamespace)
 	nodeName := in.String("node")
