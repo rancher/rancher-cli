@@ -55,6 +55,9 @@ func (logoutCmd) Describe() runtime.Descriptor {
 			"rancher auth logout --all",
 		},
 		Shape: runtime.ShapeText,
+		// The text still has certificate text with its hidden characters
+		// removed: no filter note until that text is shown with escapes.
+		NoFilterNote: true,
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/output"
 )
 
@@ -20,14 +21,17 @@ const hostileTail = "\x1b[2J\u009b2J\t\u202e\u0085\u2028\r\nforged line"
 func hostileValue(p string) string { return "<" + p + ">" + hostileTail }
 
 // assertLineRule asserts that out holds the angle-bracketed path of every
-// entry of present, holds nothing the writer filter removes, and has no line
-// that starts with the forged line after its leading spaces.
+// entry of present, has nothing the writer filter removes except the removal
+// mark, has that mark because a planted value had a hidden character, and
+// has no line that starts with the forged line after its leading spaces.
 func assertLineRule(t *testing.T, out string, present []string) {
 	t.Helper()
 	for _, p := range present {
 		assert.Contains(t, out, "<"+p+">", "the text prints %s", p)
 	}
-	assert.Equal(t, output.PrintableLines(out), out, "the text holds no character the writer filter removes")
+	shown := clierr.WithoutRemovalMark(out)
+	assert.Equal(t, output.PrintableLines(shown), shown, "the text has no character the writer filter removes")
+	assert.True(t, clierr.HasRemovalMark(out), "a value with a hidden character is followed by the removal mark")
 	for line := range strings.Lines(out) {
 		assert.False(t, strings.HasPrefix(strings.TrimLeft(line, " "), "forged line"), "a line starts with the forged line: %q", line)
 	}

@@ -25,8 +25,10 @@ import (
 // other. A word in the same piece as a hidden rune or an invalid byte is
 // quoted with it. A piece is a part of a clause cut at single quotes, as
 // IDText cuts it; a clause with no single quote is one piece. Apply LineText
-// once to a whole line, before remedy expansion.
+// once to a whole line, before remedy expansion. RemovalMark is removed before
+// the line is cut into clauses: it could otherwise hide a boundary.
 func LineText(s string) string {
+	s = WithoutRemovalMark(s)
 	var b strings.Builder
 	start := 0
 	for start < len(s) {
@@ -52,8 +54,10 @@ func LineText(s string) string {
 // this CLI. A value from a server never holds this process's remedy marker;
 // IDText writes the whole of it. A value that holds the marker is a message or
 // command of this CLI relayed as a value; LineText writes it clause by clause
-// and leaves each Rancher as written.
+// and leaves each Rancher as written. RemovalMark is removed before the test
+// for the remedy marker.
 func ValueText(v string) string {
+	v = WithoutRemovalMark(v)
 	if strings.Contains(v, RemedyMarker) {
 		return LineText(v)
 	}
@@ -73,8 +77,10 @@ func ValueText(v string) string {
 // nothing to escape, ShellQuote of an IDText result. A part of a line has no
 // known start and end, and a command is part of a line; for those, line texts
 // and previews use LineText or ValueText. A value that holds the remedy marker
-// goes to ValueText before any other test.
+// goes to ValueText before any other test. RemovalMark is removed first: a
+// value with the mark after it is tested as the value alone.
 func WholeValueText(v string) string {
+	v = WithoutRemovalMark(v)
 	if !strings.Contains(v, RemedyMarker) && !strings.Contains(v, "'") {
 		if u, err := strconv.Unquote(v); err == nil && NotPrintable(u) && strconv.Quote(u) == v {
 			return strconv.Quote(v)

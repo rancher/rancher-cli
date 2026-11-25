@@ -3490,6 +3490,19 @@ such a character they are inside the quotes too. The message and hint of a
 a command that succeeds or of a dry-run preview, the summary line and each
 prompt label are cut and written the same way; a newline in a piece is the text
 `\n`, so a value cannot add a line.
+When the text of a result had a character removed or an invalid UTF-8 byte
+replaced, one more line on stderr follows the result's warnings and says so:
+`# warning: this output had characters a terminal cannot show; run the command
+again with -o json to see the exact values` for a command that reads from the
+server, `# warning: this output had characters a terminal cannot show; -o json
+shows the exact values` for a command that works only on this machine, and
+`# warning: this output had characters a terminal cannot show; they were left
+out or replaced` for a command that writes to the server or shows its result
+once. For `config status`, `-o json` carries the same values with those
+characters removed. A notice on stderr that had a character removed or replaced
+is followed by the line `characters a terminal cannot show were left out or
+replaced`. `-o json` and `-o yaml` print no such line, and neither do `auth
+logout`, `auth delete-token`, `config delete-server` and `config update-server`.
 Verbatim by design, and untrusted content when echoed: `json`, `yaml` and
 `template=` (the bytes are
 the data), `logs` (container output whose newlines are its structure), and the

@@ -649,7 +649,7 @@ func projectsText(out projectsResult, wide bool) clierr.Filtered {
 		}
 		b.Printf("%s%s\n", membershipNotDeterminedPrefix, reason)
 	case len(out.MemberOf.Projects) == 0:
-		b.Printf("%s a member of: none\n", memberPhrase(who))
+		b.Printf("%s a member of: none\n", memberPhrase(who, out.Identity == IdentityCaller))
 	default:
 		var items []clierr.Filtered
 		for _, m := range out.MemberOf.Projects {
@@ -659,7 +659,7 @@ func projectsText(out projectsResult, wide bool) clierr.Filtered {
 			}
 			items = append(items, s)
 		}
-		b.Printf("%s a member of: %s\n", memberPhrase(who), clierr.JoinFiltered(items, ", "))
+		b.Printf("%s a member of: %s\n", memberPhrase(who, out.Identity == IdentityCaller), clierr.JoinFiltered(items, ", "))
 	}
 	var noBinding []clierr.Filtered
 	for _, cr := range out.Clusters {
@@ -801,9 +801,10 @@ func kubernetesBindings(rows []namespaceRow) []string {
 }
 
 // memberPhrase opens the membership line: "you are" for the caller, "<who>
-// is" for anyone else.
-func memberPhrase(who clierr.Filtered) clierr.Filtered {
-	if who == clierr.Plain("you") {
+// is" for anyone else. caller decides it, never the text of who: a subject
+// may be named "you".
+func memberPhrase(who clierr.Filtered, caller bool) clierr.Filtered {
+	if caller {
 		return clierr.Plain("you are")
 	}
 	return who.AppendString(" is")

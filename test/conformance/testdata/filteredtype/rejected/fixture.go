@@ -6,11 +6,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"maps"
 	"os"
 	"reflect"
 	"strings"
 	"sync"
+	"unicode"
+	"unicode/utf8"
 	_ "unsafe" // want 3
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -88,12 +89,11 @@ func conversionRule(v string, ch chan any, m map[any]int, b *clierr.Builder) any
 	ch <- row{f} // want 3
 	m[row{f}]++  // want 3
 	var p sync.Map
-	p.Store("k", f)                          // want 3
-	_ = gen(f)                               // want 3
-	_ = maps.Keys(map[clierr.Filtered]int{}) // want 3
+	p.Store("k", f) // want 3
+	_ = gen(f)      // want 3
 	var e any
-	_ = e == any(f)    // want 3
-	if e == (row{f}) { // want 3
+	_ = e == any(f)     // want 3
+	if e == (&row{f}) { // want 3
 		return nil
 	}
 	var r struct{ v any }
@@ -103,10 +103,10 @@ func conversionRule(v string, ch chan any, m map[any]int, b *clierr.Builder) any
 	var xs []any
 	xs = append(xs, f) // want 3
 	switch e {
-	case f: // want 3
+	case &f: // want 3
 	}
 	var k any
-	for k = range map[clierr.Filtered]int{} { // want 3
+	for k = range map[*clierr.Filtered]int{} { // want 3
 	}
 	_, _ = xs, k
 	_ = clierr.TextOf(f, clierr.Lead("; "), f) // want 3
@@ -295,3 +295,49 @@ func moreExits(fs field, res runtime.Result) {
 }
 
 var _ = moreExits
+
+// renderCut is a renderer row that cuts its reads, a local that has a read
+// and the output.PrintableLines of a read: each cut is reported.
+func renderCut(r runtime.Result) {
+	text := r.Text
+	clean := output.PrintableLines(r.WideText)
+	a := text[:3]                                // want 4
+	b := strings.Fields(r.Text)                  // want 4
+	c := strings.TrimRight(text, "\u2063")       // want 4
+	d := strings.TrimPrefix(r.Text, "\xe2")      // want 4
+	e := clean[1:]                               // want 4
+	f := fmt.Sprintf("%.3s", text)               // want 4
+	g := len(clean)                              // want 4
+	h := strings.TrimFunc(text, unicode.IsSpace) // want 4
+	i := utf8.RuneCountInString(r.Text)          // want 4
+	_, _, _, _, _, _, _, _, _ = a, b, c, d, e, f, g, h, i
+	r.Text = "x"     // want 4
+	for range text { // want 4
+	}
+	line := "  " + clean
+	_ = line[:3] // want 4
+	buf := make([]byte, 3)
+	copy(buf, text) // want 4
+}
+
+// RenderOut is a renderer row that other packages could call to get the text.
+func RenderOut(r runtime.Result) string { // want 4
+	return r.Text
+}
+
+// renderer has a renderer row as a method.
+type renderer struct{}
+
+func (renderer) render(r runtime.Result) string { // want 4
+	return r.Text
+}
+
+// rawText is a renderer row whose text a function no row lists receives.
+func rawText(r runtime.Result) string {
+	return r.Text // want 4
+}
+
+// useRaw is not a renderer row, and it gets the text from one.
+func useRaw(r runtime.Result) int { return len(rawText(r)) }
+
+var _ = useRaw

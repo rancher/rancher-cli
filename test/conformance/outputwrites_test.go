@@ -691,6 +691,9 @@ var ioErrReferences = map[string][]string{
 	"internal/runtime.renderErrDrained -> internal/runtime.WriteError": {
 		"filtered: the error block and the warnings of a failed run (rows: warnings failed run, error block)",
 	},
+	"internal/runtime.writeFilterNote -> internal/runtime.mirrorWarnings": {
+		"filtered: the filter note, one constant line after a result text a filter changed (rows: filter note)",
+	},
 	"internal/cli.buildIO -> literal runtime.IO.Err": {
 		"no text: the writer of the root command becomes the invocation's error output",
 	},
@@ -1097,8 +1100,8 @@ func TestEveryRenderCallIsListed(t *testing.T) {
 // TestPlainTextIsWrittenAndReadInOneFunctionEach asserts the field PlainText
 // of runtime.Descriptor is written (a key of a composite literal, an
 // assignment or the operand of &) in exactly the descriptor of the logs
-// command and read in exactly renderResult, so a copy of a descriptor that
-// gains the field after its command returned it is found.
+// command and read in exactly renderResult and filterNoteDue. A copy of a
+// descriptor that gains the field after its command returned it is found.
 func TestPlainTextIsWrittenAndReadInOneFunctionEach(t *testing.T) {
 	t.Parallel()
 	sets, err := outputWritePackages()
@@ -1108,7 +1111,8 @@ func TestPlainTextIsWrittenAndReadInOneFunctionEach(t *testing.T) {
 		"internal/engine/observe.logsCmd.Describe": {"the text of logs is the output of a program in a container"},
 	}, referencesByFunction(refs, true))
 	assertReferencesListed(t, "reads of PlainText", map[string][]string{
-		"internal/runtime.renderResult": {"chooses the expansion of the text print"},
+		"internal/runtime.renderResult":  {"chooses the expansion of the text print"},
+		"internal/runtime.filterNoteDue": {"leaves out the filter note for the output of another program, which is printed as it is"},
 	}, referencesByFunction(refs, false))
 }
 

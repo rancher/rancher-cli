@@ -230,14 +230,15 @@ func TestReadLineCancellationEndsPromptLine(t *testing.T) {
 // TestPrompterRemovesControlCharactersFromANotice asserts a Prompter with no
 // rewrite writes this process's marker as it is and removes every escape
 // character, carriage return and format character from a notice; the newlines
-// of a notice stay.
+// of a notice stay. The note line that says characters were left out follows
+// the notice.
 func TestPrompterRemovesControlCharactersFromANotice(t *testing.T) {
 	t.Parallel()
 	text := "a\x1b[2Jb\r\nrun " + clierr.Rancher + " auth status\u202e\u2063\nlast"
 	want := "a[2Jb\nrun " + clierr.Rancher + " auth status\nlast"
 	var errw bytes.Buffer
 	New(&errw, strings.NewReader(""), false, true).Notice(text)
-	assert.Equal(t, want+"\n", errw.String())
+	assert.Equal(t, want+"\ncharacters a terminal cannot show were left out or replaced\n", errw.String())
 }
 
 // TestPrompterWritesHiddenCharactersOfALabelAsEscapes asserts a prompt label
@@ -401,8 +402,9 @@ func TestOnlyWriteLabelAndTheLineEndCallWriteErr(t *testing.T) {
 
 // TestPrompterRunsTheNoticeRewriteBeforeTheFilter asserts that a rewrite
 // that appends an escape sequence leaves none in the written notice, that
-// the rewrite sees the message as it was given, and that a label is not
-// rewritten: only a notice is.
+// the rewrite sees the message as it was given, that the note line follows
+// the notice because the filter removed the escape sequence, and that a label
+// is not rewritten: only a notice is.
 func TestPrompterRunsTheNoticeRewriteBeforeTheFilter(t *testing.T) {
 	t.Parallel()
 	var seen string
@@ -415,7 +417,7 @@ func TestPrompterRunsTheNoticeRewriteBeforeTheFilter(t *testing.T) {
 	given := "run " + clierr.Rancher + " auth status\x1b[31m"
 	p.Notice(given)
 	assert.Equal(t, given, seen)
-	assert.Equal(t, "run rancher --config 'd' auth status[31m[2J\n", errw.String())
+	assert.Equal(t, "run rancher --config 'd' auth status[31m[2J\ncharacters a terminal cannot show were left out or replaced\n", errw.String())
 
 	errw.Reset()
 	_, err := p.Prompt(t.Context(), "label "+clierr.Rancher+" x")

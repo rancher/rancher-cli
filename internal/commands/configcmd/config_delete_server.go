@@ -56,6 +56,9 @@ func (configDeleteServerCmd) Describe() runtime.Descriptor {
 		Args:         []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Examples:     []string{"rancher config delete-server prod"},
 		Shape:        runtime.ShapeText,
+		// The text still has certificate text with its hidden characters
+		// removed: no filter note until that text is shown with escapes.
+		NoFilterNote: true,
 	}
 }
 

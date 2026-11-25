@@ -259,6 +259,10 @@ type Descriptor struct {
 	// carry it. It does not apply to Result.Summary or to the dry-run
 	// preview.
 	PlainText bool `json:"-"`
+	// NoFilterNote turns the filter note off for a command whose text still
+	// has certificate text with its hidden characters removed, until that
+	// text is shown with escapes. Go-only; the manifest does not carry it.
+	NoFilterNote bool `json:"-"`
 }
 
 // EffectiveServerAccess is the server access the command runs with: the

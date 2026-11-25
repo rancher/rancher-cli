@@ -71,7 +71,10 @@ func NotPrintable(v string) bool {
 // quote, and ShellQuote of the result never puts a single quote inside double
 // quotes. Nothing is removed:
 // removing a rune or replacing a byte could turn one id into another real id.
+// RemovalMark is removed first: no value from a server has it, and a
+// relayed text that has it prints without it.
 func IDText(id string) string {
+	id = WithoutRemovalMark(id)
 	if !NotPrintable(id) {
 		return id
 	}

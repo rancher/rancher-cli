@@ -112,12 +112,27 @@ const (
 	evValuesFilterFunc  = "internal/engine/catalog.Values.filterFunc"
 	evFilterValue       = "internal/output.FilterValue"
 	evFilterRemedies    = "internal/runtime.FilterRemedies"
+	evWithoutMark       = "internal/clierr.WithoutRemovalMark"
+	evHasMark           = "internal/clierr.HasRemovalMark"
+	evErrorWithoutMark  = "internal/clierr.Error.WithoutRemovalMark"
 )
 
 // evFilterRows is every function that references a whole-text filter, with
 // whether the filtered text may hold a command and, for a row whose text
 // holds none, why a relayed text the walk reaches holds none.
 var evFilterRows = []evFilterRow{
+	{"internal/clierr.Error.WithoutRemovalMark", evHasMark, true, "", "the mark's removal from an error: reads whether the message, the hint or a warning has it"},
+	{"internal/clierr.Error.WithoutRemovalMark", evWithoutMark, true, "", "the mark's removal from an error: the message, the hint and each warning"},
+	{"internal/clierr.Filtered.TrimRight", evHasMark, true, "", "reads whether the text had the mark, to write one mark again after the trim"},
+	{"internal/clierr.Filtered.TrimRight", evWithoutMark, true, "", "trims the text without the mark: the mark is never cut"},
+	{"internal/clierr.Filtered.TrimSuffix", evHasMark, true, "", "reads whether the text had the mark, to write one mark again after the trim"},
+	{"internal/clierr.Filtered.TrimSuffix", evWithoutMark, true, "", "trims the text without the mark: the mark is never cut"},
+	{"internal/clierr.Filtered.Width", evWithoutMark, true, "", "counts the runes of the text without the mark; prints nothing from it"},
+	{"internal/clierr.Filtered.WithoutMark", evWithoutMark, true, "", "the text without the mark, for the outputs that are not the printed text"},
+	{"internal/clierr.IDText", evWithoutMark, true, "", "removes the mark first: a relayed value prints without it"},
+	{"internal/clierr.LineText", evWithoutMark, true, "", "removes the mark first: a relayed line prints without it, and the mark could hide a clause boundary"},
+	{"internal/clierr.ValueText", evWithoutMark, true, "", "removes the mark first: a relayed value prints without it"},
+	{"internal/clierr.WholeValueText", evWithoutMark, true, "", "removes the mark first: a relayed value prints without it"},
 	{"internal/cli.completionDebugf", evPrintableRemedies, true, "", "a debug line of the completion trace, which may relay a remedy"},
 	{"internal/commands/auth.credentialReport", evFilterValue, false, "", "the auth config and the facts of a stored credential, named in prose"},
 	{"internal/commands/auth.renderAuthCheckText", evFilterValue, false, "", "the server version and the identity the server reports, named in prose"},
@@ -186,15 +201,20 @@ var evFilterRows = []evFilterRow{
 	{"internal/remedytest.AssertIDShownWithEscapes", evWithoutUnsafe, false, "", "a test helper that compares an id with its filtered form"},
 	{"internal/runtime.FilterRemedies", evPrintableRemedies, true, "", "the builder filter for a text that may have remedy commands: the definition itself"},
 	{"internal/runtime.ObjectLines", evPrintable, false, "", "the lines of an object's details"},
+	{"internal/runtime.RenderErrorStyled", evErrorWithoutMark, true, "", "an error says nothing about removed characters: its message, hint and warnings print and encode without the mark"},
+	{"internal/runtime.RenderErrorStyled", evWithoutMark, true, "", "the notices put on an error print and encode without the mark"},
 	{"internal/runtime.OnceOnlyLine", evPrintable, false, "", "compares a value with its filtered form; no text is printed from it"},
 	{"internal/runtime.PrintableRemedies", evPrintableLines, true, "", "the filter itself"},
 	{"internal/runtime.detailLineText", evPrintable, false, "", "a details line, each value shown with its hidden characters as escapes"},
 	{"internal/runtime.dryRunText", evPrintable, false, "", "the changes a dry run reports, field paths and values"},
 	{"internal/runtime.errorLineText", evPrintable, false, "", "the message and hint of a TLS_TRUST error"},
+	{"internal/runtime.filterNoteDue", evHasMark, true, "", "reads whether a result text has the mark, to write the filter note"},
+	{"internal/runtime.filterNoteDue", evPrintableLines, true, "", "compares a result text with its filtered form to decide the filter note; prints nothing from it"},
 	{"internal/runtime.mirrorWarnings", evPrintable, false, "", "the warnings an invocation mirrors to stderr"},
 	{"internal/runtime.printableText", evPrintableLines, true, "", "the text of a result, which can hold a remedy"},
 	{"internal/runtime.renderEffect", evPrintableLines, true, "", "the text of a dry run, which can hold a remedy"},
 	{"internal/runtime.renderResult", evPrintableRemedies, true, "", "the summary of a result, which can hold a remedy"},
+	{"internal/runtime.renderResult", evWithoutMark, true, "", "the text of a PlainText result prints without the mark: that branch writes no note"},
 	{"internal/token.Deletion.textLine", evPrintable, false, "", "the token reference, named in prose"},
 	{"internal/token.Deletion.textLine", evPrintableRemedies, true, "", "the reason a token was not revoked, which can hold a remedy"},
 	{"internal/token.certificateFailureLines", evPrintable, false, "", "the lines of a certificate failure: the certificate's facts"},
@@ -207,6 +227,7 @@ var evFilterRows = []evFilterRow{
 	{"internal/token.selectAuthProvider", evFilterValue, false, "", "the label of the auth config the server lists, and its note"},
 	{"internal/token.signInNotice", evFilterValue, false, "", "the label of the chosen auth config"},
 	{"internal/token.tokenCmd.classifyRejection", evFilterRemedies, true, "", "relays the message of the rejection, which can hold a remedy"},
+	{"internal/ui.Prompter.Notice", evHasMark, true, "", "reads whether a notice has the mark before its rewrite, to write the filter note"},
 	{"internal/ui.Prompter.Notice", evPrintableLines, true, "", "a notice, which can hold a remedy"},
 	{"internal/ui.Prompter.writeErr", evPrintableLines, true, "", "text written to stderr, which can hold a remedy"},
 }
@@ -274,4 +295,27 @@ var evFilterPlaces = map[string]string{
 	"internal/token.Deletion.textLine":             "the lines of a token deletion, which a result with certificate lines prints",
 	"internal/engine/catalog.appWait.clean":        "the message of an app wait error, which the error renderer writes as LineText writes it",
 	"internal/engine/resources.deleteTarget.state": "the message of a delete wait timeout, which the error renderer writes as LineText writes it",
+	"internal/runtime.filterNoteDue":               "the note condition: compares a result text with its filtered form; prints nothing from it",
+}
+
+// evRemovalMarkPlaces are the functions that may reference
+// clierr.WithoutRemovalMark, clierr.HasRemovalMark or
+// Error.WithoutRemovalMark, each with its reason: the functions that remove
+// the mark before they write text, the two places that read it to write the
+// filter note, and the methods of clierr.Filtered that measure or trim the
+// text without it.
+var evRemovalMarkPlaces = map[string]string{
+	"internal/clierr.IDText":                   "removes the mark first: a relayed value prints without it",
+	"internal/clierr.LineText":                 "removes the mark first: a relayed value prints without it",
+	"internal/clierr.ValueText":                "removes the mark first: a relayed value prints without it",
+	"internal/clierr.WholeValueText":           "removes the mark first: a relayed value prints without it",
+	"internal/clierr.Error.WithoutRemovalMark": "the mark's removal from an error",
+	"internal/clierr.Filtered.Width":           "a method of clierr.Filtered: counts the runes a terminal shows",
+	"internal/clierr.Filtered.TrimSuffix":      "a method of clierr.Filtered: trims the text without the mark and writes one mark again",
+	"internal/clierr.Filtered.TrimRight":       "a method of clierr.Filtered: trims the text without the mark and writes one mark again",
+	"internal/clierr.Filtered.WithoutMark":     "a method of clierr.Filtered: the text without the mark, for the outputs that are not the printed text",
+	"internal/runtime.RenderErrorStyled":       "removes the mark from an error and its notices before they print or encode",
+	"internal/runtime.renderResult":            "removes the mark from the text of a PlainText result, the output of another program, before it prints",
+	"internal/runtime.filterNoteDue":           "the note condition reads the mark",
+	"internal/ui.Prompter.Notice":              "the notice renderer reads the mark",
 }

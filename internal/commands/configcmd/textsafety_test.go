@@ -76,13 +76,31 @@ func (c textClasses) shown() []string {
 	return out
 }
 
-// assertLineRule asserts that out holds nothing the writer filter removes and
-// has no line that starts with the forged line after its leading spaces.
+// filteredTail is hostileTail after the value filter: the characters a terminal
+// cannot show are gone and the forged line has joined the line before it.
+const filteredTail = "[2J2Jforged line"
+
+// assertLineRule asserts that out, without clierr.RemovalMark, has nothing
+// the writer filter removes and has no line that starts with the forged line
+// after its leading spaces.
 func assertLineRule(t *testing.T, out string) {
 	t.Helper()
-	assert.Equal(t, output.PrintableLines(out), out, "the text holds no character the writer filter removes")
+	shown := clierr.WithoutRemovalMark(out)
+	assert.Equal(t, output.PrintableLines(shown), shown, "the text has no character the writer filter removes")
 	for line := range strings.Lines(out) {
 		assert.False(t, strings.HasPrefix(strings.TrimLeft(line, " "), "forged line"), "a line starts with the forged line: %q", line)
+	}
+}
+
+// assertMarkAfterPrinted asserts that out prints the planted text of each path
+// of paths at least once and that every copy of it is followed by
+// clierr.RemovalMark.
+func assertMarkAfterPrinted(t *testing.T, out string, paths []string) {
+	t.Helper()
+	for _, p := range paths {
+		value := "<" + p + ">" + filteredTail
+		assert.Positive(t, strings.Count(out, value), "a text prints %s", p)
+		assert.Equal(t, strings.Count(out, value), strings.Count(out, value+clierr.RemovalMark), "the mark follows every printed %s", p)
 	}
 }
 
@@ -102,6 +120,10 @@ var storedRuns = []storedRun{
 	{"unusable record server", clierr.TokenKindExt, "https://rancher.invalid", "not a url"},
 }
 
+// TestConfigStatusKeepsStoredTokenValuesOnTheirLines asserts that a stored
+// token value cannot start a line of the config status text, that every value
+// the text prints as plain text is followed by clierr.RemovalMark, and that
+// the data keeps each value as it is.
 func TestConfigStatusKeepsStoredTokenValuesOnTheirLines(t *testing.T) {
 	t.Parallel()
 	classes := textClasses{
@@ -190,8 +212,13 @@ func TestConfigStatusKeepsStoredTokenValuesOnTheirLines(t *testing.T) {
 	for _, p := range classes.shown() {
 		assert.Contains(t, all.String(), "<"+p+">", "a text prints %s", p)
 	}
+	assertMarkAfterPrinted(t, all.String(), classes.printed)
 }
 
+// TestTokenRecordLinesKeepStoredTokenValuesOnTheirLines asserts that a stored
+// superseded token value cannot start a line of the token record lines, and
+// that every value the lines print as plain text is followed by
+// clierr.RemovalMark.
 func TestTokenRecordLinesKeepStoredTokenValuesOnTheirLines(t *testing.T) {
 	t.Parallel()
 	classes := textClasses{
@@ -239,4 +266,5 @@ func TestTokenRecordLinesKeepStoredTokenValuesOnTheirLines(t *testing.T) {
 	for _, p := range classes.shown() {
 		assert.Contains(t, all.String(), "<"+p+">", "a text prints %s", p)
 	}
+	assertMarkAfterPrinted(t, all.String(), classes.printed)
 }

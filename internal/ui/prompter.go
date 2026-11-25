@@ -71,18 +71,31 @@ func (p *Prompter) CanPrompt() bool { return p.isTTY && !p.noInput }
 // a TTY (CanPrompt).
 func (p *Prompter) NoInput() bool { return p.noInput }
 
+// noticeFilterNote is the line Notice writes after a notice from which a
+// character a terminal cannot show was removed.
+const noticeFilterNote = "characters a terminal cannot show were left out or replaced"
+
 // Notice writes an informational/warning line to Err (never Out): the
 // message after the rewrite, with every control and format character removed
 // except the newlines between its lines and this process's remedy markers
-// (output.PrintableLines).
+// (output.PrintableLines). When the message had clierr.RemovalMark before
+// the rewrite (a builder's filter changed a value in it), or the filter in
+// this function changed the rewritten message, Notice writes the line
+// noticeFilterNote after it. The mark is read before the rewrite: for a
+// config directory a terminal cannot show, the rewrite cuts the clause with
+// the first command, which can have the mark.
 func (p *Prompter) Notice(msg string) {
+	marked := clierr.HasRemovalMark(msg)
 	if p.rewrite != nil {
 		msg = p.rewrite(msg)
 	}
-	msg = output.PrintableLines(msg)
+	clean := output.PrintableLines(msg)
+	if marked || clean != msg {
+		clean += "\n" + noticeFilterNote
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	_, _ = fmt.Fprintln(p.err, msg)
+	_, _ = fmt.Fprintln(p.err, clean)
 }
 
 // Prompt writes label to Err the way clierr.LineText writes it, then filters it

@@ -277,18 +277,25 @@ func plainRemedies(s string) string { return clierr.ExpandRemedies(s, "") }
 // before the bytes reach this writer, so it finds no marker there unless
 // expandData left the document as it was. Each Write is taken whole: an
 // encoder writes one value in one call, so a command is never split across
-// two. The one change it makes: this process's marker
-// directly before the word rancher is dropped; every other byte is written as
-// it is, a U+2063 or a marker from any other source included.
+// two. The changes it makes: this process's marker directly before the word
+// rancher is dropped, and every copy of clierr.RemovalMark is removed. A
+// relayed text can carry the mark into result data. The json and yaml
+// encoders write its characters as they are, never as escapes; this writer
+// finds them there. Every other byte is written as it is, a U+2063 or a
+// marker from any other source included.
 type plainRemedyWriter struct{ w io.Writer }
 
-var markedRancher = []byte(clierr.Rancher)
+var (
+	markedRancher = []byte(clierr.Rancher)
+	removalMark   = []byte(clierr.RemovalMark)
+)
 
 func (p plainRemedyWriter) Write(b []byte) (int, error) {
-	if !bytes.Contains(b, markedRancher) {
+	if !bytes.Contains(b, markedRancher) && !bytes.Contains(b, removalMark) {
 		return p.w.Write(b)
 	}
-	if _, err := p.w.Write(bytes.ReplaceAll(b, markedRancher, []byte("rancher"))); err != nil {
+	out := bytes.ReplaceAll(bytes.ReplaceAll(b, removalMark, nil), markedRancher, []byte("rancher"))
+	if _, err := p.w.Write(out); err != nil {
 		return 0, err
 	}
 	return len(b), nil
@@ -305,7 +312,10 @@ func PrintableRemedies(s string) string {
 
 // FilterRemedies is PrintableRemedies(x) as a clierr.Filtered, for a server
 // value that may have a remedy command and goes into a result text or a
-// notice (see clierr.Filtered).
+// notice (see clierr.Filtered). The text is followed by clierr.RemovalMark
+// when PrintableRemedies changed x: a character removed, an invalid UTF-8 byte
+// written as U+FFFD or a newline removed. FilterRemedies keeps this process's
+// remedy markers, and they add no mark.
 func FilterRemedies(x string) clierr.Filtered {
 	p := PrintableRemedies(x)
 	return clierr.NewFiltered(p, p != x)

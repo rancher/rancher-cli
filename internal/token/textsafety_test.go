@@ -47,13 +47,18 @@ func assertNoForgedLine(t *testing.T, out string) {
 	}
 }
 
-// assertLineRule asserts that out holds nothing the writer filter removes and
-// has no line that starts with the forged line.
+// assertLineRule asserts that out, without clierr.RemovalMark, has nothing
+// the writer filter removes and has no line that starts with the forged line.
 func assertLineRule(t *testing.T, out string) {
 	t.Helper()
-	assert.Equal(t, output.PrintableLines(out), out, "the text holds no character the writer filter removes")
+	shown := clierr.WithoutRemovalMark(out)
+	assert.Equal(t, output.PrintableLines(shown), shown, "the text has no character the writer filter removes")
 	assertNoForgedLine(t, out)
 }
+
+// filterNote is the line the prompter writes after a notice that had
+// clierr.RemovalMark or that its own filter changed.
+const filterNote = "characters a terminal cannot show were left out or replaced"
 
 // assertPaths asserts that out holds the value planted at each path.
 func assertPaths(t *testing.T, out string, paths ...string) {
@@ -266,19 +271,26 @@ func azureProvider(authURL, deviceAuthURL, tokenURL string) *AzureADProvider {
 	}
 }
 
-// assertNotice asserts the line rule on a notice as the code built it and on
-// the bytes the prompter wrote.
+// assertNotice asserts, for a notice as the code built it, the line rule and
+// that the notice has clierr.RemovalMark, and, for the bytes the prompter
+// wrote, that no line starts with the forged line, the mark is gone and the
+// note line follows the notice.
 func assertNotice(t *testing.T, msg, written string, paths ...string) {
 	t.Helper()
 	assertPaths(t, msg, paths...)
 	assertLineRule(t, msg)
+	assert.True(t, clierr.HasRemovalMark(msg), "the notice has the removal mark")
 	assertNoForgedLine(t, written)
+	assert.False(t, clierr.HasRemovalMark(written), "the prompter writes no removal mark")
+	assert.Contains(t, written, "\n"+filterNote+"\n", "the prompter writes the note line after the notice")
 }
 
 // TestSignInMessagesKeepServerValuesOnTheirLines asserts that no server value
 // can start a line of a message a sign-in gives, as the code builds the
-// message and as the prompter writes it. A sign-in address cannot hold a
-// newline, so its row asserts only the characters the writer filter removes.
+// message and as the prompter writes it, and that a notice with a filtered
+// value has clierr.RemovalMark and is followed by the note line. A sign-in
+// address cannot have a newline: its row asserts only the characters the
+// writer filter removes and the mark.
 func TestSignInMessagesKeepServerValuesOnTheirLines(t *testing.T) {
 	t.Run("a refused delete of the login token", func(t *testing.T) {
 		restore := SetSAMLTimingForTest(time.Minute, time.Millisecond)
@@ -423,7 +435,9 @@ func TestSignInMessagesKeepServerValuesOnTheirLines(t *testing.T) {
 		require.Error(t, err)
 		msg := noticeWith(t, p, "Failed to open browser automatically")
 		assertPaths(t, msg, "authUrl")
-		assert.Equal(t, output.PrintableLines(msg), msg, "the sign-in address holds no character the writer filter removes")
+		assert.True(t, clierr.HasRemovalMark(msg), "the notice has the removal mark")
+		shown := clierr.WithoutRemovalMark(msg)
+		assert.Equal(t, output.PrintableLines(shown), shown, "the sign-in address has no character the writer filter removes")
 	})
 
 	t.Run("the expiry of a stored session token", func(t *testing.T) {

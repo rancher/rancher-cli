@@ -6,3 +6,5 @@ var RemedyMarker = "\u2063\u2060"
 var Rancher = RemedyMarker + "rancher"
 
 const first = '\u2060'
+
+var RemovalMark = "\u2063" + RemedyMarker

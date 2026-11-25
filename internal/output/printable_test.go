@@ -139,3 +139,25 @@ func BenchmarkPrintableLinesWithMarkers(b *testing.B) {
 		_ = PrintableLines(text)
 	}
 }
+
+// TestFilterValueMarksEveryChangeButARemedyMarker asserts FilterValue is
+// Printable followed by clierr.RemovalMark when Printable removed a
+// character or replaced an invalid byte, and with no mark when the only
+// change is the marker of a remedy command, or when there is no change.
+func TestFilterValueMarksEveryChangeButARemedyMarker(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, in, want string }{
+		{"nothing to remove", "ab", "ab"},
+		{"a hidden character", "a\u200bb", "ab" + clierr.RemovalMark},
+		{"an invalid byte", "a\xffb", "a\ufffdb" + clierr.RemovalMark},
+		{"a newline", "a\nb", "ab" + clierr.RemovalMark},
+		{"a remedy command", clierr.Rancher + " get pods", "rancher get pods"},
+		{"a remedy command and a hidden character", clierr.Rancher + " get p\u200bods", "rancher get pods" + clierr.RemovalMark},
+		{"a value a filter already marked", "ab" + clierr.RemovalMark, "ab" + clierr.RemovalMark},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, FilterValue(tc.in).Marked())
+		})
+	}
+}

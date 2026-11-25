@@ -19,6 +19,9 @@ var evFilters = map[string]bool{
 	"internal/output.Printable":                  true,
 	"internal/output.FilterValue":                true,
 	"internal/runtime.FilterRemedies":            true,
+	"internal/clierr.WithoutRemovalMark":         true,
+	"internal/clierr.HasRemovalMark":             true,
+	"internal/clierr.Error.WithoutRemovalMark":   true,
 	"internal/output.PrintableLines":             true,
 	"internal/runtime.PrintableRemedies":         true,
 	"internal/clierr.WithoutUnsafeToDisplay":     true,
@@ -29,12 +32,17 @@ var evFilters = map[string]bool{
 
 // evFilterAnyText are the filters a text that holds commands may pass: the
 // three keep the remedy marker and cannot change a value NotQuotable accepts,
-// and every result of the catalog values filter holds <hidden>, which no
-// command accepts as a value and no Kubernetes name can hold.
+// the three mark functions read or remove only clierr.RemovalMark, which no
+// command has, and every result of the catalog values filter has
+// <hidden>, which no command accepts as a value and no Kubernetes name can
+// have.
 var evFilterAnyText = map[string]bool{
 	"internal/output.PrintableLines":             true,
 	"internal/runtime.PrintableRemedies":         true,
 	"internal/runtime.FilterRemedies":            true,
+	"internal/clierr.WithoutRemovalMark":         true,
+	"internal/clierr.HasRemovalMark":             true,
+	"internal/clierr.Error.WithoutRemovalMark":   true,
 	"internal/engine/catalog.Values.Filter":      true,
 	"internal/engine/catalog.Values.FilterError": true,
 	"internal/engine/catalog.Values.filterFunc":  true,
@@ -412,26 +420,44 @@ var evBuilderFilters = map[string]bool{
 	"internal/runtime.FilterRemedies": true,
 }
 
+// evMarkFunctions are the functions that read or remove clierr.RemovalMark.
+var evMarkFunctions = map[string]bool{
+	"internal/clierr.WithoutRemovalMark":       true,
+	"internal/clierr.HasRemovalMark":           true,
+	"internal/clierr.Error.WithoutRemovalMark": true,
+}
+
 // evCheckFilterPlaces checks that every row of a whole-text filter other than
-// the builder filters and the catalog values filter names a function in
-// places, and that every entry of places is named by a row.
-func evCheckFilterPlaces(rows []evFilterRow, places map[string]string) []string {
+// the builder filters, the mark functions and the catalog values filter names
+// a function in places, that every row of a mark function names one in
+// markPlaces, and that every entry of the two is named by a row.
+func evCheckFilterPlaces(rows []evFilterRow, places, markPlaces map[string]string) []string {
 	var problems []string
 	used := map[string]bool{}
 	for _, row := range rows {
 		switch {
 		case evBuilderFilters[row.filter]:
+		case evMarkFunctions[row.filter]:
+			if _, ok := markPlaces[row.fn]; !ok {
+				problems = append(problems, fmt.Sprintf("%s references %s: only the functions that remove clierr.RemovalMark before they write text, the note checks and the methods of clierr.Filtered in evRemovalMarkPlaces may; a builder hands its text to the sink with Marked", row.fn, row.filter))
+			}
+			used["mark "+row.fn] = true
 		case strings.HasPrefix(row.filter, "internal/engine/catalog."):
 		default:
 			if _, ok := places[row.fn]; !ok {
 				problems = append(problems, fmt.Sprintf("%s references %s: a builder of a result text or a notice filters a value with output.FilterValue or runtime.FilterRemedies; only the renderers, definitions, checks and certificate text in evFilterPlaces may reference another filter", row.fn, row.filter))
 			}
-			used[row.fn] = true
+			used["filter "+row.fn] = true
 		}
 	}
 	for _, fn := range slices.Sorted(maps.Keys(places)) {
-		if !used[fn] {
+		if !used["filter "+fn] {
 			problems = append(problems, fmt.Sprintf("the place %s is named by no row of a whole-text filter; remove it", fn))
+		}
+	}
+	for _, fn := range slices.Sorted(maps.Keys(markPlaces)) {
+		if !used["mark "+fn] {
+			problems = append(problems, fmt.Sprintf("the place %s is named by no row of a mark function; remove it", fn))
 		}
 	}
 	return problems
@@ -443,15 +469,17 @@ func evCheckFilterPlaces(rows []evFilterRow, places map[string]string) []string 
 // reason), no function references output.Printable,
 // output.PrintableLines, runtime.PrintableRemedies or
 // clierr.WithoutUnsafeToDisplay: a builder of a result text or a notice uses
-// output.FilterValue or runtime.FilterRemedies. It also asserts that every
-// place is used.
+// output.FilterValue or runtime.FilterRemedies. It also asserts that only the
+// places evRemovalMarkPlaces lists reference clierr.WithoutRemovalMark,
+// clierr.HasRemovalMark and Error.WithoutRemovalMark, and that every place is
+// used.
 //
 // Limits: it reads the rows of evFilterRows, which
 // TestEveryWholeTextFilterReferenceHasAReviewedRow checks against the tree;
 // the catalog values filter is out of its scope.
 func TestOnlyRenderersReferenceTheWholeTextFilters(t *testing.T) {
 	t.Parallel()
-	for _, p := range evCheckFilterPlaces(evFilterRows, evFilterPlaces) {
+	for _, p := range evCheckFilterPlaces(evFilterRows, evFilterPlaces, evRemovalMarkPlaces) {
 		t.Error(p)
 	}
 }

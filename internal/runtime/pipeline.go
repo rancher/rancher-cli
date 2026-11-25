@@ -905,6 +905,51 @@ func printableText(res Result, wide bool, s style.Style) string {
 	return clean
 }
 
+// The filter note is the one line a result printed as text gets when a filter
+// removed a character a terminal cannot show from it, or wrote an invalid
+// UTF-8 byte as U+FFFD. Its words depend on what the command may do. A command
+// that reads is told to run the command again with -o json. A local command
+// may change local state, and a command that writes, or whose result is shown
+// once, has changed something: neither is told to run the command again.
+const (
+	filterNoteRead  = "this output had characters a terminal cannot show; run the command again with -o json to see the exact values"
+	filterNoteLocal = "this output had characters a terminal cannot show; -o json shows the exact values"
+	filterNoteWrite = "this output had characters a terminal cannot show; they were left out or replaced"
+)
+
+// filterNoteDue reports whether a result printed as text gets the filter note.
+// It does when the format is a text format, the result prints its Text (or its
+// WideText under -o wide) through printableText, and either that text has
+// clierr.RemovalMark, which a builder's filter adds after a value it changed,
+// or printableText's own filter changes it. A command whose text is the
+// output of another program (PlainText), or whose descriptor sets
+// NoFilterNote, gets no note. renderResult asks it for an ordinary result and
+// finishOnceOnlyResult for a result that is shown once.
+func filterNoteDue(d Descriptor, format string, res Result) bool {
+	if d.PlainText || d.NoFilterNote || res.Text == "" || !textRenderFormat(format) {
+		return false
+	}
+	text := res.Text
+	if format == "wide" && res.WideText != "" {
+		text = res.WideText
+	}
+	return clierr.HasRemovalMark(text) || output.PrintableLines(text) != text
+}
+
+// writeFilterNote writes the filter note for d to the invocation's stderr as
+// one more warning line; s styles only its prefix. The note has no remedy
+// command and nothing to escape.
+func writeFilterNote(streams IO, d Descriptor, s style.Style) {
+	note := filterNoteLocal
+	switch {
+	case d.Delivery == DeliveryOnceOnly || d.EffectiveServerAccess() == ServerAccessWrite:
+		note = filterNoteWrite
+	case d.EffectiveServerAccess() == ServerAccessRead:
+		note = filterNoteRead
+	}
+	mirrorWarnings(streams.Err, []string{note}, nil, s, func(t string) string { return t })
+}
+
 // renderResult renders res per d's declared shape, having first drained
 // streams' NoticeSource and merged it ahead of res.Warnings (recorded
 // earliest, delivered first - the same merge order RenderError applies on
@@ -971,6 +1016,11 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 			default:
 				text = res.Text
 			}
+			// A value the command filtered before it joined the other
+			// program's output is followed by clierr.RemovalMark. This
+			// branch writes no note for it and writes the text without the
+			// mark.
+			text = clierr.WithoutRemovalMark(text)
 		} else {
 			text = printableText(res, wide, outStyle)
 		}
@@ -997,6 +1047,12 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 			silent[res.OnceOnlyNotice]++
 		}
 		mirrorWarnings(streams.Err, rawWarnings, silent, errStyle, expandWarning)
+		// The note of a once-only result waits for the write of its output to
+		// the real stdout (finishOnceOnlyResult): this write may go to a
+		// buffer that is discarded.
+		if d.Delivery != DeliveryOnceOnly && filterNoteDue(d, streams.Format, res) {
+			writeFilterNote(streams, d, errStyle)
+		}
 		return nil, nil
 	}
 	if res.RawBytes != nil {
@@ -1137,7 +1193,7 @@ func dryRunText(eff safety.Effect) string {
 	}
 	gate += " to apply the change"
 	lines = append(lines, gate)
-	return TextLines(fmt.Sprintf("%s %s/%s", eff.Action, clierr.ValueText(eff.DisplayKind), clierr.ValueText(eff.DisplayName)), lines...).Text
+	return textLinesString(fmt.Sprintf("%s %s/%s", eff.Action, clierr.ValueText(eff.DisplayKind), clierr.ValueText(eff.DisplayName)), lines...)
 }
 
 // diffValueText renders one side of a diff entry for the text preview: a
@@ -1214,9 +1270,19 @@ func RenderError(w io.Writer, format string, ce *clierr.Error, notices ...string
 // with its commands expanded. Every other format writes the message, the hint
 // and each warning through clierr.LineText and each details value through
 // clierr.WholeValueText, and only then expands the commands. The directory an
-// expansion adds is never inside a double-quoted string.
+// expansion adds is never inside a double-quoted string. clierr.RemovalMark is
+// removed from the message, the hint, each warning and each notice first, for
+// every format: an error says nothing about removed characters.
 func RenderErrorStyled(w io.Writer, format string, ce *clierr.Error, s style.Style, remedyDir string, notices ...string) error {
 	streams := IO{RemedyDir: remedyDir}
+	ce = ce.WithoutRemovalMark()
+	if len(notices) > 0 {
+		unmarked := make([]string, len(notices))
+		for i, n := range notices {
+			unmarked[i] = clierr.WithoutRemovalMark(n)
+		}
+		notices = unmarked
+	}
 	if envelopeCarriesWarnings(format) {
 		ce = streams.ExpandError(ce)
 		env := output.ErrorEnvelope(ce)
@@ -1312,7 +1378,7 @@ func errorText(ce *clierr.Error, s style.Style, expand func(string) string) stri
 	for _, l := range detailsTextLines(ce.Details) {
 		lines = append(lines, detailLineText(l, expand))
 	}
-	return TextLines(header, lines...).Text
+	return textLinesString(header, lines...)
 }
 
 // errorLineText returns text, the message or the hint of ce, as one line. Each
@@ -1450,6 +1516,9 @@ func finishOnceOnlyResult(streams IO, d Descriptor, res Result) (int, *clierr.Er
 		return 0, renderErrDrained(streams, committedContextError(res.CommittedContext, n > 0,
 			"the change was applied, but writing its output failed: "+err.Error()).
 			WithWarnings(pending...), errStyle, nil)
+	}
+	if filterNoteDue(d, streams.Format, res) {
+		writeFilterNote(streams, d, errStyle)
 	}
 	return res.ExitStatus, nil
 }

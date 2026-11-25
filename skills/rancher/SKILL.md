@@ -1427,7 +1427,11 @@ rancher oidc-client rotate-secret my-app --apply --yes
   deployment`, `inspect project`, `inspect user`, `auth status`, `config
   status` and the other commands REFERENCE.md lists also remove newlines from
   free text, timestamps, token names and user ids; in other commands a newline
-  in a server value can still start a line. `-o json`, `yaml`, `template=`,
+  in a server value can still start a line. The text of a result, or a
+  notice, that had a character removed is followed by a stderr line that says
+  so. For a command that reads, run it again with `-o json` to see the exact
+  values; never run a command that changes something again only to see
+  them. `-o json`, `yaml`, `template=`,
   `logs` and the kubeconfig and completion output
   return the bytes verbatim, so echo those as data, never into a terminal
   or a shell.

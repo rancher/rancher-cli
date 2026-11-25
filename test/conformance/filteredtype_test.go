@@ -15,7 +15,9 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"unicode/utf8"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -84,14 +86,21 @@ import (
 //     runtime.Result (of any type whose underlying struct is runtime.Result's)
 //     is the right side of an assignment to the same field of another Result,
 //     the argument of clierr.Plain, an operand of == or != with "", or is in a
-//     function ftKindRead lists. A row accepts any use of its read. A
-//     compound assignment (r.Text += "x") appends and keeps every character,
-//     and counts as a write. A conversion of a Result, or a pointer to one,
-//     to a struct type with the same fields is refused: its Text is a field
-//     this rule does not watch. A read of StyledText, which gives the text as
-//     a string taken out of a Filtered, is a write, a whole copy, a
-//     comparison with nil, a StyledText value, or in a function
-//     ftKindStyledRead lists.
+//     function ftKindRead lists: a renderer row, a function of the result
+//     pipeline in the package ftConfig.renderers names (internal/runtime) that
+//     prints the text or decides the filter note. A renderer row is trusted
+//     with what it hands the text to. The scan refuses a renderer row that cuts
+//     or ranges over the read, a local the read is assigned to whole, the
+//     output.PrintableLines of either, or a text joined with + that has one of
+//     them; that writes Result.Text or WideText; that is a method or an
+//     exported function; or that returns the text and is referenced by a
+//     function no row lists (rendererCuts).
+//     A compound assignment (r.Text += "x") appends and keeps every character,
+//     and counts as a write. A conversion of a Result, or a pointer to one, to
+//     a struct type with the same fields is refused: its Text is a field this
+//     rule does not watch. A read of StyledText, which gives the text as a
+//     string taken out of a Filtered, is a write, a whole copy, a comparison
+//     with nil, a StyledText value, or in a function ftKindStyledRead lists.
 //  5. One Notice renderer: the only method named Notice of a type that
 //     implements runtime.Prompter is ui.Prompter.Notice, and only the
 //     functions ftKindRewrite lists call WithNoticeRewrite, with the
@@ -184,6 +193,7 @@ type ftConfig struct {
 	fields      map[string][2]ftCountRow
 	unsafe      map[string]string
 	notice      string
+	renderers   []string
 }
 
 // ftProductionConfig is the scan of the module's production code.
@@ -194,6 +204,7 @@ var ftProductionConfig = ftConfig{
 	fields:      ftFieldRows,
 	unsafe:      ftUnsafeImports,
 	notice:      "internal/ui.Prompter",
+	renderers:   []string{"internal/runtime"},
 }
 
 // ftResult is what one scan found: the findings and the positions of the
@@ -700,6 +711,9 @@ func (s *ftScanner) file(f *ast.File) {
 				res = obj.Signature().Results()
 			}
 			s.frames = append(s.frames, ftFrame{key: ftFuncKey(s.pkg.PkgPath, n), results: res})
+			if _, ok := s.cfg.rows[ftKindRead][ftFuncKey(s.pkg.PkgPath, n)]; ok {
+				s.rendererCuts(n)
+			}
 		case *ast.FuncLit:
 			var res *types.Tuple
 			if sig, ok := s.typeOf(n).(*types.Signature); ok {
@@ -1098,6 +1112,11 @@ func ftCheckRows(cfg ftConfig, r ftResult) []string {
 			}
 		}
 	}
+	for _, key := range slices.Sorted(maps.Keys(cfg.rows[ftKindRead])) {
+		if !slices.Contains(cfg.renderers, ftKeyPackage(key)) {
+			problems = append(problems, fmt.Sprintf("the %s row %s is outside %s: a renderer row is a function of the result pipeline; a function that changes a copy of the text reads it through clierr.Plain", ftKindRead, key, strings.Join(cfg.renderers, ", ")))
+		}
+	}
 	for _, pkg := range slices.Sorted(maps.Keys(cfg.unsafe)) {
 		if !r.unsafe[pkg] {
 			problems = append(problems, fmt.Sprintf("the package %s may import unsafe and does not; remove its row", pkg))
@@ -1150,6 +1169,9 @@ func TestNothingCutsAFilterResult(t *testing.T) {
 	for _, p := range ftTrustedBodyProblems(loads[0]) {
 		t.Error(p)
 	}
+	for _, p := range ftMarkProblems(t, loads[0]) {
+		t.Error(p)
+	}
 }
 
 // ftFixtureDir is the directory of the fixtures of the scan.
@@ -1167,10 +1189,18 @@ var ftFixtureConfig = ftConfig{
 		ftKindStyled:      {"test/conformance/testdata/filteredtype/accepted.styled": {1, "a StyledText literal of a Result"}},
 		ftKindWithoutMark: {"test/conformance/testdata/filteredtype/accepted.jsonProjection": {1, "a json projection"}, "test/conformance/testdata/filteredtype/accepted.restyle": {1, "a StyledText builder"}, "test/conformance/testdata/filteredtype/rejected.projectAndWrite": {1, "a projection that also writes"}},
 		ftKindMarked:      {"test/conformance/testdata/filteredtype/accepted.lines": {1, "hands a line to a string form"}},
-		ftKindRead:        {"test/conformance/testdata/filteredtype/accepted.render": {1, "prints a Text whole"}},
-		ftKindResult:      {"test/conformance/testdata/filteredtype/accepted uses test/conformance/testdata/filteredtype/accepted.keep": {1, "stores a Result whole"}},
-		ftKindFieldRead:   {"test/conformance/testdata/filteredtype/accepted.readVal": {1, "reads the any field in its listed function"}},
-		ftKindRewrite:     {"test/conformance/testdata/filteredtype/accepted.withRewrite": {1, "the listed caller"}},
+		ftKindRead: {
+			"test/conformance/testdata/filteredtype/accepted.render":          {1, "prints a Text whole"},
+			"test/conformance/testdata/filteredtype/accepted.renderPlain":     {3, "hands its reads whole to the next step"},
+			"test/conformance/testdata/filteredtype/accepted.renderTwo":       {1, "returns the text of another renderer row"},
+			"test/conformance/testdata/filteredtype/rejected.renderCut":       {5, "a renderer row that cuts"},
+			"test/conformance/testdata/filteredtype/rejected.RenderOut":       {1, "an exported renderer row"},
+			"test/conformance/testdata/filteredtype/rejected.renderer.render": {1, "a method renderer row"},
+			"test/conformance/testdata/filteredtype/rejected.rawText":         {1, "returns the text to a function no row lists"},
+		},
+		ftKindResult:    {"test/conformance/testdata/filteredtype/accepted uses test/conformance/testdata/filteredtype/accepted.keep": {1, "stores a Result whole"}},
+		ftKindFieldRead: {"test/conformance/testdata/filteredtype/accepted.readVal": {1, "reads the any field in its listed function"}},
+		ftKindRewrite:   {"test/conformance/testdata/filteredtype/accepted.withRewrite": {1, "the listed caller"}},
 	},
 	newFiltered: map[string]bool{"test/conformance/testdata/filteredtype/accepted.filter": true},
 	format:      ftCountRow{3, "the accepted fixture's arguments"},
@@ -1178,8 +1208,9 @@ var ftFixtureConfig = ftConfig{
 		"test/conformance/testdata/filteredtype/accepted.field.val": {{1, "a Filtered value"}, {1, "a []field value"}},
 		"test/conformance/testdata/filteredtype/rejected.field.val": {{1, "a Filtered value"}, {0, "no []field value"}},
 	},
-	unsafe: map[string]string{},
-	notice: "test/conformance/testdata/filteredtype/accepted.prompter",
+	unsafe:    map[string]string{},
+	notice:    "test/conformance/testdata/filteredtype/accepted.prompter",
+	renderers: []string{"test/conformance/testdata/filteredtype/accepted", "test/conformance/testdata/filteredtype/rejected"},
 }
 
 // ftWants maps each fixture line that has a // want <rule> comment to its
@@ -1257,8 +1288,8 @@ func TestNoticeRendererFindingNamesTheType(t *testing.T) {
 }
 
 // TestFilteredRowCountsAreChecked asserts that a row of rule 3 that accepts
-// more or fewer expressions than it says fails, and so does a rule 2 row that
-// accepts none.
+// more or fewer expressions than it says fails, and so do a rule 2 row that
+// accepts none and a rule 4 renderer row outside the renderers' package.
 func TestFilteredRowCountsAreChecked(t *testing.T) {
 	t.Parallel()
 	pkgs, err := ftFixtures()
@@ -1268,10 +1299,13 @@ func TestFilteredRowCountsAreChecked(t *testing.T) {
 	cfg.rows = maps.Clone(cfg.rows)
 	cfg.rows[ftKindWithoutMark] = maps.Clone(cfg.rows[ftKindWithoutMark])
 	cfg.rows[ftKindWithoutMark]["test/conformance/testdata/filteredtype/accepted.gone"] = ftCountRow{1, "a function that does not exist"}
+	cfg.rows[ftKindRead] = maps.Clone(cfg.rows[ftKindRead])
+	cfg.rows[ftKindRead]["internal/engine/access.copyText"] = ftCountRow{0, "a function outside the renderers"}
 	problems := ftCheckRows(cfg, ftScan(cfg, pkgs))
 	assert.Equal(t, []string{
 		"the row for a clierr.Filtered argument of clierr.Sprintf or Builder.Printf accepts 3 expressions; it says 4: count them again and write the number into the row",
 		"the WithoutMark row test/conformance/testdata/filteredtype/accepted.gone accepts 0 expressions; it says 1: count them again and write the number into the row",
+		"the read of Result.Text row internal/engine/access.copyText is outside test/conformance/testdata/filteredtype/accepted, test/conformance/testdata/filteredtype/rejected: a renderer row is a function of the result pipeline; a function that changes a copy of the text reads it through clierr.Plain",
 	}, problems)
 }
 
@@ -1304,13 +1338,12 @@ var ftProductionRows = map[string]map[string]ftCountRow{
 	ftKindWithoutMark: {
 		"internal/commands/configcmd.projectFields": {2, "the json projection of config status (a key and a value of Data, which json, yaml and templates print); it writes no text"},
 		"internal/runtime.StyleEveryLineBoldOf":     {1, "the input of a StyledText builder: printableText prints a StyledText only when the plain text has nothing to remove"},
+		"internal/runtime.accentLines":              {1, "the input of the StyledText builder of AccentLine: printableText prints a StyledText only when the plain text has nothing to remove"},
 	},
 	ftKindRead: {
-		"internal/runtime.AccentLine":    {1, "reads the Text to restyle a line it matches whole; the Text itself is not changed"},
 		"internal/runtime.printableText": {4, "the renderer of a result text: prints Text or WideText, or the StyledText when the plain text has nothing to remove"},
 		"internal/runtime.renderResult":  {2, "the renderer of a result: decides which of Text and WideText prints, and passes it whole to printableText"},
-		"internal/runtime.dryRunText":    {1, "the text of a TextLines result written whole into the dry-run preview"},
-		"internal/runtime.errorText":     {1, "the text of a TextLines result written whole into the error text"},
+		"internal/runtime.filterNoteDue": {2, "the filter note condition: reads Text or WideText whole, finds clierr.RemovalMark or a character output.PrintableLines removes, and prints nothing"},
 	},
 	ftKindResult: {
 		"internal/token uses internal/config.CachedHit": {1, "the generic config.CachedHit, which internal/token calls for the exec credential cache with a runtime.Result, returns the Result its read function returns, whole; it prints nothing"},
@@ -1359,12 +1392,24 @@ func (s *ftScanner) acceptRow(kind, key string, at ast.Node) bool {
 
 // ftIsFilteredStruct reports whether st is the underlying struct of
 // clierr.Filtered or clierr.Builder: one unexported field declared in
-// internal/clierr, s of type string or b of type strings.Builder.
+// internal/clierr, s of type string or b of type strings.Builder. A Filtered
+// also has a blank field before s, a zero-length array of func(), which makes
+// it not comparable.
 func ftIsFilteredStruct(st *types.Struct) bool {
-	if st.NumFields() != 1 {
+	n := st.NumFields()
+	if n == 2 {
+		blank := st.Field(0)
+		arr, ok := blank.Type().(*types.Array)
+		if blank.Name() != "_" || !ok || arr.Len() != 0 {
+			return false
+		}
+		if _, ok := arr.Elem().(*types.Signature); !ok {
+			return false
+		}
+	} else if n != 1 {
 		return false
 	}
-	f := st.Field(0)
+	f := st.Field(n - 1)
 	if f.Pkg() == nil || f.Pkg().Path() != ftClierrPath {
 		return false
 	}
@@ -1701,7 +1746,7 @@ var ftTrustedDecls = map[string]string{
 func ftTrustedProblems(t *testing.T, pkgs []*packages.Package) []string {
 	t.Helper()
 	var problems []string
-	found := map[string]bool{}
+	found := map[string]string{}
 	for _, pkg := range pkgs {
 		if pkg.PkgPath != ftClierrPath {
 			continue
@@ -1713,15 +1758,15 @@ func ftTrustedProblems(t *testing.T, pkgs []*packages.Package) []string {
 			for _, d := range f.Decls {
 				switch d := d.(type) {
 				case *ast.FuncDecl:
-					found[strings.TrimPrefix(ftFuncKey(pkg.PkgPath, d), "internal/clierr.")] = true
+					found[strings.TrimPrefix(ftFuncKey(pkg.PkgPath, d), "internal/clierr.")] = ftCallForm(d)
 				case *ast.GenDecl:
 					for _, sp := range d.Specs {
 						switch sp := sp.(type) {
 						case *ast.TypeSpec:
-							found[sp.Name.Name] = true
+							found[sp.Name.Name] = ""
 						case *ast.ValueSpec:
 							for _, id := range sp.Names {
-								found[id.Name] = true
+								found[id.Name] = ""
 							}
 						}
 					}
@@ -1737,7 +1782,8 @@ func ftTrustedProblems(t *testing.T, pkgs []*packages.Package) []string {
 	src, err := os.ReadFile("internal/clierr/filtered_test.go")
 	require.NoError(t, err)
 	for _, name := range slices.Sorted(maps.Keys(ftTrustedDecls)) {
-		if !found[name] {
+		form, ok := found[name]
+		if !ok {
 			problems = append(problems, fmt.Sprintf("ftTrustedDecls lists %s, which internal/clierr/filtered.go does not declare; remove it", name))
 		}
 		test := ftTrustedDecls[name]
@@ -1751,7 +1797,7 @@ func ftTrustedProblems(t *testing.T, pkgs []*packages.Package) []string {
 			body = body[:j+1]
 		}
 		short := name[strings.LastIndex(name, ".")+1:]
-		if !strings.Contains(body[len("func "+test):], short) {
+		if !ftNamesDecl(body[len("func "+test):], name, short, form) {
 			problems = append(problems, fmt.Sprintf("ftTrustedDecls names %s for %s, whose body does not name %s: name the unit test that exercises it", test, name, short))
 		}
 	}
@@ -1999,20 +2045,22 @@ func (s *ftScanner) switchClauses(sel *ast.SelectorExpr, parent func(int) ast.No
 // format parameter of the declaration passed on with its own arguments: a
 // precision cuts a string argument.
 var ftTrustedCalls = map[string]bool{
-	"strings.Builder.WriteString":    true,
-	"strings.Builder.String":         true,
-	"strings.Join":                   true,
-	"strings.TrimSuffix":             true,
-	"strings.TrimRight":              true,
-	"strings.Repeat":                 true,
-	"unicode/utf8.RuneCountInString": true,
-	"fmt.Sprintf":                    true,
-	"fmt.Fprintf":                    true,
-	"errors.New":                     true,
-	"fmt.State.Width":                true,
-	"fmt.State.Flag":                 true,
-	"fmt.State.Write":                true,
-	"internal/clierr.textAfter":      true,
+	"strings.Builder.WriteString":        true,
+	"strings.Builder.String":             true,
+	"strings.Join":                       true,
+	"strings.TrimSuffix":                 true,
+	"strings.TrimRight":                  true,
+	"strings.Repeat":                     true,
+	"unicode/utf8.RuneCountInString":     true,
+	"fmt.Sprintf":                        true,
+	"fmt.Fprintf":                        true,
+	"errors.New":                         true,
+	"fmt.State.Width":                    true,
+	"fmt.State.Flag":                     true,
+	"fmt.State.Write":                    true,
+	"internal/clierr.textAfter":          true,
+	"internal/clierr.WithoutRemovalMark": true,
+	"internal/clierr.HasRemovalMark":     true,
 }
 
 // ftTrustedBodyProblems checks the bodies of filtered.go: no slice
@@ -2082,10 +2130,48 @@ func ftTrustedBodyProblems(pkgs []*packages.Package) []string {
 					}
 					return true
 				})
+				if p := ftMarkStepProblem(info, fd); p != "" {
+					problems = append(problems, pkg.Fset.Position(fd.Pos()).String()+": "+p)
+				}
 			}
 		}
 	}
 	return problems
+}
+
+// ftMarkStepProblem checks a declaration fd of filtered.go that returns a
+// Filtered and removes clierr.RemovalMark from a text (a call of
+// WithoutRemovalMark): it must also call HasRemovalMark and name RemovalMark,
+// the step that writes the mark again when the input had one, as TrimSuffix
+// and TrimRight do. It returns "" for any other declaration.
+func ftMarkStepProblem(info *types.Info, fd *ast.FuncDecl) string {
+	if fd == nil || fd.Body == nil {
+		return ""
+	}
+	fn, ok := info.Defs[fd.Name].(*types.Func)
+	if !ok {
+		return ""
+	}
+	returns := false
+	for v := range fn.Signature().Results().Variables() {
+		returns = returns || ftIsFiltered(v.Type())
+	}
+	if !returns {
+		return ""
+	}
+	names := map[string]bool{}
+	ast.Inspect(fd.Body, func(n ast.Node) bool {
+		if id, ok := n.(*ast.Ident); ok {
+			if obj := info.Uses[id]; obj != nil && obj.Pkg() != nil && obj.Pkg().Path() == ftClierrPath {
+				names[obj.Name()] = true
+			}
+		}
+		return true
+	})
+	if names["WithoutRemovalMark"] && (!names["HasRemovalMark"] || !names["RemovalMark"]) {
+		return fd.Name.Name + " returns a Filtered built from a text without clierr.RemovalMark and never writes the mark again: call HasRemovalMark on the input and append RemovalMark when it reports true, as TrimSuffix does"
+	}
+	return ""
 }
 
 // ftFormatProblem checks the format of a call of fmt.Sprintf or fmt.Fprintf
@@ -2171,4 +2257,542 @@ func ftHasPrecision(format string) bool {
 		i = j
 	}
 	return false
+}
+
+// ftMarkAlphabet is every character clierr.RemovalMark can have: U+2063
+// INVISIBLE SEPARATOR and the four characters of markerRunes in
+// internal/clierr, U+2060, U+2061, U+2062 and U+2064. A trim or a cut whose
+// constant has none of them, and is valid UTF-8, keeps the mark whole.
+const ftMarkAlphabet = "\u2060\u2061\u2062\u2063\u2064"
+
+// ftFormatArgs are the fmt functions a renderer row may hand its text to,
+// with the index of their format argument.
+var ftFormatArgs = map[string]int{"fmt.Sprintf": 0, "fmt.Errorf": 0, "fmt.Printf": 0, "fmt.Fprintf": 1, "fmt.Appendf": 1}
+
+// rendererCuts checks a function a renderer row lists. The row trusts what the
+// function hands the text to; the check refuses a cut of the read of
+// Result.Text or WideText, of a local the read is assigned to whole, and of the
+// output.PrintableLines of either. A cut is a slice expression, an index, len,
+// a conversion to a slice, the address, a fmt verb with a flag, a width or a
+// precision (or a format that is not a constant), a function of the strings
+// package whose name starts with Cut, Fields, Index, LastIndex, Lines, Split or
+// Trim, or a function of unicode/utf8 whose name ends in InString. A Trim,
+// TrimLeft, TrimRight, TrimPrefix, TrimSuffix, CutPrefix or CutSuffix whose
+// first argument is the text and whose second is a constant of valid UTF-8 with
+// no character of ftMarkAlphabet is not a cut: it keeps the mark whole. A
+// function-argument form (TrimFunc and the like) is always a cut.
+func (s *ftScanner) rendererCuts(fd *ast.FuncDecl) {
+	info := s.pkg.TypesInfo
+	if fd.Recv != nil || fd.Name.IsExported() {
+		s.add(fd.Name, 4, "a renderer row that is a method or an exported function; a renderer row is an unexported function of the result pipeline, which other packages cannot call to get the text")
+	}
+	parents := map[ast.Node]ast.Node{}
+	var stack []ast.Node
+	ast.Inspect(fd, func(n ast.Node) bool {
+		if n == nil {
+			stack = stack[:len(stack)-1]
+			return true
+		}
+		if len(stack) > 0 {
+			parents[n] = stack[len(stack)-1]
+		}
+		stack = append(stack, n)
+		return true
+	})
+	up := func(e ast.Node) (ast.Node, ast.Node) {
+		p := parents[e]
+		for {
+			par, ok := p.(*ast.ParenExpr)
+			if !ok {
+				return p, e
+			}
+			e, p = par, parents[par]
+		}
+	}
+	tracked := map[ast.Expr]string{}
+	locals := map[*types.Var]string{}
+	isPrintableLines := func(call *ast.CallExpr) bool {
+		fn := ftCalledFunc(info, call)
+		return fn != nil && fn.Pkg() != nil && fn.Pkg().Path() == modulePrefix+"internal/output" && fn.Name() == "PrintableLines"
+	}
+	for changed := true; changed; {
+		changed = false
+		ast.Inspect(fd, func(n ast.Node) bool {
+			e, ok := n.(ast.Expr)
+			if !ok || tracked[e] != "" {
+				return true
+			}
+			what := ""
+			switch e := e.(type) {
+			case *ast.SelectorExpr:
+				if obj := info.Uses[e.Sel]; obj != nil {
+					if field, ok := ftResultField(obj); ok {
+						if as, ok := parents[e].(*ast.AssignStmt); !ok || !slices.Contains(as.Lhs, ast.Expr(e)) {
+							what = "Result." + field
+						}
+					}
+				}
+			case *ast.Ident:
+				if v, ok := info.Uses[e].(*types.Var); ok && locals[v] != "" {
+					if as, ok := parents[e].(*ast.AssignStmt); !ok || !slices.Contains(as.Lhs, ast.Expr(e)) {
+						what = locals[v]
+					}
+				}
+			case *ast.CallExpr:
+				if isPrintableLines(e) && len(e.Args) == 1 && tracked[ast.Unparen(e.Args[0])] != "" {
+					what = "the output.PrintableLines of " + tracked[ast.Unparen(e.Args[0])]
+				}
+			case *ast.BinaryExpr:
+				if e.Op == token.ADD {
+					if w := tracked[ast.Unparen(e.X)] + tracked[ast.Unparen(e.Y)]; w != "" {
+						what = "a text joined with +, which has " + strings.TrimSpace(tracked[ast.Unparen(e.X)]+" "+tracked[ast.Unparen(e.Y)])
+					}
+				}
+			}
+			if what == "" {
+				return true
+			}
+			tracked[e] = what
+			changed = true
+			if v := ftAssignedLocal(info, parents, e); v != nil && locals[v] == "" {
+				locals[v] = "the local " + v.Name() + ", which has " + what
+			}
+			return true
+		})
+	}
+	ast.Inspect(fd, func(n ast.Node) bool {
+		as, ok := n.(*ast.AssignStmt)
+		if !ok {
+			return true
+		}
+		for _, l := range as.Lhs {
+			if sel, ok := ast.Unparen(l).(*ast.SelectorExpr); ok {
+				if obj := info.Uses[sel.Sel]; obj != nil {
+					if field, ok := ftResultField(obj); ok {
+						s.add(sel, 4, fmt.Sprintf("a write of Result.%s in a renderer row; a renderer reads the text and prints it, and a text it rewrites before the note condition loses the note", field))
+					}
+				}
+			}
+		}
+		return true
+	})
+	for e, what := range tracked {
+		parent, child := up(e)
+		cut := func(at ast.Node, how string) {
+			s.add(at, 4, fmt.Sprintf("%s of %s in a renderer row; a renderer hands the text whole to the next step: the cut drops characters, clierr.RemovalMark among them", how, what))
+		}
+		switch par := parent.(type) {
+		case *ast.RangeStmt:
+			if par.X == child {
+				cut(par, "a range")
+			}
+		case *ast.ReturnStmt:
+			if reason := s.rendererReturn(fd, par, parents); reason != "" {
+				s.add(par, 4, fmt.Sprintf("a return of %s from a renderer row %s; a renderer row hands the text only to another renderer row", what, reason))
+			}
+		case *ast.SliceExpr:
+			if par.X == child {
+				cut(par, "a slice expression")
+			}
+		case *ast.IndexExpr:
+			if par.X == child {
+				cut(par, "an index")
+			}
+		case *ast.UnaryExpr:
+			if par.Op == token.AND {
+				cut(par, "the address")
+			}
+		case *ast.CallExpr:
+			if par.Fun == child {
+				continue
+			}
+			if tv, ok := info.Types[par.Fun]; ok && tv.IsType() {
+				if _, ok := tv.Type.Underlying().(*types.Slice); ok {
+					cut(par, "a conversion to "+tv.Type.String())
+				}
+				continue
+			}
+			if id, ok := ast.Unparen(par.Fun).(*ast.Ident); ok {
+				if b, ok := info.Uses[id].(*types.Builtin); ok && b.Name() == "len" {
+					cut(par, "len")
+					continue
+				}
+				if b, ok := info.Uses[id].(*types.Builtin); ok && b.Name() == "copy" && len(par.Args) == 2 && par.Args[1] == child {
+					cut(par, "copy")
+					continue
+				}
+			}
+			ce, _ := child.(ast.Expr)
+			i := slices.Index(par.Args, ce)
+			fn := ftCalledFunc(info, par)
+			if fn == nil || fn.Pkg() == nil || i < 0 {
+				continue
+			}
+			key := fn.Pkg().Path() + "." + fn.Name()
+			if ftCutCall(info, par, key, i) {
+				cut(par, "a call of "+key)
+				continue
+			}
+			fi, ok := ftFormatArgs[key]
+			if !ok || i <= fi {
+				continue
+			}
+			tv := info.Types[par.Args[fi]]
+			if tv.Value == nil || tv.Value.Kind() != constant.String {
+				cut(par, "a format that is not a constant, with the text")
+				continue
+			}
+			if !ftPlainVerbAt(constant.StringVal(tv.Value), i-fi-1) {
+				cut(par, "a verb with a flag, a width or a precision")
+			}
+		}
+	}
+}
+
+// rendererReturn is why the return ret of a text from the renderer row fd
+// is refused, or "". It is refused inside a function literal, and when a
+// function that is not a renderer row of its package references fd (the text
+// then reaches code no row lists).
+func (s *ftScanner) rendererReturn(fd *ast.FuncDecl, ret *ast.ReturnStmt, parents map[ast.Node]ast.Node) string {
+	for p := parents[ret]; p != nil && p != ast.Node(fd); p = parents[p] {
+		if _, ok := p.(*ast.FuncLit); ok {
+			return "inside a function literal"
+		}
+	}
+	obj := s.pkg.TypesInfo.Defs[fd.Name]
+	reason := ""
+	for _, f := range s.pkg.Syntax {
+		for _, d := range f.Decls {
+			caller, ok := d.(*ast.FuncDecl)
+			if !ok {
+				continue
+			}
+			_, row := s.cfg.rows[ftKindRead][ftFuncKey(s.pkg.PkgPath, caller)]
+			ast.Inspect(caller, func(n ast.Node) bool {
+				if id, ok := n.(*ast.Ident); ok && id != fd.Name && s.pkg.TypesInfo.Uses[id] == obj && !row && reason == "" {
+					reason = "that is referenced by " + ftFuncKey(s.pkg.PkgPath, caller) + ", which no renderer row lists"
+				}
+				return true
+			})
+		}
+	}
+	return reason
+}
+
+// ftKeyPackage is the package of a row key: the key up to the first dot after
+// its last slash.
+func ftKeyPackage(key string) string {
+	slash := strings.LastIndex(key, "/") + 1
+	if dot := strings.Index(key[slash:], "."); dot >= 0 {
+		return key[:slash+dot]
+	}
+	return key
+}
+
+// ftCallForm is how a test names the function or method fd declares: "(" for a
+// function, as in the calls Plain( and clierr.Plain(, and ".(" for a method, as
+// in the call f.Width(. A type and a variable have no call form: a test names
+// them as a whole identifier.
+func ftCallForm(fd *ast.FuncDecl) string {
+	if fd.Recv != nil {
+		return ".("
+	}
+	return "("
+}
+
+// ftNoCallForm lists the methods of filtered.go that a test does not call by
+// name, each with the reason: the fmt package calls Format, and the tests name
+// it as a method expression and run it through fmt. A test that names one of
+// them as a whole identifier satisfies the check without running it.
+var ftNoCallForm = map[string]string{
+	"Filtered.Format": "fmt calls it; the test names it as the method expression Filtered.Format and formats a value",
+	"whole.Format":    "fmt calls it; the test names it as the method expression whole.Format and formats a value",
+}
+
+// ftNamesDecl reports whether body names the declaration name, whose short
+// name is short: a function or method (form "(" or ".(") by a call of it, a
+// type or variable (form "") as a whole identifier, and a declaration in
+// ftNoCallForm as a whole identifier.
+func ftNamesDecl(body, name, short, form string) bool {
+	if _, ok := ftNoCallForm[name]; ok || form == "" {
+		return ftNamesIdentifier(body, short)
+	}
+	return ftNamesCall(body, short, form == ".(")
+}
+
+// ftNamesCall reports whether body calls short: short followed by an opening
+// parenthesis, with no letter, digit or underscore right before it, and a dot
+// right before it for a method.
+func ftNamesCall(body, short string, method bool) bool {
+	for i := strings.Index(body, short+"("); i >= 0; {
+		before := byte(' ')
+		if i > 0 {
+			before = body[i-1]
+		}
+		if method && before == '.' || !method && !ftIsWordByte(before) {
+			return true
+		}
+		next := strings.Index(body[i+1:], short+"(")
+		if next < 0 {
+			break
+		}
+		i += 1 + next
+	}
+	return false
+}
+
+func ftIsWordByte(b byte) bool {
+	return b == '_' || b >= '0' && b <= '9' || b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z'
+}
+
+// ftNamesIdentifier reports whether body names short as a whole identifier:
+// short with no letter, digit or underscore right before or after it: Trim is
+// not found in TrimSuffix.
+func ftNamesIdentifier(body, short string) bool {
+	word := ftIsWordByte
+	for i := strings.Index(body, short); i >= 0; {
+		end := i + len(short)
+		if (i == 0 || !word(body[i-1])) && (end == len(body) || !word(body[end])) {
+			return true
+		}
+		next := strings.Index(body[i+1:], short)
+		if next < 0 {
+			break
+		}
+		i += 1 + next
+	}
+	return false
+}
+
+// ftAssignedLocal is the local variable e is assigned to whole (t := e,
+// var t = e, t = e), or nil.
+func ftAssignedLocal(info *types.Info, parents map[ast.Node]ast.Node, e ast.Expr) *types.Var {
+	var id ast.Expr
+	switch par := parents[e].(type) {
+	case *ast.AssignStmt:
+		if i := slices.Index(par.Rhs, e); i >= 0 && len(par.Lhs) == len(par.Rhs) {
+			id = par.Lhs[i]
+		}
+	case *ast.ValueSpec:
+		if i := slices.Index(par.Values, e); i >= 0 && i < len(par.Names) {
+			id = par.Names[i]
+		}
+	}
+	ident, ok := id.(*ast.Ident)
+	if !ok {
+		return nil
+	}
+	obj := info.Defs[ident]
+	if obj == nil {
+		obj = info.Uses[ident]
+	}
+	v, ok := obj.(*types.Var)
+	if !ok || v.IsField() || v.Parent() == nil || v.Parent() == v.Pkg().Scope() {
+		return nil
+	}
+	return v
+}
+
+// ftCutCall reports whether a call of the function key with the text as its
+// argument i cuts it: a function of the strings package whose name starts
+// with Cut, Fields, Index, LastIndex, Lines, Split or Trim, other than a
+// trim or a cut with a constant that has no character of ftMarkAlphabet,
+// or a function of unicode/utf8 whose name ends in InString.
+func ftCutCall(info *types.Info, call *ast.CallExpr, key string, i int) bool {
+	if name, ok := strings.CutPrefix(key, "strings."); ok {
+		switch name {
+		case "Trim", "TrimLeft", "TrimRight", "TrimPrefix", "TrimSuffix", "CutPrefix", "CutSuffix":
+			if i == 0 && len(call.Args) == 2 {
+				if tv := info.Types[call.Args[1]]; tv.Value != nil && tv.Value.Kind() == constant.String {
+					c := constant.StringVal(tv.Value)
+					if utf8.ValidString(c) && !strings.ContainsAny(c, ftMarkAlphabet) {
+						return false
+					}
+				}
+			}
+		}
+		return slices.ContainsFunc([]string{"Cut", "Fields", "Index", "LastIndex", "Lines", "Split", "Trim"}, func(p string) bool { return strings.HasPrefix(name, p) })
+	}
+	if name, ok := strings.CutPrefix(key, "unicode/utf8."); ok {
+		return strings.HasSuffix(name, "InString")
+	}
+	return false
+}
+
+// ftPlainVerbAt reports whether the verb of format that takes argument n has
+// no flag, no width and no precision, and the format has no explicit argument
+// index before it: such a verb writes the argument whole.
+func ftPlainVerbAt(format string, n int) bool {
+	arg := 0
+	for i := 0; i < len(format); i++ {
+		if format[i] != '%' {
+			continue
+		}
+		i++
+		if i < len(format) && format[i] == '%' {
+			continue
+		}
+		plain := true
+		for i < len(format) && strings.ContainsRune("+-# 0123456789.*[]", rune(format[i])) {
+			plain = false
+			if format[i] == '*' {
+				arg++
+			}
+			if format[i] == '[' {
+				return false
+			}
+			i++
+		}
+		if arg == n {
+			return plain
+		}
+		arg++
+	}
+	return true
+}
+
+// TestRendererRowsKnowTheMarkAlphabet asserts that ftMarkAlphabet is every
+// character clierr.RemovalMark can have: the characters of markerRunes in
+// internal/clierr and the first character of the mark. A trim or a cut whose
+// constant has no character of ftMarkAlphabet is not a cut in a renderer
+// row because it keeps the mark whole.
+func TestRendererRowsKnowTheMarkAlphabet(t *testing.T) {
+	t.Parallel()
+	pkgs, err := otherGOOSLoads["linux"]()
+	require.NoError(t, err)
+	var runes []rune
+	for _, pkg := range pkgs {
+		if pkg.PkgPath != ftClierrPath {
+			continue
+		}
+		obj, ok := pkg.Types.Scope().Lookup("markerRunes").(*types.Var)
+		require.True(t, ok, "internal/clierr declares markerRunes")
+		for _, f := range pkg.Syntax {
+			ast.Inspect(f, func(n ast.Node) bool {
+				vs, ok := n.(*ast.ValueSpec)
+				if !ok || len(vs.Names) != 1 || pkg.TypesInfo.Defs[vs.Names[0]] != obj || len(vs.Values) != 1 {
+					return true
+				}
+				lit, ok := vs.Values[0].(*ast.CompositeLit)
+				require.True(t, ok, "markerRunes is a composite literal")
+				for _, el := range lit.Elts {
+					tv := pkg.TypesInfo.Types[el]
+					require.NotNil(t, tv.Value, "each element of markerRunes is a constant")
+					r, ok := constant.Int64Val(tv.Value)
+					require.True(t, ok, "each element of markerRunes is a rune constant")
+					runes = append(runes, rune(r))
+				}
+				return false
+			})
+		}
+	}
+	require.NotEmpty(t, runes, "markerRunes is found in internal/clierr")
+	first, _ := utf8.DecodeRuneInString(clierr.RemovalMark)
+	runes = append(runes, first)
+	for _, r := range clierr.RemovalMark {
+		require.Contains(t, runes, r, "every character of clierr.RemovalMark is its first character or a character of markerRunes")
+	}
+	slices.Sort(runes)
+	runes = slices.Compact(runes)
+	alphabet := []rune(ftMarkAlphabet)
+	slices.Sort(alphabet)
+	require.Equal(t, runes, alphabet, "ftMarkAlphabet has exactly the characters the mark can have")
+}
+
+// ftMarkDecls maps each declaration of internal/clierr/filtered.go that takes
+// a clierr.Filtered or writes one, and the other declarations a marked value
+// goes through, to the unit test in internal/clierr/filtered_test.go whose
+// body names it and asserts it on a value that has clierr.RemovalMark: the
+// mark of every input is kept, a trim or a measure leaves it out, and a text
+// that is only the mark is not empty. The test fails until a declaration that
+// builds a Filtered from other Filtered values is listed here (ftMarkProblems).
+var ftMarkDecls = map[string]string{
+	"NewFiltered":           "TestFilteredKeepsItsText",
+	"Plain":                 "TestFilteredKeepsItsText",
+	"Filtered.Marked":       "TestFilteredKeepsItsText",
+	"Filtered.WithoutMark":  "TestFilteredKeepsItsText",
+	"Filtered.Append":       "TestFilteredKeepsTheMark",
+	"Filtered.AppendString": "TestFilteredKeepsTheMark",
+	"JoinFiltered":          "TestFilteredKeepsTheMark",
+	"Sprintf":               "TestFilteredKeepsTheMark",
+	"whole.Format":          "TestFilteredKeepsTheMark",
+	"Filtered.Format":       "TestFilteredKeepsTheMark",
+	"Filtered.MarshalJSON":  "TestFilteredKeepsTheMark",
+	"Filtered.MarshalText":  "TestFilteredKeepsTheMark",
+	"Builder.WriteString":   "TestFilteredKeepsTheMark",
+	"Builder.Write":         "TestFilteredKeepsTheMark",
+	"Builder.Printf":        "TestFilteredKeepsTheMark",
+	"Builder.Filtered":      "TestFilteredKeepsTheMark",
+	"TextOf":                "TestFilteredKeepsTheMark",
+	"Filtered.TrimSuffix":   "TestFilteredTrimsAndMeasuresWithoutTheMark",
+	"Filtered.TrimRight":    "TestFilteredTrimsAndMeasuresWithoutTheMark",
+	"Filtered.Width":        "TestFilteredTrimsAndMeasuresWithoutTheMark",
+	"Filtered.IsEmpty":      "TestFilteredTrimsAndMeasuresWithoutTheMark",
+}
+
+// ftMarkProblems checks ftMarkDecls: every function or method of filtered.go
+// whose receiver or a parameter has a clierr.Filtered or a clierr.Builder, or
+// is a variadic ...any, is listed; every listed name is declared there; and
+// each listed test is declared in filtered_test.go and names the declaration
+// in its body.
+func ftMarkProblems(t *testing.T, pkgs []*packages.Package) []string {
+	t.Helper()
+	var problems []string
+	declared := map[string]string{}
+	for _, pkg := range pkgs {
+		if pkg.PkgPath != ftClierrPath {
+			continue
+		}
+		for _, f := range pkg.Syntax {
+			if !ftInFilteredGo(pkg.Fset.Position(f.Pos()).Filename) {
+				continue
+			}
+			for _, d := range f.Decls {
+				fd, ok := d.(*ast.FuncDecl)
+				if !ok {
+					continue
+				}
+				name := strings.TrimPrefix(ftFuncKey(pkg.PkgPath, fd), "internal/clierr.")
+				declared[name] = ftCallForm(fd)
+				fn, ok := pkg.TypesInfo.Defs[fd.Name].(*types.Func)
+				if !ok {
+					continue
+				}
+				sig := fn.Signature()
+				takes := sig.Recv() != nil && ftHolds(sig.Recv().Type(), map[ftSeenKey]bool{}, false)
+				for p := range sig.Params().Variables() {
+					takes = takes || ftHolds(p.Type(), map[ftSeenKey]bool{}, false)
+					if sl, ok := p.Type().(*types.Slice); ok && sig.Variadic() && ftIsInterface(sl.Elem()) {
+						takes = true
+					}
+				}
+				if _, ok := ftMarkDecls[name]; takes && !ok {
+					problems = append(problems, fmt.Sprintf("internal/clierr/filtered.go declares %s, which takes a Filtered and is not listed in ftMarkDecls: add a unit test that asserts the declaration keeps clierr.RemovalMark, and add its name to ftMarkDecls", name))
+				}
+			}
+		}
+	}
+	src, err := os.ReadFile("internal/clierr/filtered_test.go")
+	require.NoError(t, err)
+	for _, name := range slices.Sorted(maps.Keys(ftMarkDecls)) {
+		form, ok := declared[name]
+		if !ok {
+			problems = append(problems, fmt.Sprintf("ftMarkDecls lists %s, which internal/clierr/filtered.go does not declare; remove it", name))
+		}
+		test := ftMarkDecls[name]
+		i := strings.Index(string(src), "func "+test+"(")
+		if i < 0 {
+			problems = append(problems, fmt.Sprintf("ftMarkDecls names %s for %s, which internal/clierr/filtered_test.go does not declare", test, name))
+			continue
+		}
+		body := string(src[i:])
+		if j := strings.Index(body[1:], "\nfunc "); j >= 0 {
+			body = body[:j+1]
+		}
+		short := name[strings.LastIndex(name, ".")+1:]
+		if !ftNamesDecl(body[len("func "+test):], name, short, form) {
+			problems = append(problems, fmt.Sprintf("ftMarkDecls names %s for %s, whose body does not name %s: name the unit test that asserts it on a marked value", test, name, short))
+		}
+	}
+	return problems
 }

@@ -27,15 +27,35 @@ const (
 	markerLastRune  = 0x2064
 )
 
-// markerVariables are the two package variables of clierr that hold the
-// marker, declared once and never assigned.
-var markerVariables = []string{"RemedyMarker", "Rancher"}
+// markerVariables are the package variables of clierr that hold marker
+// characters, declared once and never assigned: the remedy marker, the remedy
+// command that starts with it, and the removal mark.
+var markerVariables = []string{"RemedyMarker", "Rancher", "RemovalMark"}
+
+// removalMarkName is the variable of markerVariables that code outside
+// clierr may name only where markerRules.markInitializer says.
+const removalMarkName = "RemovalMark"
+
+// markerRules lists what the check allows where it refuses the same thing
+// everywhere else.
+type markerRules struct {
+	// literalFile reports whether a file may spell the marker characters.
+	literalFile func(file string) bool
+	// declaringFile reports whether a file may declare a variable of
+	// markerVariables.
+	declaringFile func(variable, file string) bool
+	// markInitializer reports whether the package-level variable named
+	// variable in the package at pkgPath may be initialized from the removal
+	// mark. That initializer is the only place code outside the package that
+	// declares the mark may name it.
+	markInitializer func(pkgPath, variable string) bool
+}
 
 // isMarkerRune reports whether r is one of the five marker characters.
 func isMarkerRune(r rune) bool { return r >= markerFirstRune && r <= markerLastRune }
 
-// isMarkerVariable reports whether obj is a package-level variable named
-// RemedyMarker or Rancher of the package at markerPkg.
+// isMarkerVariable reports whether obj is a package-level variable of
+// markerVariables of the package at markerPkg.
 func isMarkerVariable(obj types.Object, markerPkg string) bool {
 	v, ok := obj.(*types.Var)
 	if !ok || v.Pkg() == nil || v.Pkg().Path() != markerPkg || v.Parent() != v.Pkg().Scope() {
@@ -45,7 +65,7 @@ func isMarkerVariable(obj types.Object, markerPkg string) bool {
 }
 
 // markerLiteralFindings reports, for the non-test files of pkg other than
-// those allowedFile accepts:
+// those rules.literalFile accepts:
 //   - an expression whose constant value is a string that holds one of the
 //     five marker characters: a literal, a concatenation of literals, a
 //     byte escape or a named constant;
@@ -56,10 +76,14 @@ func isMarkerVariable(obj types.Object, markerPkg string) bool {
 //   - a byte composite literal that holds the UTF-8 bytes of one of them.
 //
 // In every file, allowed or not, it reports an assignment, an increment, a
-// range assignment or the address of RemedyMarker or Rancher of markerPkg,
-// and a declaration of either outside an allowed file. For markerPkg itself
-// it reports a variable not declared exactly once in the allowed files.
-func markerLiteralFindings(pkg *packages.Package, markerPkg string, allowedFile func(string) bool) []string {
+// range assignment or the address of a variable of markerVariables of
+// markerPkg, and a declaration of one in a file rules.declaringFile refuses.
+// For markerPkg itself it reports a variable not declared exactly once in the
+// files that may declare it. For any other package it reports a reference to
+// the removal mark except in the initializer of a package-level variable that
+// rules.markInitializer accepts, and returns the number of references it
+// accepted.
+func markerLiteralFindings(pkg *packages.Package, markerPkg string, rules markerRules) ([]string, int) {
 	info := pkg.TypesInfo
 	seen := map[string]bool{}
 	var out []string
@@ -72,8 +96,10 @@ func markerLiteralFindings(pkg *packages.Package, markerPkg string, allowedFile 
 		}
 	}
 	declared := map[string]int{}
+	accepted := 0
 	for _, f := range pkg.Syntax {
-		allowed := allowedFile(pkg.Fset.Position(f.Pos()).Filename)
+		filename := pkg.Fset.Position(f.Pos()).Filename
+		allowed := rules.literalFile(filename)
 		var stack []ast.Node
 		ast.Inspect(f, func(n ast.Node) bool {
 			if n == nil {
@@ -83,7 +109,7 @@ func markerLiteralFindings(pkg *packages.Package, markerPkg string, allowedFile 
 			stack = append(stack, n)
 			if id, ok := n.(*ast.Ident); ok {
 				if obj := info.Defs[id]; isMarkerVariable(obj, markerPkg) {
-					if allowed {
+					if rules.declaringFile(id.Name, filename) {
 						declared[id.Name]++
 					} else {
 						report(id.Pos(), "declares %s outside the one file that may", id.Name)
@@ -91,6 +117,13 @@ func markerLiteralFindings(pkg *packages.Package, markerPkg string, allowedFile 
 				}
 				if isMarkerVariable(info.Uses[id], markerPkg) && assignedOrAddressed(stack) {
 					report(id.Pos(), "assigns or takes the address of %s", id.Name)
+				}
+				if id.Name == removalMarkName && pkg.PkgPath != markerPkg && isMarkerVariable(info.Uses[id], markerPkg) {
+					if initializesMarkCopy(stack, pkg.PkgPath, rules.markInitializer) {
+						accepted++
+					} else {
+						report(id.Pos(), "names %s outside the package that declares it and outside the initializer of the one variable that may copy it", id.Name)
+					}
 				}
 			}
 			expr, ok := n.(ast.Expr)
@@ -124,7 +157,29 @@ func markerLiteralFindings(pkg *packages.Package, markerPkg string, allowedFile 
 			}
 		}
 	}
-	return out
+	return out, accepted
+}
+
+// initializesMarkCopy reports whether the identifier at the top of stack is
+// in the initializer of a package-level variable with one name that the rules
+// allow for the package at pkgPath. A variable declared inside a function, and
+// a declaration with several names, are refused.
+func initializesMarkCopy(stack []ast.Node, pkgPath string, accepts func(pkgPath, variable string) bool) bool {
+	for i := len(stack) - 1; i >= 2; i-- {
+		spec, ok := stack[i].(*ast.ValueSpec)
+		if !ok {
+			continue
+		}
+		decl, ok := stack[i-1].(*ast.GenDecl)
+		if !ok || decl.Tok != token.VAR {
+			return false
+		}
+		if _, ok := stack[i-2].(*ast.File); !ok {
+			return false
+		}
+		return len(spec.Names) == 1 && accepts(pkgPath, spec.Names[0].Name)
+	}
+	return false
 }
 
 // assignedOrAddressed reports whether the identifier at the top of stack,
@@ -201,30 +256,67 @@ func isClierrRemedyFile(name string) bool {
 	return strings.HasSuffix(filepath.ToSlash(name), "/internal/clierr/remedy.go")
 }
 
+// isClierrRemovalMarkFile reports whether name is
+// internal/clierr/removalmark.go, the one file that may declare RemovalMark.
+func isClierrRemovalMarkFile(name string) bool {
+	return strings.HasSuffix(filepath.ToSlash(name), "/internal/clierr/removalmark.go")
+}
+
+// productionMarkerRules are the rules for the module: only remedy.go spells
+// the marker characters, RemedyMarker and Rancher are declared in remedy.go
+// and RemovalMark in removalmark.go, and the one variable that may copy
+// RemovalMark is removalMark of internal/runtime, which the writer of a
+// result's output uses to remove the mark.
+var productionMarkerRules = markerRules{
+	literalFile: isClierrRemedyFile,
+	declaringFile: func(variable, file string) bool {
+		if variable == removalMarkName {
+			return isClierrRemovalMarkFile(file)
+		}
+		return isClierrRemedyFile(file)
+	},
+	markInitializer: func(pkgPath, variable string) bool {
+		return pkgPath == runtimePath && variable == "removalMark"
+	},
+}
+
 // TestNoProductionFileSpellsTheMarkerCharacters asserts that no non-test
 // file of the module outside internal/clierr/remedy.go holds a constant
 // string with one of U+2060 to U+2064, an integer constant from 0x2060 to
-// 0x2064 or a byte literal of their UTF-8 form, and that RemedyMarker and
-// Rancher are declared once, in that file, and never assigned or addressed:
-// a hint with a fixed marker would be expanded for any text that held the
-// same characters.
+// 0x2064 or a byte literal of their UTF-8 form, that RemedyMarker, Rancher
+// and RemovalMark are each declared once, in the file that may, and never
+// assigned or addressed, and that no file outside internal/clierr names
+// RemovalMark except the initializer of removalMark in internal/runtime: a
+// hint with a fixed marker would be expanded for any text that had the same
+// characters, and a builder that writes the removal mark adds the filter note
+// where no filter removed anything. The check reads the non-test files that
+// the build for this machine's operating system compiles, with no build tags,
+// as the other marker rules do.
 func TestNoProductionFileSpellsTheMarkerCharacters(t *testing.T) {
 	t.Parallel()
 	pkgs, err := fieldManagerPackages()
 	require.NoError(t, err)
 	var findings []string
-	scanned, allowedFiles := 0, 0
+	scanned, allowedFiles, markFiles, markCopies := 0, 0, 0, 0
 	for _, pkg := range pkgs {
 		for _, f := range pkg.Syntax {
 			scanned++
-			if isClierrRemedyFile(pkg.Fset.Position(f.Pos()).Filename) {
+			name := pkg.Fset.Position(f.Pos()).Filename
+			if isClierrRemedyFile(name) {
 				allowedFiles++
 			}
+			if isClierrRemovalMarkFile(name) {
+				markFiles++
+			}
 		}
-		findings = append(findings, markerLiteralFindings(pkg, clierrPath, isClierrRemedyFile)...)
+		found, copies := markerLiteralFindings(pkg, clierrPath, productionMarkerRules)
+		findings = append(findings, found...)
+		markCopies += copies
 	}
 	require.Positive(t, scanned)
 	require.Equal(t, 1, allowedFiles, "internal/clierr/remedy.go was not scanned")
+	require.Equal(t, 1, markFiles, "internal/clierr/removalmark.go was not scanned")
+	require.Equal(t, 1, markCopies, "the one reference to RemovalMark outside internal/clierr is the initializer of removalMark in internal/runtime: a different count means that reference moved or a rule accepts too much")
 	slices.Sort(findings)
 	for _, f := range findings {
 		t.Error(f)
@@ -248,6 +340,14 @@ var markerLiteralsFixtures = sync.OnceValues(func() (map[string]*packages.Packag
 // the marker's characters and declare its variables.
 func markerLiteralsAllowed(name string) bool { return filepath.Base(name) == "allowed.go" }
 
+// markerLiteralsRules are the rules for a fixture package: the one allowed
+// file, and removalMarkCopy as the one variable that may copy RemovalMark.
+var markerLiteralsRules = markerRules{
+	literalFile:     markerLiteralsAllowed,
+	declaringFile:   func(_, file string) bool { return markerLiteralsAllowed(file) },
+	markInitializer: func(_, variable string) bool { return variable == "removalMarkCopy" },
+}
+
 // markerLiteralsCases lists every fixture package and the text each finding
 // of the check holds, in any order; none for a package it accepts.
 var markerLiteralsCases = []struct {
@@ -270,6 +370,14 @@ var markerLiteralsCases = []struct {
 	{"addressed", false, []string{"assigns or takes the address of RemedyMarker"}},
 	{"declaredoutside", true, []string{"declares Rancher outside the one file that may", "Rancher is declared 0 times"}},
 	{"assignedinside", true, []string{"assigns or takes the address of Rancher"}},
+	{"markbuilder", false, []string{"names RemovalMark outside the package that declares it"}},
+	{"markassigned", false, []string{"assigns or takes the address of RemovalMark", "names RemovalMark outside the package that declares it"}},
+	{"markaddressed", false, []string{"assigns or takes the address of RemovalMark", "names RemovalMark outside the package that declares it"}},
+	{"markalias", false, []string{"names RemovalMark outside the package that declares it"}},
+	{"markdot", false, []string{"names RemovalMark outside the package that declares it"}},
+	{"markcopy", false, nil},
+	{"markcopyrefused", false, []string{"names RemovalMark outside the package that declares it", "names RemovalMark outside the package that declares it", "names RemovalMark outside the package that declares it"}},
+	{"markdeclaredoutside", true, []string{"declares RemovalMark outside the one file that may", "RemovalMark is declared 0 times"}},
 }
 
 // TestMarkerLiteralScanFixtures asserts the check on type-checked fixture
@@ -289,13 +397,30 @@ func TestMarkerLiteralScanFixtures(t *testing.T) {
 			if tc.own {
 				markerPkg = pkg.PkgPath
 			}
-			findings := markerLiteralFindings(pkg, markerPkg, markerLiteralsAllowed)
+			findings, _ := markerLiteralFindings(pkg, markerPkg, markerLiteralsRules)
 			require.Len(t, findings, len(tc.want), "%q", findings)
 			for _, want := range tc.want {
 				assert.True(t, slices.ContainsFunc(findings, func(f string) bool { return strings.Contains(f, want) }), "%q is not in %q", want, findings)
 			}
 		})
 	}
+}
+
+// TestMarkerDeclaringFilesAndCopies asserts the production rules: RemovalMark
+// is declared in removalmark.go and the other two variables in remedy.go,
+// each in no other file, and only removalMark of internal/runtime may copy
+// RemovalMark.
+func TestMarkerDeclaringFilesAndCopies(t *testing.T) {
+	t.Parallel()
+	rules := productionMarkerRules
+	assert.True(t, rules.declaringFile("RemovalMark", "/r/internal/clierr/removalmark.go"))
+	assert.False(t, rules.declaringFile("RemovalMark", "/r/internal/clierr/remedy.go"))
+	assert.True(t, rules.declaringFile("Rancher", "/r/internal/clierr/remedy.go"))
+	assert.True(t, rules.declaringFile("RemedyMarker", "/r/internal/clierr/remedy.go"))
+	assert.False(t, rules.declaringFile("Rancher", "/r/internal/clierr/removalmark.go"))
+	assert.True(t, rules.markInitializer(runtimePath, "removalMark"))
+	assert.False(t, rules.markInitializer(runtimePath, "other"))
+	assert.False(t, rules.markInitializer(modulePrefix+"internal/engine/access", "removalMark"))
 }
 
 // TestMarkerLiteralFixturesAreAllListed asserts every fixture package on

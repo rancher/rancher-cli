@@ -81,8 +81,11 @@ func printableKeepingNewlines(s string) string {
 
 // FilterValue is Printable(x) as a clierr.Filtered, for a server value that
 // goes into a result text or a notice. The Filtered keeps the value whole
-// until it is printed (see clierr.Filtered).
+// until it is printed (see clierr.Filtered). The text is followed by
+// clierr.RemovalMark when Printable removed a character or wrote an invalid
+// UTF-8 byte as U+FFFD. A remedy command loses its marker, as it does in
+// Printable, and that alone adds no mark.
 func FilterValue(x string) clierr.Filtered {
 	p := Printable(x)
-	return clierr.NewFiltered(p, p != x)
+	return clierr.NewFiltered(p, p != strings.ReplaceAll(x, clierr.Rancher, "rancher"))
 }

@@ -4,9 +4,12 @@ package accepted
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/ui"
@@ -79,12 +82,12 @@ func copies(src runtime.Result) runtime.Result {
 }
 
 // methods use the methods of Filtered that return a bool, an int or another
-// Filtered, and compare two of them.
+// Filtered.
 func methods(v string) bool {
 	t := filter(v).Append(clierr.Plain(" x")).AppendString("y")
 	parts := []clierr.Filtered{t, clierr.Plain("z")}
 	j := clierr.JoinFiltered(parts, ", ")
-	return t == clierr.Plain("you") || j.IsEmpty() || t.Width() > 3
+	return j.IsEmpty() || t.Width() > 3
 }
 
 // prompter is the one type the config lets implement runtime.Prompter.
@@ -145,3 +148,23 @@ var (
 	_ = readVal
 	_ = withRewrite
 )
+
+// renderPlain is a renderer row that hands its reads whole to the next step:
+// a local the text is assigned to, output.PrintableLines of it, a plain %s,
+// and trims whose constant has no character of clierr.RemovalMark.
+func renderPlain(r runtime.Result) string {
+	text := r.Text
+	if r.WideText != "" {
+		text = r.WideText
+	}
+	clean := output.PrintableLines(text)
+	return strings.TrimSuffix(clean, "\n") + strings.TrimRight(r.Text, " ") + fmt.Sprintf("%s", text)
+}
+
+// renderTwo is a renderer row that returns the text of renderPlain, another
+// renderer row, joined with its own read: a renderer row may return its text
+// to a renderer row.
+func renderTwo(r runtime.Result) string {
+	t := r.Text
+	return renderPlain(r) + t
+}

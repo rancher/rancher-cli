@@ -104,12 +104,21 @@ func (c textClasses) assertShown(t *testing.T, all string) {
 	}
 }
 
-// assertLineRule asserts that out holds nothing the writer filter removes and
-// has no line that starts with the forged line after its leading spaces.
+// assertLineRule asserts that out, without clierr.RemovalMark, has nothing
+// the writer filter removes and has no line that starts with the forged line
+// after its leading spaces.
 func assertLineRule(t *testing.T, out string) {
 	t.Helper()
-	assert.Equal(t, output.PrintableLines(out), out, "the text holds no character the writer filter removes")
+	shown := clierr.WithoutRemovalMark(out)
+	assert.Equal(t, output.PrintableLines(shown), shown, "the text has no character the writer filter removes")
 	assertNoForgedLine(t, out)
+}
+
+// assertRemovalMarks asserts that out has clierr.RemovalMark exactly n
+// times: once after each value the builder filtered.
+func assertRemovalMarks(t *testing.T, out string, n int) {
+	t.Helper()
+	assert.Equal(t, n, strings.Count(out, clierr.RemovalMark), "one removal mark follows each filtered value")
 }
 
 // assertNoForgedLine asserts that no line of out starts with the forged line
@@ -204,7 +213,8 @@ func checkCmd(dir string, store config.CredStore) *authCheckCmd {
 
 // TestAuthStatusKeepsEveryTokenValueOnItsLine asserts that a value the token
 // probe returns, in every text field of the metadata, cannot start a line of
-// the auth status text, and that the data keeps the value as it is.
+// the auth status text, that the text has one clierr.RemovalMark after each of
+// the three printed values, and that the data keeps the value as it is.
 func TestAuthStatusKeepsEveryTokenValueOnItsLine(t *testing.T) {
 	classes := textClasses{
 		printed: []string{"Name", "Provider", "ExpiresAt"},
@@ -237,6 +247,7 @@ func TestAuthStatusKeepsEveryTokenValueOnItsLine(t *testing.T) {
 			res, err := cmd.Execute(t.Context(), cmdtest.Input{}, ui.Discard())
 			require.NoError(t, err)
 			assertLineRule(t, res.Text)
+			assertRemovalMarks(t, res.Text, len(classes.printed))
 			all.WriteString(res.Text)
 
 			token, ok := res.Data.(map[string]any)["token"].(map[string]any)
@@ -251,7 +262,10 @@ func TestAuthStatusKeepsEveryTokenValueOnItsLine(t *testing.T) {
 
 // TestAuthStatusKeepsStoredCredentialValuesOnTheirLines asserts that a value
 // stored with the credential cannot start a line of the credential line, in
-// every text field of the server entry, and that the data keeps it as it is.
+// every text field of the server entry, that the line has one
+// clierr.RemovalMark after each value it prints as text (the user id is
+// written as a quoted string with escapes instead), and that the data keeps it
+// as it is.
 func TestAuthStatusKeepsStoredCredentialValuesOnTheirLines(t *testing.T) {
 	classes := textClasses{
 		printed: []string{"TokenUserID", "TokenAuthConfig", "TokenRef.Name", "CredentialExpiresAt"},
@@ -299,6 +313,8 @@ func TestAuthStatusKeepsStoredCredentialValuesOnTheirLines(t *testing.T) {
 	text := renderAuthCheckText(true, "default", "v1", nil, nil, nil, nil, storeReport{policy: "auto"}, line).Marked()
 	assertLineRule(t, line.Marked())
 	assertLineRule(t, text)
+	assertRemovalMarks(t, line.Marked(), 3)
+	assertRemovalMarks(t, text, 3)
 	classes.assertShown(t, text)
 
 	assert.Equal(t, planted.TokenUserID, data["userId"], "the data keeps the owner as it is")
@@ -341,22 +357,25 @@ func TestTrustCardKeepsEveryCertificateValueOnItsLine(t *testing.T) {
 
 // TestAuthStatusKeepsServerValuesOnTheirLines asserts that the server
 // version, the Rancher version and the user id cannot start a line of the
-// auth status text, and that the data keeps each as it is.
+// auth status text, that a version the filter changed is followed by one
+// clierr.RemovalMark in the text (the user id is not), and that the data keeps
+// each as it is.
 func TestAuthStatusKeepsServerValuesOnTheirLines(t *testing.T) {
 	for _, row := range []struct {
 		name  string
 		set   func(c *authCheckCmd, value string)
 		field string
+		marks int
 	}{
 		{"server version", func(c *authCheckCmd, v string) {
 			c.preflight = func(context.Context, config.Effective) (string, error) { return v, nil }
-		}, "serverVersion"},
+		}, "serverVersion", 1},
 		{"rancher version", func(c *authCheckCmd, v string) {
 			c.rancherVersion = func(context.Context, config.Effective) (string, error) { return v, nil }
-		}, "rancherVersion"},
+		}, "rancherVersion", 1},
 		{"user id", func(c *authCheckCmd, v string) {
 			c.identity = func(context.Context, config.Effective) (string, error) { return v, nil }
-		}, "identity"},
+		}, "identity", 0},
 	} {
 		t.Run(row.name, func(t *testing.T) {
 			t.Setenv("RANCHER_CLI_TOKEN", "token-x:secret")
@@ -369,6 +388,7 @@ func TestAuthStatusKeepsServerValuesOnTheirLines(t *testing.T) {
 			require.NoError(t, err)
 			assert.Contains(t, res.Text, "<"+row.field+">")
 			assertLineRule(t, res.Text)
+			assertRemovalMarks(t, res.Text, row.marks)
 
 			data, ok := res.Data.(map[string]any)
 			require.True(t, ok)

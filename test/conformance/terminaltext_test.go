@@ -15,6 +15,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/remedytest"
 	"github.com/rancher/rancher-cli/internal/runtime"
@@ -149,6 +150,13 @@ func (v terminalValue) Rows() [][]string { return [][]string{{v.Value}} }
 type terminalDetails struct{ lines []clierr.DetailLine }
 
 func (d terminalDetails) TextDetails() []clierr.DetailLine { return d.lines }
+
+// terminalNoticeNote is the line a notice gets when its filter changed it.
+const terminalNoticeNote = "characters a terminal cannot show were left out or replaced\n"
+
+// terminalLocalNote is the line the text of a local command gets when a
+// filter changed it.
+const terminalLocalNote = "# warning: this output had characters a terminal cannot show; -o json shows the exact values\n"
 
 // terminalDescriptor is the descriptor of a read command that returns the
 // given shape.
@@ -594,8 +602,18 @@ var terminalRows = []terminalRow{
 			}
 			_, errOut := e.run(cmd, func(io *runtime.IO) { io.Format = format })
 			assertClean(t, "standard error under "+strconv.Quote(format), errOut, terminalSequences)
-			assert.Equal(t, e.remedyExpected("notice")+"\n", errOut, "format %q", format)
+			assert.Equal(t, e.remedyExpected("notice")+"\n"+terminalNoticeNote, errOut, "the notice's filter removed characters, and the note line follows it, format %q", format)
 		}
+	}},
+	{"filter note", func(e terminalEnv) {
+		t := e.t
+		text := clierr.Sprintf("value: %s\nnote: %s\n", output.FilterValue(terminalHostile("filter note")), runtime.FilterRemedies(remedyText("filter note remedy"))).Marked()
+		out, errOut := e.run(terminalRead{d: terminalDescriptor(runtime.ShapeText), res: runtime.Result{Kind: "Report", Text: text}}, nil)
+		assertBothClean(t, out, errOut, terminalSequences)
+		assertNoForgedLine(t, "standard output", out)
+		assert.NotContains(t, out, clierr.RemovalMark, "the mark prints nothing")
+		assert.Contains(t, out, "value: "+terminalFilteredLine("filter note")+"\n", "the value is filtered as before")
+		assert.Equal(t, terminalLocalNote, errOut, "one note, worded for a command with no server access")
 	}},
 	{"prompt label", func(e terminalEnv) {
 		t := e.t

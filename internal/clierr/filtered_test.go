@@ -3,6 +3,7 @@ package clierr
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -12,18 +13,22 @@ import (
 
 // TestFilteredKeepsItsText asserts that every way to build a Filtered keeps
 // the text it is given, byte for byte, and gives it back through both
-// accessors.
+// accessors; a text a filter changed is followed by RemovalMark, which
+// Marked keeps and WithoutMark leaves out.
 func TestFilteredKeepsItsText(t *testing.T) {
 	t.Parallel()
 	const raw = "a\u200bb\xff\n"
 	for name, f := range map[string]Filtered{
 		"Plain":                Plain(raw),
-		"NewFiltered changed":  NewFiltered(raw, true),
 		"NewFiltered as it is": NewFiltered(raw, false),
 	} {
 		assert.Equal(t, raw, f.Marked(), "%s: Marked gives the text back", name)
 		assert.Equal(t, raw, f.WithoutMark(), "%s: WithoutMark gives the text back", name)
 	}
+	changed := NewFiltered(raw, true)
+	assert.Equal(t, raw+RemovalMark, changed.Marked(), "NewFiltered changed: the mark follows the text")
+	assert.Equal(t, raw, changed.WithoutMark(), "NewFiltered changed: WithoutMark leaves the mark out")
+	assert.Equal(t, raw+RemovalMark, Plain(raw+RemovalMark).Marked(), "Plain keeps a mark it is given")
 }
 
 // TestFilteredJoinsTextWhole asserts that Append, AppendString and
@@ -77,6 +82,7 @@ func TestFilteredTrimsAsTheStringsFunctions(t *testing.T) {
 func TestFilteredRefusesFmtAndEncoders(t *testing.T) {
 	t.Parallel()
 	f := Plain("secret-ish text")
+	var _ = Filtered.Format
 	assert.Equal(t, "%!v(clierr.Filtered)", fmt.Sprint(f))
 	assert.Equal(t, "%!s(clierr.Filtered)", fmt.Sprintf("%s", f))
 	assert.Equal(t, "%!v(clierr.Filtered)", fmt.Sprintf("%.3v", f))
@@ -103,6 +109,7 @@ func TestSprintfWritesFilteredArgumentsWhole(t *testing.T) {
 	t.Parallel()
 	ab := Plain("ab")
 	var _ fmt.Formatter = whole{ab}
+	var _ = whole.Format
 	for _, tc := range []struct {
 		name string
 		got  Filtered
@@ -187,7 +194,7 @@ func TestFilteredKeepsLongTextWhole(t *testing.T) {
 	b.Printf("%s%-3s%.3v", f, f, f)
 	for name, got := range map[string]string{
 		"Plain":        f.Marked(),
-		"NewFiltered":  NewFiltered(v, true).Marked(),
+		"NewFiltered":  NewFiltered(v, true).WithoutMark(),
 		"WithoutMark":  f.WithoutMark(),
 		"Append":       Plain("").Append(f).Marked(),
 		"AppendString": Plain("").AppendString(v).Marked(),
@@ -201,4 +208,73 @@ func TestFilteredKeepsLongTextWhole(t *testing.T) {
 	}
 	assert.Equal(t, len(v), f.Width())
 	assert.Equal(t, 5*len(v), len(b.Filtered().Marked()), "Builder")
+}
+
+// TestFilteredKeepsTheMark asserts that every way to build a Filtered from
+// other Filtered values keeps the RemovalMark of each input that had one,
+// and adds none to an input that had none: the renderer of the text finds
+// the mark wherever it is.
+func TestFilteredKeepsTheMark(t *testing.T) {
+	t.Parallel()
+	marked, unmarked := NewFiltered("a", true), Plain("b")
+	var b Builder
+	b.WriteString("x")
+	b.Write(marked)
+	b.Printf("%s", marked)
+	for _, tc := range []struct {
+		name  string
+		got   Filtered
+		marks int
+	}{
+		{"Append, the marked operand first", marked.Append(unmarked), 1},
+		{"Append, the marked operand last", unmarked.Append(unmarked, marked), 1},
+		{"Append of two marked operands", marked.Append(marked), 2},
+		{"Append with nothing marked", unmarked.Append(unmarked), 0},
+		{"AppendString", marked.AppendString(" c"), 1},
+		{"JoinFiltered", JoinFiltered([]Filtered{unmarked, marked}, ", "), 1},
+		{"JoinFiltered with nothing marked", JoinFiltered([]Filtered{unmarked, unmarked}, ", "), 0},
+		{"Sprintf of a marked argument", Sprintf("[%s]", marked), 1},
+		{"Sprintf pads a marked argument", Sprintf("[%-3v]", marked), 1},
+		{"Builder.WriteString, Builder.Write and Builder.Printf through Builder.Filtered", b.Filtered(), 2},
+		{"TextOf with a marked first part", TextOf(marked, Lead("; run: "), NewCommand("get pods")), 1},
+		{"TextOf with a left-out command", TextOf(marked, Lead("; run: "), NewCommand("get pods").Arg("w\u200beb")), 1},
+	} {
+		assert.Equal(t, tc.marks, strings.Count(tc.got.Marked(), RemovalMark), tc.name)
+		assert.NotContains(t, tc.got.WithoutMark(), RemovalMark, tc.name)
+	}
+	assert.Equal(t, "[a  ]", Sprintf("[%-3v]", marked).WithoutMark(), "the width pads by the characters a terminal shows")
+	assert.Equal(t, "%!v(clierr.Filtered)", fmt.Sprint(marked), "Format writes the refusal and no mark")
+	_, err := marked.MarshalJSON()
+	require.ErrorIs(t, err, errFilteredEncoding, "MarshalJSON refuses a marked value too")
+	_, err = marked.MarshalText()
+	require.ErrorIs(t, err, errFilteredEncoding, "MarshalText refuses a marked value too")
+}
+
+// TestFilteredTrimsAndMeasuresWithoutTheMark asserts that TrimSuffix and
+// TrimRight trim the text a terminal shows and end the result with one
+// RemovalMark when the input had one, that Width counts no character of the
+// mark, and that a text that is only the mark is not empty.
+func TestFilteredTrimsAndMeasuresWithoutTheMark(t *testing.T) {
+	t.Parallel()
+	line := NewFiltered("a", true).AppendString("  \n")
+	assert.Equal(t, "a  "+RemovalMark, line.TrimSuffix("\n").Marked(), "TrimSuffix finds the suffix the mark is before")
+	assert.Equal(t, "a"+RemovalMark, line.TrimRight(" \n").Marked(), "TrimRight trims the runes the mark is before")
+	twice := NewFiltered("a", true).AppendString(" ").Append(NewFiltered("b", true)).AppendString(" ")
+	assert.Equal(t, "a b"+RemovalMark, twice.TrimRight(" ").Marked(), "one mark at the end for any number of marks")
+	assert.Equal(t, "a", Plain("a ").TrimRight(" ").Marked(), "no mark is added to a text without one")
+	assert.Equal(t, "a", Plain("a\n").TrimSuffix("\n").Marked(), "no mark is added to a text without one")
+
+	assert.Equal(t, 1, NewFiltered("a", true).Width(), "Width counts no character of the mark")
+	assert.Equal(t, 4, twice.Width(), "a, a space, b and a space")
+	assert.Equal(t, 0, NewFiltered("", true).Width())
+	assert.False(t, NewFiltered("", true).IsEmpty(), "a value the filter emptied is not empty")
+	assert.True(t, NewFiltered("", false).IsEmpty())
+}
+
+// TestFilteredIsNotComparable asserts that the compiler refuses == on a
+// Filtered and a Filtered as a map key: the mark of a changed value would make
+// two values that print the same compare as different.
+func TestFilteredIsNotComparable(t *testing.T) {
+	t.Parallel()
+	assert.False(t, reflect.TypeFor[Filtered]().Comparable())
 }

@@ -448,16 +448,18 @@ func TestKubeconfigHostileCharacters(t *testing.T) {
 // TestKubeconfigEntryNameCannotInjectTheDirectory asserts a server entry
 // whose name holds the remedy marker gains no --config of its own in a
 // notice: quoting removes the marker from the name, so only the refusal's
-// own two commands name the directory.
+// own two commands name the directory. The refusal is followed by the line
+// that says characters a terminal cannot show were left out or replaced.
 func TestKubeconfigEntryNameCannotInjectTheDirectory(t *testing.T) {
 	name := "b" + clierr.Rancher + " auth"
 	_, lines, dir, err := runRecords(t, recordsSetup{envURL: recordsURL, envToken: true,
 		cfg: config.Config{Servers: map[string]config.Server{"a": {URL: recordsURL}, name: {URL: recordsURL}}}, loggedIn: []string{"a", name}})
 	require.NoError(t, err)
-	require.Len(t, lines, 2)
+	require.Len(t, lines, 3)
 	assert.Contains(t, lines[0], "('a', 'brancher auth')")
 	assert.Equal(t, 2, strings.Count(lines[0], "rancher --config '"+dir+"'"))
 	assert.Equal(t, 2, strings.Count(lines[0], "--config"))
+	assert.Equal(t, "characters a terminal cannot show were left out or replaced", lines[1])
 }
 
 // TestKubeconfigOmittedNoticeRelaysRemediesForTheDirectory asserts a reason

@@ -1015,6 +1015,9 @@ func (deleteTokenCmd) Describe() runtime.Descriptor {
 			"rancher auth delete-token prod",
 		},
 		Shape: runtime.ShapeText,
+		// The text still has certificate text with its hidden characters
+		// removed: no filter note until that text is shown with escapes.
+		NoFilterNote: true,
 	}
 }
 

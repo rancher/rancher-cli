@@ -1708,6 +1708,29 @@ filtered value to an interface, a read of a result's text other than a whole
 copy, the declarations of internal/clierr/filtered.go (each listed with its unit
 test), and that `ui.Prompter.Notice` is the only method that writes a notice.
 
+**Result texts and notices say when a filter removed a character.**
+`output.FilterValue` and `runtime.FilterRemedies` still remove the characters a
+terminal cannot show and write an invalid UTF-8 byte as U+FFFD; when they change
+a value, `clierr.RemovalMark` follows it, a run of invisible characters chosen
+for each process, which no server value can have. Every method of
+`clierr.Filtered` that returns a `clierr.Filtered` keeps the mark; a trim or a
+width works on the text without it, and a `clierr.Filtered` cannot be compared
+with `==`. When the text of a result has the mark, or the renderer's own filter
+changes it, a text format prints one more stderr line after the result's
+warnings, worded by what the command may do: a command that reads says to run it
+again with `-o json`, a local command says that `-o json` shows the exact
+values, and a command that writes, or whose result is shown once, says the
+characters were left out or replaced. A result shown once gets the line only
+after its output is written. `ui.Prompter.Notice` writes a line after a notice
+the same way. Every other place that writes text removes the mark first:
+`clierr.IDText`, `LineText`, `ValueText` and `WholeValueText`, the writer of the
+json, yaml, template, table and name output of a result or a preview, and the
+error renderer. The four commands whose text keeps certificate lines with the
+characters removed (`auth logout`, `auth delete-token`, `config delete-server`,
+`config update-server`) set `Descriptor.NoFilterNote` and print no such line.
+The source scan of `clierr.Filtered` in test/conformance also refuses a function
+of the result pipeline that cuts a result's text before it is printed.
+
 **A printed command comes from the command builder, and a value no supported
 shell reads as written leaves the command out.** Hints, remedies, recovery
 steps and notices build every command with `clierr.NewCommand`, never by

@@ -76,10 +76,19 @@ func MutationText(kind, name, verb string, lines ...string) Result {
 // compounds the headline bold when content is the first line, so a line
 // never carries two emphases.
 func AccentLine(res Result, content string) Result {
-	text := res.Text
+	res.StyledText = accentLines(clierr.Plain(res.Text), content)
+	return res
+}
+
+// accentLines is the styled form AccentLine gives a text: the line content
+// (or its detail form) in yellow, the headline otherwise bold. It styles the
+// text without its mark: printableText prints a styled text only when the
+// plain text has nothing to remove.
+func accentLines(text clierr.Filtered, content string) func(style.Style) string {
+	plain := text.WithoutMark()
 	detail := "  " + content
-	res.StyledText = func(s style.Style) string {
-		return StyleLines(text, s, func(i int, body string) (string, bool) {
+	return func(s style.Style) string {
+		return StyleLines(plain, s, func(i int, body string) (string, bool) {
 			if body == content || body == detail {
 				return s.Yellow(body), true
 			}
@@ -89,7 +98,6 @@ func AccentLine(res Result, content string) Result {
 			return "", false
 		})
 	}
-	return res
 }
 
 // ShownOnceSuffix marks the line within a DeliveryOnceOnly command's Text
