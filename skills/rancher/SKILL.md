@@ -9,6 +9,15 @@ The `rancher` CLI is agent-first: every command emits a structured envelope,
 every mutation is gated, and the CLI describes itself at runtime. Prefer
 querying the CLI over guessing syntax.
 
+## Compose
+
+`rancher` is built to be called from a script. When a task touches many objects, reads
+an input file, asks a question across clusters or projects, or repeats one change,
+write a short script (bash or Python) that calls `rancher` and run it, instead of
+issuing the commands one at a time. The `-o json` envelope and the exit codes are stable
+(sections 3 and 5). The protocol below is the order of a first contact with a server,
+not a rule of one command per turn.
+
 ## Protocol (follow in order)
 
 ### 1. Verify auth before anything else
@@ -175,9 +184,23 @@ the deliberate exception to the rule below.
 The schema is the source of truth for the installed version. When unsure of a
 flag, a kind name, or whether a command is destructive, read the schema before
 constructing a call. Command and kind names are dashed (`cloud-credential`,
-`machine-config`); when a kind's card lists no create verb, creation is a
-curated command - machine configs are created via
-`create machine-config <kind>`. To find a command or kind by topic, use
+`machine-config`).
+
+| You want | Call |
+|---|---|
+| a command's flags and gates | `rancher schema <command> -o json`, e.g. `schema grant`, `schema create project`, `schema get pod` |
+| what a kind is and which verbs it has | `rancher schema --kind <kind> -o json` |
+| a command or kind by topic | `rancher schema --search <term>` |
+
+`schema <verb> <kind>` works only when that command exists. A kind whose `-o json` card
+has no `create` entry is created from a manifest with `rancher create resource -f <file>`
+(deployments and the other Kubernetes kinds), or by a dedicated command when one exists
+(`create machine-config <kind>`). A `create` entry with state `refused` means
+`create resource` refuses that kind; its `note` names the command to use instead, when
+there is one. A kind whose only available verb is `get` cannot be changed with `patch`
+or `delete`. `schema get grant` fails because `get grant` is not a command: for the
+command `grant`, call `schema grant`.
+To find a command or kind by topic, use
 `rancher schema --search <term>` (case-insensitive, spans names, aliases,
 usage, and descriptions); do not pull `schema --all` to find a command
 name. A name that is both a command group and a kind (e.g. `project`)
@@ -274,6 +297,37 @@ rancher create project web --cluster prod --dry-run -o json   # 1. preview the s
 rancher create project web --cluster prod --apply             # 2. execute
 rancher delete project web --cluster prod --apply --yes       # 3. destructive effects additionally need --yes
 ```
+
+In a script the loop is the same, per change:
+
+- Preview inside the loop and check the Effect in code before the apply: `data.action`
+  and `data.target` are the ones you meant, `data.destructive` is what you expect, and
+  `warnings` is empty or handled. On anything else, do not apply that change: print the
+  command and the Effect, and handle it as a failed change (see the failure bullet
+  below).
+- Print one line per change (action, target, result). Do not shorten a preview with
+  `head` or a byte limit: the pipe closes, `rancher` stops, and the loop can end before
+  the remaining changes are previewed.
+- Work one layer at a time. A dry-run needs the object a new one goes into (its
+  cluster, project or namespace) to exist: a namespace in a new project cannot be
+  previewed until the project exists (`NOT_FOUND`, exit 4).
+  Preview and apply the projects, then preview and apply what goes into them.
+- Take ids from results (`data.metadata.name` of a create), never from a guess.
+- Make a second run safe: read what exists first and skip it, or treat `CONFLICT`
+  (exit 5) on a create as "already there" after checking that the object is the one
+  you want.
+- When a change fails, stop work on that object and on what depends on it, and go on
+  with the objects that do not depend on it. A refused project does not stop the other
+  projects. Stop the whole run only when the failure would repeat for every object
+  (not logged in, wrong cluster) or when you cannot tell what it affects. Report what
+  was applied, what failed and why, and what was not attempted.
+- Say in your report what was previewed. "Previewed" means the dry-run ran and its
+  Effect was checked, for every change, not for a sample.
+- Say in your report every call that failed for a reason outside the task (a
+  connection error, a 5xx response, a script that stopped), also when a later call
+  succeeded: what a read of the server showed afterwards and how you finished. Take
+  the counts in the report from a read of the server, not from the script's own
+  counters. Give a cause only if you checked it; otherwise say what you saw.
 
 `create project --cluster <c> --display-name <name>` lets Rancher generate the id (`p-xxxxx`); read it from `data.metadata.name` of the `--apply` result before `get`, `patch` or `delete project`.
 
@@ -408,6 +462,12 @@ rancher delete project web --cluster prod --apply --yes       # 3. destructive e
   with a kubeconfig from `rancher create kubeconfig` shows a value the
   server returns on a read.
 - `--allow-deprecated` is required to write through a deprecated-stability API.
+- A preview covers one command against the server as it is now. It cannot show a
+  change that depends on an object not yet created. A `revoke` without `--role` that
+  finds more than one binding previews them as a count (`<resource> (<n>) for
+  <subject>`); with one binding the preview shows its name (`<resource>/<name>`).
+  Neither shows the roles: read them with `inspect user` first and name them when you
+  relay the preview.
 - `--dry-run` is a real server dry-run: it needs the same RBAC verb as the
   write. An `RBAC` error on dry-run means the write would be denied too. The
   exceptions are a Rancher action the CLI previews from server reads (`app
@@ -1029,6 +1089,30 @@ Never present a role list as permissions.
   warns and uses the id exactly as typed. It must also list the bindings (it
   fails if Rancher refuses that), and for an id without `local://` it matches
   `userName` only.
+- Removing all of a user's access has three parts; do and report each:
+  1. Bindings: `rancher inspect user <username> -o json` lists them at global, cluster
+     and project scope, and gives the user id in `data.user.id`. `revoke` at each scope,
+     then read `inspect user` again. A project is listed as `<cluster id>:<project id>`;
+     pass the part after the colon to `--project` and the part before it to `--cluster`.
+  2. Tokens: read both kinds, as an administrator. `rancher get management-tokens -l
+     authn.management.cattle.io/token-userId=<user id> -o json` lists the user's v3
+     tokens (the `management-token` kind); `rancher get tokens -l
+     cattle.io/user-id=<user id> -o json` lists the user's ext tokens (the `token` kind,
+     which `rancher create token` creates). A token still authenticates after every
+     binding is revoked. Delete the user's tokens (`rancher delete management-token <name>
+     --allow-deprecated`, `rancher delete token <name>`; preview each with `--dry-run`
+     first, then apply with `--apply --yes`), or say which of the two reads you could not
+     make. "None found" is a claim about both kinds.
+  3. The account: a user with no bindings can still log in and still has what their
+     groups give them. Disabling is `rancher patch user <id> --type merge --patch
+     '{"enabled":false}'` (preview with `--dry-run` first, then apply with
+     `--apply --yes`). Disable only when the request says to close, disable or deactivate
+     the account. "Remove their access" and "has left" are not that: leave the account as
+     it is and report that it is still enabled.
+
+  Rancher creates the ClusterRoleBinding `grb-<user id>-view` on the local cluster so
+  the user can read their own User object. It is deleted with the user; it is not a
+  binding you failed to revoke.
 - `rancher get users` hides Rancher's internal system accounts (cluster agent
   and provisioning accounts) by default, matching what Rancher itself hides;
   pass `--include-system` to see them. Cluster teardown removes its agent
