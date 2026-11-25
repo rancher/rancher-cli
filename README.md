@@ -136,7 +136,7 @@ in its `access-key:secret-key` form.
     rancher schema delete project        # one command: contract + gates
     rancher schema pod                   # one kind: aliases, routing, verbs
     rancher schema --search kubeconfig   # find commands by substring
-    rancher schema --all -o json         # full manifest (for agents)
+    rancher schema --all -o json         # full manifest, for tools: write it to a file
 
 Provisioning a cluster (machine configs, cloud credentials, waiting for the
 cluster to be ready): [REFERENCE.md](REFERENCE.md#cluster-provisioning).
@@ -151,7 +151,8 @@ coding-agent harness such as Claude Code, Codex, or GitHub Copilot CLI:
 
     rancher skill install
 
-or point the instructions file of any other coding-agent harness at it.
+or point any other coding-agent harness at the whole skill directory: it
+needs `SKILL.md` and the files in `references/`.
 
 ## Commands
 

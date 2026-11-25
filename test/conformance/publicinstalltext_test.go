@@ -246,12 +246,19 @@ var userFacingAlphaRows = []alphaAllowRow{
 	{"install.ps1", "alpha = 0", 1, "the prerelease class of the tag comparison"},
 }
 
-var userFacingAlphaFiles = []string{"README.md", "REFERENCE.md", "MIGRATING.md", "skills/rancher/SKILL.md", "install.sh", "install.ps1"}
+// userFacingAlphaFiles lists the files the scan reads: the documents and
+// installers at the module root and every file of the rancher skill.
+func userFacingAlphaFiles(t *testing.T) []string {
+	t.Helper()
+	files := []string{"README.md", "REFERENCE.md", "MIGRATING.md"}
+	files = append(files, skillFiles(t)...)
+	return append(files, "install.sh", "install.ps1")
+}
 
 // TestUserFacingDocsStateNoAlphaStatus asserts that no user-facing document
 // or installer states the product status as alpha, and that README.md
 // carries the experimental status note. The files are README.md,
-// REFERENCE.md, MIGRATING.md, skills/rancher/SKILL.md, install.sh and
+// REFERENCE.md, MIGRATING.md, every file under skills/rancher/, install.sh and
 // install.ps1, each read whole, case-insensitive and whole-word. A use of the
 // word is allowed only by a row of userFacingAlphaRows (file, a distinctive
 // substring of the line, the exact number of lines that hold it, and a
@@ -262,7 +269,7 @@ var userFacingAlphaFiles = []string{"README.md", "REFERENCE.md", "MIGRATING.md",
 func TestUserFacingDocsStateNoAlphaStatus(t *testing.T) {
 	t.Parallel()
 	files := map[string]string{}
-	for _, name := range userFacingAlphaFiles {
+	for _, name := range userFacingAlphaFiles(t) {
 		src, err := os.ReadFile(name)
 		require.NoError(t, err, "%s must exist", name)
 		files[name] = string(src)

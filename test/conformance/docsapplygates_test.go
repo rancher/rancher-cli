@@ -13,13 +13,11 @@ import (
 )
 
 // docApplyGateFiles lists the Markdown files whose command examples are
-// scanned. They are read from the module root.
-var docApplyGateFiles = []string{
-	"README.md",
-	"MIGRATING.md",
-	"COMMANDS.md",
-	"REFERENCE.md",
-	"skills/rancher/SKILL.md",
+// scanned: the documents at the module root and every file of the rancher
+// skill. They are read from the module root.
+func docApplyGateFiles(t *testing.T) []string {
+	t.Helper()
+	return append([]string{"README.md", "MIGRATING.md", "COMMANDS.md", "REFERENCE.md"}, skillFiles(t)...)
 }
 
 // docApplyGateAllowed lists the examples that have --apply and leave out a
@@ -392,19 +390,20 @@ func docGateManifest(t *testing.T) []docGateCommand {
 }
 
 // TestDocsApplyExamplesCarryTheirGates asserts that every command example in
-// the Markdown files of docApplyGateFiles that has --apply also has every gate
+// the Markdown files of docApplyGateFiles(t) that has --apply also has every gate
 // its command has in the schema manifest. An example copied as written is then
 // not refused with CONFIRMATION_REQUIRED. Plain prose is not scanned; inline
 // code spans, fenced blocks and indented blocks are.
 func TestDocsApplyExamplesCarryTheirGates(t *testing.T) {
 	commands := docGateManifest(t)
 	texts := map[string]string{}
-	for _, file := range docApplyGateFiles {
+	files := docApplyGateFiles(t)
+	for _, file := range files {
 		raw, err := os.ReadFile(file)
 		require.NoError(t, err)
 		texts[file] = string(raw)
 	}
-	counts, problems := docApplyScan(commands, docApplyGateFiles, texts, docApplyGateAllowed)
+	counts, problems := docApplyScan(commands, files, texts, docApplyGateAllowed)
 	assert.Empty(t, problems, "examples the CLI refuses when copied as written, or whose command is not in the schema manifest")
 
 	total := 0
@@ -412,9 +411,14 @@ func TestDocsApplyExamplesCarryTheirGates(t *testing.T) {
 		total += n
 	}
 	assert.GreaterOrEqual(t, total, 25, "the scan found too few examples with --apply")
-	for _, file := range []string{"README.md", "MIGRATING.md", "REFERENCE.md", "skills/rancher/SKILL.md"} {
+	for _, file := range []string{"README.md", "MIGRATING.md", "REFERENCE.md"} {
 		assert.Positive(t, counts[file], "the scan found no example with --apply in "+file)
 	}
+	inSkill := 0
+	for _, file := range skillFiles(t) {
+		inSkill += counts[file]
+	}
+	assert.Positive(t, inSkill, "the scan found no example with --apply in the skill")
 }
 
 // TestDocsApplyGateRows asserts how the docs --apply scan finds examples in

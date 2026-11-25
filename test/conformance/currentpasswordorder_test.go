@@ -73,11 +73,12 @@ func currentPasswordUnitProblems(unit string) []string {
 
 // currentPasswordRequiredFiles are the documents that must each hold a unit
 // with --current-password-stdin.
-var currentPasswordRequiredFiles = []string{"COMMANDS.md", "skills/rancher/SKILL.md", "MIGRATING.md"}
+var currentPasswordRequiredFiles = []string{"COMMANDS.md", "MIGRATING.md"}
 
 // currentPasswordDocProblems checks the units that hold --current-password-stdin
 // of every Markdown file in texts (path to content): each unit's order rule,
-// and one problem for each required file that yields no such unit. A rename of
+// and one problem for each required file, and for the skill as a whole, that
+// yields no such unit. A rename of
 // the flag or a reflow of the documents cannot make the check pass with
 // nothing to read.
 func currentPasswordDocProblems(texts map[string]string) []string {
@@ -97,13 +98,23 @@ func currentPasswordDocProblems(texts map[string]string) []string {
 			problems = append(problems, path+" has no unit with "+currentPasswordFlag)
 		}
 	}
+	skillHasUnit := false
+	for path, text := range texts {
+		if strings.HasPrefix(path, skillDirectory) && slices.ContainsFunc(markdownUnits(text), func(unit string) bool { return strings.Contains(unit, currentPasswordFlag) }) {
+			skillHasUnit = true
+		}
+	}
+	if !skillHasUnit {
+		problems = append(problems, skillDirectory+" has no file with a unit with "+currentPasswordFlag)
+	}
 	return problems
 }
 
 // TestCurrentPasswordComesFirstInEveryDoc asserts that every paragraph, list
 // item and table row that holds --current-password-stdin, in every Markdown
 // file git sees, gives the current password before the new password, and that
-// COMMANDS.md, skills/rancher/SKILL.md and MIGRATING.md each hold one.
+// COMMANDS.md and MIGRATING.md each hold one, and so does some file under
+// skills/rancher/.
 func TestCurrentPasswordComesFirstInEveryDoc(t *testing.T) {
 	t.Parallel()
 	files, err := repositoryFiles()
@@ -128,21 +139,23 @@ func TestCurrentPasswordComesFirstInEveryDoc(t *testing.T) {
 func TestCurrentPasswordDocCheckFailsOnAWrongOrder(t *testing.T) {
 	t.Parallel()
 	good := "Pipe two lines:\n\n`printf '%s\\n%s\\n' \"$CURRENTPASSWORD\" \"$NEWPASSWORD\" | rancher create password-change-request <user id> --current-password-stdin --password-stdin`\n"
-	right := map[string]string{"COMMANDS.md": good, "skills/rancher/SKILL.md": good, "MIGRATING.md": good}
+	right := map[string]string{"COMMANDS.md": good, "skills/rancher/references/admin.md": good, "MIGRATING.md": good}
 	assert.Empty(t, currentPasswordDocProblems(right))
 
 	swappedVariables := "`printf '%s\\n%s\\n' \"$NEWPASSWORD\" \"$CURRENTPASSWORD\" | rancher create password-change-request <user id> --current-password-stdin --password-stdin`\n"
-	assert.NotEmpty(t, currentPasswordDocProblems(map[string]string{"COMMANDS.md": good, "skills/rancher/SKILL.md": swappedVariables, "MIGRATING.md": good}))
+	assert.NotEmpty(t, currentPasswordDocProblems(map[string]string{"COMMANDS.md": good, "skills/rancher/references/admin.md": swappedVariables, "MIGRATING.md": good}))
 
 	swappedPhrases := "With --current-password-stdin, line 1 is the new password and line 2 is the current password.\n"
-	assert.NotEmpty(t, currentPasswordDocProblems(map[string]string{"COMMANDS.md": good, "skills/rancher/SKILL.md": good, "MIGRATING.md": swappedPhrases}))
+	assert.NotEmpty(t, currentPasswordDocProblems(map[string]string{"COMMANDS.md": good, "skills/rancher/references/admin.md": good, "MIGRATING.md": swappedPhrases}))
 
 	wrappedSwapped := "With --current-password-stdin, the new\npassword comes first and the current password second.\n"
-	assert.NotEmpty(t, currentPasswordDocProblems(map[string]string{"COMMANDS.md": good, "skills/rancher/SKILL.md": wrappedSwapped, "MIGRATING.md": good}),
+	assert.NotEmpty(t, currentPasswordDocProblems(map[string]string{"COMMANDS.md": good, "skills/rancher/references/admin.md": wrappedSwapped, "MIGRATING.md": good}),
 		"the phrase is found across a wrapped line")
 
 	assert.NotEmpty(t, currentPasswordDocProblems(map[string]string{}), "no document yields a unit that holds the flag")
-	assert.Len(t, currentPasswordDocProblems(map[string]string{"COMMANDS.md": good, "skills/rancher/SKILL.md": good, "MIGRATING.md": "no flag here\n"}), 1,
+	assert.Len(t, currentPasswordDocProblems(map[string]string{"COMMANDS.md": good, "skills/rancher/SKILL.md": "no flag here\n", "MIGRATING.md": good}), 1,
+		"no file under skills/rancher/ holds a unit with the flag")
+	assert.Len(t, currentPasswordDocProblems(map[string]string{"COMMANDS.md": good, "skills/rancher/references/admin.md": good, "MIGRATING.md": "no flag here\n"}), 1,
 		"one required document with no unit that holds the flag")
 }
 

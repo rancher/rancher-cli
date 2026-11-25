@@ -442,15 +442,19 @@ func TestPowerShellExampleHasBothHalves(t *testing.T) {
 	assert.Less(t, currentValue, newValue)
 }
 
-// TestPowerShellExampleIsInTheSkill asserts skills/rancher/SKILL.md has, in
-// one code span, the whole PowerShell example the PowerShell tests run, with
-// the user id placeholder the docs use.
+// TestPowerShellExampleIsInTheSkill asserts a file of the rancher skill has,
+// in one code span, the whole PowerShell example the PowerShell tests run,
+// with the user id placeholder the docs use.
 func TestPowerShellExampleIsInTheSkill(t *testing.T) {
 	t.Parallel()
-	raw, err := os.ReadFile("skills/rancher/SKILL.md")
-	require.NoError(t, err)
+	var spans []string
+	for _, file := range skillFiles(t) {
+		raw, err := os.ReadFile(file)
+		require.NoError(t, err)
+		spans = append(spans, markdownCodeSpans(string(raw))...)
+	}
 	want := strings.ReplaceAll(powerShellExample, "u-abc123", "<user id>")
-	assert.Contains(t, markdownCodeSpans(string(raw)), want)
+	assert.Contains(t, spans, want)
 }
 
 // TestStdinPipePwsh asserts four things under PowerShell 7. Piping two
@@ -497,8 +501,8 @@ type pipeSpan struct {
 // fails the guard. The entry texts are built from the constants the
 // PowerShell tests run.
 var markdownPipeAllowed = map[pipeSpan]string{
-	{file: "REFERENCE.md", text: harvesterRecipe}:              "the piped kubeconfig is read by `--from-file kubeconfigContent=-`, whose byte order mark drop TestEveryFromFileFieldDropsLeadingByteOrderMarks asserts",
-	{file: "skills/rancher/SKILL.md", text: powerShellExample}: "PowerShell text; TestStdinPipePwsh runs its pipeline half and TestPowerShellExampleIsInTheSkill reads the whole example, both from the same constants",
+	{file: "REFERENCE.md", text: harvesterRecipe}:                                                                                       "the piped kubeconfig is read by `--from-file kubeconfigContent=-`, whose byte order mark drop TestEveryFromFileFieldDropsLeadingByteOrderMarks asserts",
+	{file: "skills/rancher/references/admin.md", text: powerShellExample}:                                                               "PowerShell text; TestStdinPipePwsh runs its pipeline half and TestPowerShellExampleIsInTheSkill reads the whole example, both from the same constants",
 	{file: "COMMANDS.md", text: strings.TrimSuffix(strings.ReplaceAll(powerShellPipelineHalf, "u-abc123", "<user>"), " --apply --yes")}: "PowerShell text, built from the pipeline TestStdinPipePwsh runs",
 }
 
@@ -699,7 +703,7 @@ func TestEveryPipedExampleHasAStdinRow(t *testing.T) {
 	}
 	assert.GreaterOrEqual(t, len(manifest), 4, "the manifest examples that pipe into rancher")
 	assert.Contains(t, manifest, stdinPipeRows[1].text)
-	assert.Contains(t, spans, pipeSpan{file: "skills/rancher/SKILL.md", text: stdinPipeRows[1].text})
+	assert.Contains(t, spans, pipeSpan{file: "skills/rancher/references/admin.md", text: stdinPipeRows[1].text})
 	assert.Empty(t, stdinRowProblems(stdinRowTexts(), manifest, spans, markdownPipeAllowed))
 }
 

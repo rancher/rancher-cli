@@ -54,6 +54,27 @@ var repositoryFiles = sync.OnceValues(func() ([]string, error) {
 	return files, nil
 })
 
+// skillDirectory is the directory of the rancher skill: SKILL.md and the
+// topic files under references/.
+const skillDirectory = "skills/rancher/"
+
+// skillFiles lists the files of the rancher skill, as repositoryFiles lists
+// them: every file under skillDirectory, so that a new topic file is scanned
+// without a change to the scans.
+func skillFiles(t *testing.T) []string {
+	t.Helper()
+	files, err := repositoryFiles()
+	require.NoError(t, err)
+	var skill []string
+	for _, path := range files {
+		if strings.HasPrefix(path, skillDirectory) {
+			skill = append(skill, path)
+		}
+	}
+	require.Contains(t, skill, skillDirectory+"SKILL.md")
+	return skill
+}
+
 // inTestdata reports whether path has a testdata directory on it. testdata
 // trees ship deliberately contrived helper binaries, not pipeline-owned
 // production code, so the production-source scans leave them out.

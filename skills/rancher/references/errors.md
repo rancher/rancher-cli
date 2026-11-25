@@ -1,0 +1,68 @@
+# Errors in detail
+
+- `retryable: true` (timeouts, a 429, a 502/503/504, another 5xx whose body is
+  not a Kubernetes Status, a 409 on an update or delete that sent a
+  resourceVersion (except the two cases named below), the two CONFLICTs from a
+  check in the CLI named below, a temporary 403 from Kubernetes admission (see
+  the next bullet), and a 500 the API server returns for a failed admission
+  webhook call that did not reach the webhook or came back with a 503 that is
+  not a Kubernetes Status)
+  → retry is reasonable; otherwise do not repeat the identical call. A failed
+  admission webhook call did not reach the webhook when the connection was
+  refused, there was no route to host, the host name did not resolve,
+  connecting to the webhook's address timed out, or the webhook's service had
+  no endpoints. A webhook call that timed out in any other way, or came back
+  with a 504, is not retryable. A 409 on
+  an update or delete that sent a resourceVersion is `CONFLICT` with the message
+  "the resource changed on the server since it was last read; retry the
+  command". An update here is a command that changes an existing object, such as
+  `rancher patch`. An admission webhook's 409 on such a write (its message
+  starts `admission webhook "<name>" denied the request:` or is `admission
+  webhook "<name>" denied the request without explanation`) is `CONFLICT` with the
+  webhook's message and is not retryable: running the command again gets the
+  same denial. A 409 on such a write whose message says the uid sent with the
+  request is different from the object's (the message has
+  `UID in precondition`, `the UID in the precondition` or `uid mismatch`) is
+  `CONFLICT` with the server's message and is not retryable: running the
+  command again fails the same way. For a `patch` that changes
+  `metadata.uid`, remove that change. If the object was deleted and created
+  again after the command read it, try again to read the new object. A 409 on
+  any other request is `CONFLICT` and is not retryable. Its message is the
+  server's message. The one
+  exception is a create whose response body is not a Kubernetes Status: its
+  message ends with "the server reported a conflict". Two CONFLICTs come from a
+  check in the CLI, not from a 409, and are retryable: `app install` or
+  `app uninstall` with `--apply` finds that what the dry-run preview read has
+  changed (the message ends "run the command again to see a new preview"), and
+  the exec plugin finds that `config.yaml` changed during a call and `--name`
+  now identifies another entry or none (the message starts "config.yaml changed
+  while this call was running"). Any other CONFLICT from a check in the CLI
+  carries its own `retryable`.
+
+- A temporary 403 from Kubernetes admission (the server could not check the
+  request yet) is `GENERIC` and retryable. The message is the Status message,
+  followed by " - retry later". The five are: the server is not ready to handle
+  the request, LimitRanger failed to enforce limit ranges, the ResourceQuota
+  status is unknown, ResourceQuota cannot get the previous usage because the
+  previous version of the object was not found, and the ServiceAccount
+  admission plugin could not look up the pod's ServiceAccount because of a
+  timeout, a refused or reset connection, or an API server that was unavailable
+  or overloaded. A ServiceAccount lookup that client-go refuses because the
+  namespace or name has a slash or a percent sign, or is `.` or `..`, is
+  `VALIDATION`, as is a ServiceAccount that does not exist; a lookup that fails
+  for any other reason is `RBAC`.
+
+- `TLS_TRUST` (exit `10`) means the server's certificate failed
+  verification: act on the remedy the message names (a different CA, the
+  server URL, or the server's administrator), or tell the user; never retry the
+  same call. It is not retryable.
+
+- `CREDENTIAL_STORE_UNAVAILABLE` (exit `14`, retryable) means the keychain
+  or credential helper this directory uses cannot be read or written right
+  now: a locked keychain, a cancelled keychain prompt, no D-Bus session bus
+  on Linux (rancher-cli does not start one), a helper that is missing or
+  failing. The message names the store, the entry, the cause and
+  the remedy (on macOS: unlock the keychain with `security unlock-keychain`,
+  or approve the prompt). That remedy needs the person at the keyboard: tell
+  the user, and run the command again only after they have acted. It is
+  never a reason to try another server entry, store or `--config`.

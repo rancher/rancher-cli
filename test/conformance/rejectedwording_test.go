@@ -32,7 +32,7 @@ import (
 //     support tests are left out: their strings are fixtures and fake
 //     server replies.
 //   - README.md, COMMANDS.md, REFERENCE.md, MIGRATING.md, SURFACE.md,
-//     skills/rancher/SKILL.md and CREDENTIAL_HELPERS.md, one paragraph at
+//     every file under skills/rancher/ and CREDENTIAL_HELPERS.md, one paragraph at
 //     a time: a run of non-blank lines outside code fences, joined with
 //     single spaces, so a phrase wrapped across two lines is found. A
 //     heading is a paragraph of its own and names the section of the lines
@@ -91,12 +91,12 @@ import (
 //     be told from "server ops" (the CLI's commands) by pattern; the phrase
 //     named ops is a row of the table.
 //   - cascades, consumed: other text still uses them in their own sense (the
-//     description of a user delete in skills/rancher/SKILL.md).
+//     description of a user delete in a file under skills/rancher/).
 //   - decoding: an ordinary word ("decoding the object of row 3"); the decode
 //     errors of the registration token commands now say "cannot read".
 //   - converges: an ordinary Kubernetes word.
 //   - Sensitive kind, dry-run/apply --yes: the command table in COMMANDS.md
-//     uses dry-run/apply --yes, and skills/rancher/SKILL.md uses Sensitive
+//     uses dry-run/apply --yes, and the files under skills/rancher/ use Sensitive
 //     kind, as the names of the gate.
 //   - curated (alone): ordinary word here (curated commands and kinds); the
 //     phrases for logs and targets of Rancher components are refused.
@@ -151,7 +151,7 @@ func TestRejectedWordingStaysOut(t *testing.T) {
 
 	units := productionWordingUnits(tree.fset, tree.files, tree.paths)
 	unreadable := false
-	for _, path := range wordingDocs {
+	for _, path := range wordingDocs(t) {
 		src, err := os.ReadFile(path)
 		require.NoError(t, err)
 		docUnits, err := readWordingDoc(path, string(src))
@@ -249,15 +249,13 @@ func TestRejectedWordingTables(t *testing.T) {
 	assert.NotEmpty(t, rejectedWording)
 }
 
-// wordingDocs are the user documents the scan reads.
-var wordingDocs = []string{
-	"README.md",
-	"COMMANDS.md",
-	"REFERENCE.md",
-	"MIGRATING.md",
-	"SURFACE.md",
-	"skills/rancher/SKILL.md",
-	"CREDENTIAL_HELPERS.md",
+// wordingDocs are the user documents the scan reads: the documents at the
+// module root and every file of the rancher skill.
+func wordingDocs(t *testing.T) []string {
+	t.Helper()
+	docs := []string{"README.md", "COMMANDS.md", "REFERENCE.md", "MIGRATING.md", "SURFACE.md"}
+	docs = append(docs, skillFiles(t)...)
+	return append(docs, "CREDENTIAL_HELPERS.md")
 }
 
 // wordingScripts are the install scripts, the issue forms and the release tag
@@ -473,7 +471,7 @@ var wordingPathAllowlist = []wordingPath{
 	{"as you", "internal/engine/access/explain.go", "", 1, "text not yet reworded"},
 	{"as you", "internal/engine/access/list.go", "", 1, "text not yet reworded"},
 	{"as you", "internal/engine/access/whocan.go", "", 1, "text not yet reworded"},
-	{"auth bootstrap", "skills/rancher/SKILL.md", "Conventions", 1, "text not yet reworded"},
+	{"auth bootstrap", "skills/rancher/references/kubectl.md", "kubeconfigs and the kubectl exec plugin", 1, "text not yet reworded"},
 	{"bespoke", "internal/cli/capability_coverage.go", "", 4, "text not yet reworded"},
 	{"bin-dir", "install.ps1", "", 1, "the dry-run output key, kept because a test asserts it"},
 	{"bin-dir", "install.sh", "", 1, "the dry-run output key, kept because a test asserts it"},
@@ -484,11 +482,11 @@ var wordingPathAllowlist = []wordingPath{
 	{"budget", "internal/commands/configcmd/set_completion.go", "", 2, "text not yet reworded"},
 	{"budget", "internal/engine/access/fanout.go", "", 2, "text not yet reworded"},
 	{"budget", "internal/token/retire.go", "", 1, "text not yet reworded"},
-	{"budget", "skills/rancher/SKILL.md", "10. Role grants and secrets", 1, "text not yet reworded"},
-	{"budget", "skills/rancher/SKILL.md", "Conventions", 1, "text not yet reworded"},
+	{"budget", "skills/rancher/references/access.md", "Role grants and secrets", 1, "text not yet reworded"},
+	{"budget", "skills/rancher/references/auth.md", "Logins, credential stores and tokens", 1, "text not yet reworded"},
 	{"canonical owner identity", "internal/engine/inspect/shared.go", "", 1, "a panic text no user sees"},
 	{"configuration directory", "internal/config/lock.go", "", 1, "text not yet reworded"},
-	{"degrades to", "skills/rancher/SKILL.md", "9. Observability & support", 1, "text not yet reworded"},
+	{"degrades to", "skills/rancher/references/triage.md", "Observability & support", 1, "text not yet reworded"},
 	{"direct context", "COMMANDS.md", "kubectl integration", 1, "text not yet reworded"},
 	{"direct context", "REFERENCE.md", "What each part means", 1, "text not yet reworded"},
 	{"direct context", "REFERENCE.md", "What the CLI sends to the server", 1, "text not yet reworded"},
@@ -496,9 +494,10 @@ var wordingPathAllowlist = []wordingPath{
 	{"direct context", "internal/engine/kubeconfig/command.go", "", 4, "text not yet reworded"},
 	{"direct context", "internal/token/directwait.go", "", 1, "text not yet reworded"},
 	{"direct context", "internal/token/token.go", "", 3, "text not yet reworded"},
-	{"direct context", "skills/rancher/SKILL.md", "8. kubectl interop", 2, "text not yet reworded"},
-	{"dry-run effect", "skills/rancher/SKILL.md", "4. Mutation safety loop - never skip", 2, "text not yet reworded"},
-	{"escalates to", "skills/rancher/SKILL.md", "11. OIDC clients", 1, "text not yet reworded"},
+	{"direct context", "skills/rancher/references/kubectl.md", "kubeconfigs and the kubectl exec plugin", 2, "text not yet reworded"},
+	{"dry-run effect", "skills/rancher/SKILL.md", "4. Mutation safety loop - never skip", 1, "text not yet reworded"},
+	{"dry-run effect", "skills/rancher/references/projects.md", "Projects and their namespaces", 1, "text not yet reworded"},
+	{"escalates to", "skills/rancher/references/admin.md", "OIDC clients", 1, "text not yet reworded"},
 	{"exec credential plugin", "REFERENCE.md", "What each part means", 1, "text not yet reworded"},
 	{"exec entry", "COMMANDS.md", "kubectl integration", 1, "text not yet reworded"},
 	{"exec entry", "REFERENCE.md", "Environment variables", 2, "text not yet reworded"},
@@ -510,12 +509,12 @@ var wordingPathAllowlist = []wordingPath{
 	{"exec entry", "internal/token/noterminal.go", "", 3, "text not yet reworded"},
 	{"exec entry", "internal/token/owner.go", "", 8, "text not yet reworded"},
 	{"exec entry", "internal/token/regenerate.go", "", 1, "text not yet reworded"},
-	{"exec entry", "skills/rancher/SKILL.md", "8. kubectl interop", 4, "text not yet reworded"},
+	{"exec entry", "skills/rancher/references/kubectl.md", "kubeconfigs and the kubectl exec plugin", 4, "text not yet reworded"},
 	{"executable", "install.sh", "", 1, "a file permission in an error message, not a program"},
 	{"exit status", "internal/runtime/pipeline.go", "", 1, "text not yet reworded"},
 	{"exit status", "skills/rancher/SKILL.md", "2. Discover, don't guess", 1, "text not yet reworded"},
 	{"floor", "REFERENCE.md", "Supported server version", 2, "text not yet reworded"},
-	{"floor", "skills/rancher/SKILL.md", "1. Verify auth before anything else", 1, "text not yet reworded"},
+	{"floor", "skills/rancher/references/auth.md", "Logins, credential stores and tokens", 1, "text not yet reworded"},
 	{"hard-error", "CREDENTIAL_HELPERS.md", "Responses", 1, "text not yet reworded"},
 	{"identity probe", "REFERENCE.md", "Supported server version", 2, "text not yet reworded"},
 	{"junction", "install.ps1", "", 2, "not prose: the LinkType value and the New-Item parameter"},
@@ -526,10 +525,10 @@ var wordingPathAllowlist = []wordingPath{
 	{"provider list", "REFERENCE.md", "Auth configs (`--auth-provider`)", 2, "text not yet reworded"},
 	{"provider list", "internal/token/token.go", "", 2, "text not yet reworded"},
 	{"stamped", "REFERENCE.md", "Revoking the CLI's tokens", 1, "text not yet reworded"},
-	{"the plan", "skills/rancher/SKILL.md", "4. Mutation safety loop - never skip", 1, "text not yet reworded"},
+	{"the plan", "skills/rancher/references/clusters.md", "Clusters, nodes, etcd snapshots, certificate rotations and encryption key rotations", 1, "text not yet reworded"},
 	{"unexpected answer", "internal/engine/access/discovery.go", "", 1, "text not yet reworded"},
 	{"wins over", "REFERENCE.md", "Access management", 1, "text not yet reworded"},
-	{"wins over", "skills/rancher/SKILL.md", "Conventions", 1, "text not yet reworded"},
+	{"wins over", "skills/rancher/references/projects.md", "Projects and their namespaces", 1, "text not yet reworded"},
 }
 
 // wordingMatcher finds the forms of one row.

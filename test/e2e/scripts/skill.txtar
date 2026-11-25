@@ -27,9 +27,18 @@ cp extra.md $WORK/home/.claude/skills/rancher/extra.md
 ! exec rancher skill status -o json
 jsonquery stdout data.0.verdict modified
 
+# Repair, then change an installed file in the references directory.
+exec rancher skill install -o json
+jsonquery stdout data.0.action changed
+cp extra.md $WORK/home/.claude/skills/rancher/references/auth.md
+! exec rancher skill status -o json
+jsonquery stdout data.0.verdict modified
+
 # Repair, then remove.
 exec rancher skill install -o json
 jsonquery stdout data.0.action changed
+exec rancher skill status -o json
+jsonquery stdout data.0.verdict in-sync
 
 # Uninstall prints only the columns it fills and removes the skills directory
 # it emptied; status prints no ACTION column.
