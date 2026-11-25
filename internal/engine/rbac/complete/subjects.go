@@ -30,10 +30,10 @@ func claimAs(req completion.Request) (completion.Requirements, bool) {
 }
 
 // GrantSource is grant's source: the --role value, which leaves out the
-// role templates marked locked at project and cluster scope and, at global
-// scope, the global roles that inherit a locked role template or one that
-// does not exist (Rancher does not allow a new binding to any of them), and
-// the subject positional, the user subjects of SubjectSource unless --type
+// role templates marked locked or hidden at project and cluster scope and, at
+// global scope, the global roles that inherit a locked role template or one
+// that does not exist (Rancher does not allow a new binding to any of them),
+// and the subject positional, the user subjects of SubjectSource unless --type
 // group is typed, since no group collection can be listed. Every other site
 // is declined.
 func GrantSource() completion.Source {
@@ -41,8 +41,8 @@ func GrantSource() completion.Source {
 }
 
 // RevokeSource is revoke's source: the --role value of RoleSource, locked
-// role templates included, since a binding to one can still be removed,
-// and the subject positional GrantSource answers. Every other site is
+// and hidden role templates included, since a binding to one can still be
+// removed, and the subject positional GrantSource answers. Every other site is
 // declined.
 func RevokeSource() completion.Source {
 	return completion.Source{Claim: claimGrantRevoke, Complete: completeRevoke}

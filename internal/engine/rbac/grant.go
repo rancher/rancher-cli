@@ -40,6 +40,8 @@ func (grantCmd) Describe() runtime.Descriptor {
 			"have the role there, and previews creating the binding. " +
 			"List the available roles with: `rancher get roletemplates` (project and cluster scopes) " +
 			"or `rancher get globalroles` (global scope). " +
+			"A role template whose hidden field is true (Rancher tells its UI not to display it) is accepted with a warning; " +
+			"the candidates in a NOT_FOUND error for a role, and --role completion, leave it out. " +
 			"A subject that is not a principal is matched by user id, then by username. A display name is never matched: when the value is the display name of one or more users and the user id or username of no user, the command fails with NOT_FOUND and lists those users with their user ids. " +
 			"When Rancher refuses the read of users, the command warns and uses the subject exactly as typed if it is `local://<id>` or an id that looks like u-lpnxw " +
 			"(u-, m- or user- followed by at least five characters from bcdfghjklmnpqrstvwxz2456789). " +
@@ -66,9 +68,9 @@ func (grantCmd) Describe() runtime.Descriptor {
 
 // LiveSource hands the surface grant's source: --role completes the
 // roles of the scope typed on the line, leaving out role templates marked
-// locked at project and cluster scope and, at global scope, global roles
-// that inherit a locked role template or one that does not exist, and the
-// subject positional the user subjects unless --type group is typed; every
+// locked or hidden at project and cluster scope and, at global scope, global
+// roles that inherit a locked role template or one that does not exist, and
+// the subject positional the user subjects unless --type group is typed; every
 // other site is declined.
 func (grantCmd) LiveSource() completion.Source { return complete.GrantSource() }
 
@@ -111,7 +113,8 @@ func (c grantCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	// deleted out-of-band while a stale binding exists surfaces as
 	// NOT_FOUND - a grant of a nonexistent role cannot proceed regardless;
 	// a CONFLICT naming a role that no longer exists misleads.
-	if err := checkRole(ctx, client, role, scope.Kind); err != nil {
+	hiddenRole, err := checkRole(ctx, client, role, scope.Kind)
+	if err != nil {
 		return safety.Effect{}, nil, err
 	}
 
@@ -120,6 +123,9 @@ func (c grantCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 		return safety.Effect{}, nil, err
 	}
 	var warnings []string
+	if hiddenRole {
+		warnings = append(warnings, hiddenRoleWarning(role))
+	}
 	if rs.UserReadRefused {
 		warnings = append(warnings, userReadRefusedWarning(rs))
 	}
@@ -244,6 +250,13 @@ func errorWithWarnings(err error, warnings []string) error {
 	return err
 }
 
+// hiddenRoleWarning is the warning for a grant of a role template whose hidden
+// field is true. Rancher describes the field as informing the Rancher UI not
+// to display the role template. grant warns and still plans the binding.
+func hiddenRoleWarning(role string) string {
+	return fmt.Sprintf("role %q is a hidden role template: Rancher tells its UI not to display it", role)
+}
+
 // bindingListRefusedWarning is the preview warning for a grant when the check
 // for an existing binding was skipped because Rancher refused to list the
 // existing bindings.
@@ -285,17 +298,17 @@ func roleCandidates(pool []clierr.Candidate, needle string) []clierr.Candidate {
 }
 
 // checkRole verifies that role exists at the given scope before the mutation
-// is planned. On NOT_FOUND it returns a structured error with nearby
-// candidates (the roletemplates whose context is the scope's and that are not
-// locked, or the globalroles Rancher accepts in a binding, for global scope)
-// and a discovery hint. On a context mismatch, or a
-// missing context, the full at-scope pool is returned directly - the
-// name exists but the template cannot bind at this scope, so nearness
-// filtering would be misleading. A non-cancellation,
-// non-NotFound Get failure degrades gracefully - an RBAC-restricted granter
-// must not be blocked by an unreadable role object. Caller-context
-// cancellation always propagates.
-func checkRole(ctx context.Context, client engine.ClusterClient, role string, scope ScopeKind) error {
+// is planned, and reports whether it is a hidden role template (project and
+// cluster scope; a GlobalRole has no hidden field). On NOT_FOUND it returns a
+// structured error with nearby candidates (the roletemplates whose context is
+// the scope's and that are neither locked nor hidden, or the globalroles
+// Rancher accepts in a binding, for global scope) and a discovery hint. On a
+// context mismatch, or a missing context, the full at-scope pool is returned
+// directly - the name exists but the template cannot bind at this scope;
+// nearness filtering would be misleading. A non-cancellation, non-NotFound Get
+// failure degrades gracefully - an RBAC-restricted granter must not be blocked
+// by an unreadable role object. Caller-context cancellation always propagates.
+func checkRole(ctx context.Context, client engine.ClusterClient, role string, scope ScopeKind) (bool, error) {
 	roleKindKey, _ := complete.RoleKind(complete.Scope(scope))
 	roleKind, _ := kinds.Lookup(roleKindKey)
 
@@ -308,30 +321,32 @@ func checkRole(ctx context.Context, client engine.ClusterClient, role string, sc
 		// with none, is refused at the dry-run. Catch it here with the
 		// usable pool so the raw webhook error does not surface.
 		if scope != ScopeGlobal {
-			if rtCtx, _, _ := unstructured.NestedString(obj.Object, "context"); rtCtx != string(scope) {
+			if !kinds.RoleTemplateInContext(obj.Object, string(scope)) {
+				rtCtx, _, _ := unstructured.NestedString(obj.Object, "context")
 				pool, perr := rolePoolAtScope(ctx, client, roleKind, scope)
 				if perr != nil {
-					return perr
+					return false, perr
 				}
 				msg := fmt.Sprintf("role %s is a %s role, not usable at %s scope", role, rtCtx, scope)
 				if rtCtx == "" {
 					msg = fmt.Sprintf("role %s has no context; Rancher binds only roletemplates whose context is %s", role, scope)
 				}
-				return clierr.New(clierr.CodeNotFound, msg).
+				return false, clierr.New(clierr.CodeNotFound, msg).
 					WithCandidatesCut(roleCandidates(pool, ""), CandidateLimit).
 					WithHintCommand(clierr.NewCommand("get roletemplates"))
 			}
+			return kinds.RoleTemplateHidden(obj.Object), nil
 		}
-		return nil
+		return false, nil
 	}
 	if !clierr.IsNotFound(err) {
 		// Degrade: see Plan's preflight error policy - the server enforces
 		// the role constraint; an unreadable role object must not block a
 		// legitimately permitted granter. Cancellation always propagates.
 		if ctx.Err() != nil {
-			return ctx.Err()
+			return false, ctx.Err()
 		}
-		return nil
+		return false, nil
 	}
 
 	hint := clierr.NewCommand("get roletemplates")
@@ -340,9 +355,9 @@ func checkRole(ctx context.Context, client engine.ClusterClient, role string, sc
 	}
 	pool, perr := rolePoolAtScope(ctx, client, roleKind, scope)
 	if perr != nil {
-		return perr
+		return false, perr
 	}
-	return clierr.New(clierr.CodeNotFound, "role not found: "+role).
+	return false, clierr.New(clierr.CodeNotFound, "role not found: "+role).
 		WithCandidatesCut(roleCandidates(pool, role), CandidateLimit).
 		WithHintCommand(hint)
 }
@@ -352,9 +367,10 @@ func checkRole(ctx context.Context, client engine.ClusterClient, role string, sc
 // that inherit no locked roletemplate and no roletemplate that does not
 // exist (the roletemplates are listed too, only when some globalrole names an
 // inherited one; when that list fails, only the globalroles that name none
-// remain), else the roletemplates whose context equals the scope and that are
-// not locked (a template with another context, or none, is refused by the
-// webhook). Cancellation propagates; any other list failure degrades to
+// remain), else the roletemplates kinds.RoleTemplateOffered accepts for the
+// scope: the context equals the scope (a template with another context, or
+// none, is refused by the webhook) and the template is neither locked nor
+// hidden. Cancellation propagates; any other list failure degrades to
 // (nil, nil) so an RBAC-restricted granter is not blocked.
 func rolePoolAtScope(ctx context.Context, client engine.ClusterClient, roleKind kinds.Kind, scope ScopeKind) ([]clierr.Candidate, error) {
 	list, err := client.List(ctx, roleKind.GVR, "", "")
@@ -384,11 +400,8 @@ func rolePoolAtScope(ctx context.Context, client engine.ClusterClient, roleKind 
 	cands := make([]clierr.Candidate, 0, len(items))
 	for i := range items {
 		rt := &items[i]
-		if scope != ScopeGlobal {
-			rtCtx, _, _ := unstructured.NestedString(rt.Object, "context")
-			if rtCtx != string(scope) || kinds.RoleTemplateLocked(rt.Object) {
-				continue
-			}
+		if scope != ScopeGlobal && !kinds.RoleTemplateOffered(rt.Object, string(scope)) {
+			continue
 		}
 		display, _, _ := unstructured.NestedString(rt.Object, "displayName")
 		cands = append(cands, clierr.Candidate{ID: rt.GetName(), Name: display})

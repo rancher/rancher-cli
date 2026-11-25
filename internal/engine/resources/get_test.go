@@ -232,9 +232,9 @@ func TestGetRoleTemplateListsWithColumns(t *testing.T) {
 	assert.Equal(t, "RoleTemplateList", res.Kind)
 	tab, ok := res.Data.(output.Tabular)
 	require.True(t, ok)
-	assert.Equal(t, []string{"NAME", "CONTEXT", "DISPLAY NAME", "AGE"}, tab.Columns())
+	assert.Equal(t, []string{"NAME", "CONTEXT", "DISPLAY NAME", "HIDDEN", "AGE"}, tab.Columns())
 	require.Len(t, tab.Rows(), 2)
-	assert.Equal(t, []string{"cluster-owner", "cluster", "Cluster Owner", ""}, tab.Rows()[1])
+	assert.Equal(t, []string{"cluster-owner", "cluster", "Cluster Owner", "false", ""}, tab.Rows()[1])
 }
 
 // TestGetNodeDriverListsWithColumns asserts the nodedriver row's read surface:

@@ -59,8 +59,8 @@ func ScopeOfTail(tail []string) (Scope, bool) {
 
 // RoleSource claims the --role value site alone (no cluster, a management
 // credential, one listing) and answers every role name of the scope typed
-// on the line, locked role templates included, each described by its
-// display name; every other site is declined.
+// on the line, locked and hidden role templates included, each described by
+// its display name; every other site is declined.
 func RoleSource() completion.Source {
 	return completion.Source{Claim: claimRole, Complete: completeAllRoles}
 }
@@ -78,17 +78,18 @@ func claimRole(req completion.Request) (completion.Requirements, bool) {
 
 // completeRole lists the scope's role collection and keeps the names whose
 // context is the scope's. The filter is client-side: the RoleTemplate CRD
-// declares no selectable field for context, so a field selector cannot
-// express it. Unless offerLocked is set, a role template whose locked field
-// is the JSON boolean true is left out at project and cluster scope, and at
-// global scope a global role is left out when Rancher refuses a binding to
+// declares no selectable field for context, so a field selector cannot express
+// it. Unless offerAll is set, a role template whose locked or hidden field is
+// the JSON boolean true is left out at project and cluster scope
+// (kinds.RoleTemplateOffered, which grant's NOT_FOUND candidates call too), and
+// at global scope a global role is left out when Rancher refuses a binding to
 // it: it inherits a locked role template or one that does not exist. Global
-// scope then lists the role templates too, a second request made only when
-// some global role names an inherited role template; when that listing
-// fails, only the global roles that name none are kept; when the context
-// ends during that listing, nothing is answered. No scope, or a conflicting
-// one, answers nothing without a request.
-func completeRole(ctx context.Context, conn *completion.Connection, req completion.Request, offerLocked bool) completion.Result {
+// scope then lists the role templates too, a second request made only when some
+// global role names an inherited role template; when that listing fails, only
+// the global roles that name none are kept; when the context ends during that
+// listing, nothing is answered. No scope, or a conflicting one, answers nothing
+// without a request.
+func completeRole(ctx context.Context, conn *completion.Connection, req completion.Request, offerAll bool) completion.Result {
 	scope, ok := ScopeOfTail(req.Tail)
 	if !ok {
 		return completion.Result{}
@@ -107,7 +108,7 @@ func completeRole(ctx context.Context, conn *completion.Connection, req completi
 		return completion.Result{}
 	}
 	roles := list.Items
-	if scope == ScopeGlobal && !offerLocked {
+	if scope == ScopeGlobal && !offerAll {
 		var err error
 		roles, err = kinds.BindableGlobalRoles(roles, func() ([]map[string]any, error) {
 			return listRoleTemplates(ctx, conn)
@@ -116,15 +117,16 @@ func completeRole(ctx context.Context, conn *completion.Connection, req completi
 			return completion.Result{}
 		}
 	}
+	offered := kinds.RoleTemplateOffered
+	if offerAll {
+		offered = kinds.RoleTemplateInContext
+	}
 	paths := k.DescriptionPaths()
 	var names []string
 	descriptions := map[string]string{}
 	for _, item := range roles {
 		if roleContext != "" {
-			if c, _ := item["context"].(string); c != roleContext {
-				continue
-			}
-			if kinds.RoleTemplateLocked(item) && !offerLocked {
+			if !offered(item, roleContext) {
 				continue
 			}
 		}

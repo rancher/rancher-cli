@@ -662,10 +662,13 @@ space.
 
 `grant --role` completion leaves out role templates whose `locked` field is true
 and, at global scope, global roles that inherit a locked role template or one
-that does not exist, since Rancher does not allow a new binding to such a role;
-`revoke --role` still offers them. The candidates in a NOT_FOUND error of
-`grant` follow the same rule, and `create user --global-role` completion and its
-NOT_FOUND candidates leave out the same global roles.
+that does not exist, since Rancher does not allow a new binding to such a role.
+It also leaves out role templates whose `hidden` field is true; Rancher tells
+its UI not to display them. `grant --role` typed in full accepts one (see
+Access management). `revoke --role` still offers every one of them. The
+candidates in a NOT_FOUND error of `grant` follow the same rule, and
+`create user --global-role` completion and its NOT_FOUND candidates leave out
+the same global roles (a global role has no `hidden` field).
 
 - zsh and fish show the description in the completion list; PowerShell shows it
   as the tooltip of the candidate.
@@ -3160,6 +3163,11 @@ the existing bindings; `grant` then cannot check whether the subject already has
 must list the bindings, and it fails when Rancher refuses the read of them. It matches `userName`
 equal to the id, and `userPrincipalName` equal to the `local://<id>` you typed; a binding that has
 only `userPrincipalName` is not found when you pass an id without `local://`.
+
+A role template whose `hidden` field is true is one Rancher tells its UI not to display. `grant`
+accepts one typed in full and warns, in the preview and in the result: `role "admin" is a hidden role
+template: Rancher tells its UI not to display it`. `revoke` does not warn: it removes a binding that
+exists. The `HIDDEN` column of `rancher get roletemplates` shows the field.
 
 `get` reads the Kubernetes role bindings and roles that `access explain` names:
 `rolebinding`, `clusterrolebinding`, `role` and `clusterrole`.

@@ -29,6 +29,50 @@ func TestRoleTemplateLocked(t *testing.T) {
 	assert.False(t, RoleTemplateLocked(nil))
 }
 
+// TestRoleTemplateHidden asserts only the JSON boolean true counts as hidden:
+// false, a missing field, the string "true", a number and a nil object do
+// not.
+func TestRoleTemplateHidden(t *testing.T) {
+	t.Parallel()
+	assert.True(t, RoleTemplateHidden(map[string]any{"hidden": true}))
+	assert.False(t, RoleTemplateHidden(map[string]any{"hidden": false}))
+	assert.False(t, RoleTemplateHidden(map[string]any{}))
+	assert.False(t, RoleTemplateHidden(map[string]any{"hidden": "true"}))
+	assert.False(t, RoleTemplateHidden(map[string]any{"hidden": 1}))
+	assert.False(t, RoleTemplateHidden(nil))
+}
+
+// TestRoleTemplateOffered asserts a role template is offered at a scope only
+// when its context is the scope's and it is neither locked nor hidden, and
+// that RoleTemplateInContext reads the context alone.
+func TestRoleTemplateOffered(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		obj       map[string]any
+		inContext bool
+		offered   bool
+	}{
+		{name: "plain", obj: map[string]any{"context": "project"}, inContext: true, offered: true},
+		{name: "locked false and hidden false", obj: map[string]any{"context": "project", "locked": false, "hidden": false}, inContext: true, offered: true},
+		{name: "locked and hidden as strings", obj: map[string]any{"context": "project", "locked": "true", "hidden": "true"}, inContext: true, offered: true},
+		{name: "locked", obj: map[string]any{"context": "project", "locked": true}, inContext: true},
+		{name: "hidden", obj: map[string]any{"context": "project", "hidden": true}, inContext: true},
+		{name: "locked and hidden", obj: map[string]any{"context": "project", "locked": true, "hidden": true}, inContext: true},
+		{name: "other context", obj: map[string]any{"context": "cluster"}},
+		{name: "no context", obj: map[string]any{}},
+		{name: "context not a string", obj: map[string]any{"context": 1}},
+		{name: "nil", obj: nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.inContext, RoleTemplateInContext(tt.obj, "project"))
+			assert.Equal(t, tt.offered, RoleTemplateOffered(tt.obj, "project"))
+		})
+	}
+}
+
 // TestIndexByName asserts the index holds each named object once, the first
 // of a repeated name, and skips an object with no name.
 func TestIndexByName(t *testing.T) {

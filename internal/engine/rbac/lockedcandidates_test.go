@@ -33,14 +33,16 @@ func globalRoleObj(name string, inherited any) unstructured.Unstructured {
 }
 
 // lockedCandidateTemplates are the role templates the candidate lists read:
-// unlocked, locked, hidden, locked spelled false, a locked one with no
-// context, and an unlocked one that inherits a locked one through
-// roleTemplateNames.
+// unlocked, locked, hidden, hidden spelled false, hidden as a string, locked
+// spelled false, a locked one with no context, and an unlocked one that
+// inherits a locked one through roleTemplateNames.
 func lockedCandidateTemplates() *unstructured.UnstructuredList {
 	return &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
 		roleTemplateObj("project-open", "project", nil),
 		roleTemplateObj("project-locked", "project", map[string]any{"locked": true}),
 		roleTemplateObj("project-hidden", "project", map[string]any{"hidden": true}),
+		roleTemplateObj("project-hidden-false", "project", map[string]any{"hidden": false}),
+		roleTemplateObj("project-hidden-string", "project", map[string]any{"hidden": "true"}),
 		roleTemplateObj("project-false", "project", map[string]any{"locked": false}),
 		roleTemplateObj("cluster-open", "cluster", nil),
 		roleTemplateObj("cluster-locked", "cluster", map[string]any{"locked": true}),
@@ -72,22 +74,23 @@ func lockedCandidateGlobalRoles() *unstructured.UnstructuredList {
 	}}
 }
 
-// TestGrantRoleErrorCandidatesLeaveOutLockedRoles asserts, for every grant
-// path that lists roles to bind in a NOT_FOUND error (an unknown role at
-// project, cluster and global scope, and a role of another context or none
-// at cluster scope), that the candidates are the roles Rancher accepts in a
-// new binding, in list order: no locked role template at project and
+// TestGrantRoleErrorCandidatesLeaveOutLockedAndHiddenRoles asserts, for every
+// grant path that lists roles to bind in a NOT_FOUND error (an unknown role
+// at project, cluster and global scope, and a role of another context or
+// none at cluster scope), that the candidates are the roles the role flag
+// offers, in list order: no locked or hidden role template at project and
 // cluster scope, and at global scope no global role that inherits a locked
-// role template or one that does not exist. A needle that matches only roles
-// left out lists the whole pool and never brings one back. The expected ids
-// are written out by name, not computed from the fixture.
-func TestGrantRoleErrorCandidatesLeaveOutLockedRoles(t *testing.T) {
+// role template or one that does not exist (a global role has no hidden
+// field). A needle that matches only roles left out lists the whole pool and
+// never brings one back. The expected ids are written out by name, not
+// computed from the fixture.
+func TestGrantRoleErrorCandidatesLeaveOutLockedAndHiddenRoles(t *testing.T) {
 	t.Parallel()
-	projectPool := []string{"project-open", "project-hidden", "project-false"}
-	clusterPool := []string{"cluster-open", "cluster-hidden", "cluster-false", "cluster-parent-of-locked"}
+	projectPool := []string{"project-open", "project-hidden-false", "project-hidden-string", "project-false"}
+	clusterPool := []string{"cluster-open", "cluster-false", "cluster-parent-of-locked"}
 	globalPool := []string{"global-open", "global-empty-list", "global-inherits-open", "global-inherits-hidden", "global-inherits-false", "global-inherits-parent-of-locked"}
 	leftOut := []string{
-		"project-locked", "cluster-locked", "orphan-locked", "global-inherits-locked", "global-inherits-project-locked",
+		"project-locked", "cluster-locked", "project-hidden", "cluster-hidden", "orphan-locked", "global-inherits-locked", "global-inherits-project-locked",
 		"global-inherits-orphan-locked", "global-inherits-mixed", "global-inherits-missing",
 	}
 	tests := []struct {
@@ -101,7 +104,9 @@ func TestGrantRoleErrorCandidatesLeaveOutLockedRoles(t *testing.T) {
 	}{
 		{name: "project unknown role", scope: map[string]string{"project": "p-x", "cluster": "c-x"}, role: "zzz-none", want: projectPool},
 		{name: "project needle matches only a locked role", scope: map[string]string{"project": "p-x", "cluster": "c-x"}, role: "project-locked-x", want: projectPool},
+		{name: "project needle matches a hidden and two offered roles", scope: map[string]string{"project": "p-x", "cluster": "c-x"}, role: "project-hidden", want: []string{"project-hidden-false", "project-hidden-string"}},
 		{name: "cluster unknown role", scope: map[string]string{"cluster": "c-x"}, role: "zzz-none", want: clusterPool},
+		{name: "cluster needle matches only a hidden role", scope: map[string]string{"cluster": "c-x"}, role: "cluster-hidden", want: clusterPool},
 		{name: "cluster needle matches a locked and an unlocked role", scope: map[string]string{"cluster": "c-x"}, role: "locked", want: []string{"cluster-parent-of-locked"}},
 		{name: "cluster needle matches only a locked role", scope: map[string]string{"cluster": "c-x"}, role: "cluster-locked-x", want: clusterPool},
 		{
@@ -189,8 +194,8 @@ func TestGrantRoleErrorCandidatesListTheRoleTemplatesOnlyWhenNeeded(t *testing.T
 			listErrs:  map[string]error{"globalroles": clierr.New(clierr.CodeRBAC, "globalroles is forbidden")},
 			wantLists: 1, wantNoCand: true,
 		},
-		{name: "cluster scope", scope: map[string]string{"cluster": "c-x"}, wantLists: 1, wantIDs: []string{"cluster-open", "cluster-hidden", "cluster-false", "cluster-parent-of-locked"}},
-		{name: "project scope", scope: map[string]string{"project": "p-x", "cluster": "c-x"}, wantLists: 1, wantIDs: []string{"project-open", "project-hidden", "project-false"}},
+		{name: "cluster scope", scope: map[string]string{"cluster": "c-x"}, wantLists: 1, wantIDs: []string{"cluster-open", "cluster-false", "cluster-parent-of-locked"}},
+		{name: "project scope", scope: map[string]string{"project": "p-x", "cluster": "c-x"}, wantLists: 1, wantIDs: []string{"project-open", "project-hidden-false", "project-hidden-string", "project-false"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -227,11 +232,11 @@ func TestGrantRoleErrorCandidatesListTheRoleTemplatesOnlyWhenNeeded(t *testing.T
 }
 
 // TestGrantRoleErrorCandidatesTotalCountsWhatRemains asserts that when the
-// roles Rancher accepts outnumber CandidateLimit, the error lists the first
-// CandidateLimit of them in list order and its total counts the accepted
-// roles alone, at cluster scope with locked role templates among the
-// listed ones and at global scope with global roles that inherit a locked
-// role template.
+// roles the role flag offers outnumber CandidateLimit, the error lists the first
+// CandidateLimit of them in list order and its total counts the offered
+// roles alone, at cluster scope with locked and hidden role templates among
+// the listed ones and at global scope with global roles that inherit a
+// locked role template.
 func TestGrantRoleErrorCandidatesTotalCountsWhatRemains(t *testing.T) {
 	t.Parallel()
 	var templates, globals []unstructured.Unstructured
@@ -240,7 +245,8 @@ func TestGrantRoleErrorCandidatesTotalCountsWhatRemains(t *testing.T) {
 		open := fmt.Sprintf("cluster-role-%02d", i)
 		templates = append(templates,
 			roleTemplateObj(open, "cluster", nil),
-			roleTemplateObj(fmt.Sprintf("cluster-locked-%02d", i), "cluster", map[string]any{"locked": true}))
+			roleTemplateObj(fmt.Sprintf("cluster-locked-%02d", i), "cluster", map[string]any{"locked": true}),
+			roleTemplateObj(fmt.Sprintf("cluster-hidden-%02d", i), "cluster", map[string]any{"hidden": true}))
 		clusterWant = append(clusterWant, open)
 		fine := fmt.Sprintf("global-role-%02d", i)
 		globals = append(globals,

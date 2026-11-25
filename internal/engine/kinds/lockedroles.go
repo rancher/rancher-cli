@@ -8,6 +8,35 @@ func RoleTemplateLocked(obj map[string]any) bool {
 	return locked
 }
 
+// RoleTemplateHidden reports whether a decoded RoleTemplate is hidden: its
+// hidden field is the JSON boolean true, which Rancher describes as informing
+// its UI not to display the role template. Missing, false and any other type
+// (a string "true", a number) count as not hidden.
+func RoleTemplateHidden(obj map[string]any) bool {
+	hidden, _ := obj["hidden"].(bool)
+	return hidden
+}
+
+// RoleTemplateInContext reports whether a decoded RoleTemplate has the
+// context roleContext ("project" or "cluster"). Rancher's webhook binds a
+// RoleTemplate only when its context is exactly the binding's. One with
+// another context, or none, never matches.
+func RoleTemplateInContext(obj map[string]any, roleContext string) bool {
+	c, _ := obj["context"].(string)
+	return c == roleContext
+}
+
+// RoleTemplateOffered reports whether a flag that names the role of a new
+// binding offers a decoded RoleTemplate at the scope whose context is
+// roleContext: the context is the scope's, and the template is neither
+// locked nor hidden. The NOT_FOUND candidates of grant and the completion of
+// grant --role both call it and cannot differ. It decides what a flag offers,
+// not what grant accepts: grant accepts a role template typed in full when its
+// context is the scope's.
+func RoleTemplateOffered(obj map[string]any, roleContext string) bool {
+	return RoleTemplateInContext(obj, roleContext) && !RoleTemplateLocked(obj) && !RoleTemplateHidden(obj)
+}
+
 // indexByName maps metadata.name to the decoded object, for the objects
 // that have a name. A name that repeats keeps the first object.
 func indexByName(objs []map[string]any) map[string]map[string]any {

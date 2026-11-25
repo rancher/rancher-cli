@@ -183,7 +183,8 @@ func grHandler(opts *serverOpts) http.Handler {
 	// RoleTemplate GET by name - any name is accepted, with the context
 	// Rancher stores on it (the scope its name starts with: "project-member"
 	// is a project role), since grant refuses a template whose context is
-	// not the binding's.
+	// not the binding's. A name that ends in "-hidden" is a hidden role
+	// template.
 	mux.HandleFunc("/k8s/clusters/local/apis/management.cattle.io/v3/roletemplates/", func(w http.ResponseWriter, r *http.Request) {
 		name := path.Base(r.URL.Path)
 		rtContext, _, _ := strings.Cut(name, "-")
@@ -192,6 +193,7 @@ func grHandler(opts *serverOpts) http.Handler {
 			"kind":       "RoleTemplate",
 			"metadata":   map[string]any{"name": name, "resourceVersion": "1"},
 			"context":    rtContext,
+			"hidden":     strings.HasSuffix(name, "-hidden"),
 		})
 	})
 
@@ -469,6 +471,43 @@ func TestGrantRevokeEnvelope(t *testing.T) {
 			assert.Nil(t, e.From, "Diff.From must be nil for a create")
 		}
 	})
+
+	hiddenWarn := func(role string) string {
+		return `role "` + role + `" is a hidden role template: Rancher tells its UI not to display it`
+	}
+	for _, tt := range []struct {
+		name  string
+		role  string
+		scope []string
+		kind  string
+	}{
+		{name: "project", role: "project-hidden", scope: []string{"--project", "p-x", "--cluster", "c-x"}, kind: "ProjectRoleTemplateBinding"},
+		{name: "cluster", role: "cluster-hidden", scope: []string{"--cluster", "c-x"}, kind: "ClusterRoleTemplateBinding"},
+	} {
+		t.Run("grant hidden role "+tt.name+" preview and result", func(t *testing.T) {
+			opts := &serverOpts{}
+			srv := httptest.NewTLSServer(grHandler(opts))
+			defer srv.Close()
+			dir := grConfigDir(t, srv)
+
+			args := append([]string{"grant", "u-abc", "--role", tt.role}, tt.scope...)
+			stdout, _, runErr := grRun(t, grRoot(t), dir, append(slices.Clone(args), "--dry-run", "-o", "json")...)
+			require.NoError(t, runErr)
+			var preview effectEnvelope
+			require.NoError(t, json.Unmarshal(stdout, &preview))
+			assert.Equal(t, "Effect", preview.Kind)
+			assert.Equal(t, []string{hiddenWarn(tt.role)}, preview.Warnings)
+			assert.Equal(t, int32(0), opts.realCreates.Load(), "a preview creates nothing")
+
+			stdout, _, runErr = grRun(t, grRoot(t), dir, append(slices.Clone(args), "--apply", "--yes", "-o", "json")...)
+			require.NoError(t, runErr)
+			var result effectEnvelope
+			require.NoError(t, json.Unmarshal(stdout, &result))
+			assert.Equal(t, tt.kind, result.Kind)
+			assert.Equal(t, []string{hiddenWarn(tt.role)}, result.Warnings)
+			assert.Equal(t, int32(1), opts.realCreates.Load(), "exactly one non-dry-run create")
+		})
+	}
 
 	t.Run("grant global preview", func(t *testing.T) {
 		opts := &serverOpts{}

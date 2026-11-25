@@ -13,8 +13,9 @@ import (
 )
 
 // lockedRoleServer serves role templates in every state the filter reads:
-// unlocked, locked, locked spelled false, locked as a string, hidden and
-// unlocked, and a locked template with no context; and global roles that
+// unlocked, locked, locked spelled false, locked as a string, hidden,
+// hidden spelled false, hidden as a string, and a locked template with no
+// context; and global roles that
 // name no inherited role template, an unlocked, a locked and a missing one.
 func lockedRoleServer(t *testing.T) *completiontest.Server {
 	t.Helper()
@@ -25,8 +26,11 @@ func lockedRoleServer(t *testing.T) *completiontest.Server {
 			{"metadata":{"name":"project-false"},"context":"project","locked":false,"displayName":"Project False"},
 			{"metadata":{"name":"project-string"},"context":"project","locked":"true","displayName":"Project String"},
 			{"metadata":{"name":"project-hidden"},"context":"project","hidden":true,"displayName":"Project Hidden"},
+			{"metadata":{"name":"project-hidden-false"},"context":"project","hidden":false,"displayName":"Project Hidden False"},
+			{"metadata":{"name":"project-hidden-string"},"context":"project","hidden":"true","displayName":"Project Hidden String"},
 			{"metadata":{"name":"cluster-open"},"context":"cluster","displayName":"Cluster Open"},
 			{"metadata":{"name":"cluster-locked"},"context":"cluster","locked":true,"displayName":"Cluster Locked"},
+			{"metadata":{"name":"cluster-hidden"},"context":"cluster","hidden":true,"displayName":"Cluster Hidden"},
 			{"metadata":{"name":"cluster-false"},"context":"cluster","locked":false,"displayName":"Cluster False"},
 			{"metadata":{"name":"orphan-locked"},"locked":true,"displayName":"Orphan Locked"},
 			{"metadata":{"name":"orphan-open"},"displayName":"Orphan Open"}
@@ -40,33 +44,37 @@ func lockedRoleServer(t *testing.T) *completiontest.Server {
 	})
 }
 
-// TestGrantRevokeAndRoleSourcesAnswerLockedRolesByScope asserts, at each
-// scope, one listing and the names and display names each source answers:
-// grant's source leaves out a role template whose locked field is the
-// JSON boolean true at project and cluster scope and keeps one with
-// locked false, a string value, or no locked field and a hidden one;
-// revoke's source and RoleSource answer every role template of the
-// scope's context; a role template with no context is dropped by all three;
-// at global scope grant's source leaves out the global roles that inherit a
-// locked role template or one that does not exist and lists the role
-// templates for it, a second request, while revoke's source and RoleSource
-// answer every global role from one.
+// TestGrantRevokeAndRoleSourcesAnswerLockedRolesByScope asserts, at each scope,
+// one listing and the names and display names each source answers: grant's
+// source leaves out a role template whose locked or hidden field is the JSON
+// boolean true at project and cluster scope and keeps one with the field false,
+// a string value, or no such field; revoke's source and RoleSource answer every
+// role template of the scope's context; a role template with no context is
+// dropped by all three; at global scope grant's source leaves out the global
+// roles that inherit a locked role template or one that does not exist and
+// lists the role templates for it, a second request, while revoke's source and
+// RoleSource answer every global role from one.
 func TestGrantRevokeAndRoleSourcesAnswerLockedRolesByScope(t *testing.T) {
 	t.Parallel()
 	projectTail := []string{"jane", "--project", "Default", "--role"}
 	clusterTail := []string{"jane", "--cluster", "c-x", "--role"}
 	globalTail := []string{"jane", "--global", "--role"}
 	projectOffered := map[string]string{
-		"project-false": "Project False", "project-hidden": "Project Hidden",
-		"project-open": "Project Open", "project-string": "Project String",
+		"project-false": "Project False", "project-hidden-false": "Project Hidden False",
+		"project-hidden-string": "Project Hidden String", "project-open": "Project Open",
+		"project-string": "Project String",
 	}
 	projectAll := map[string]string{
 		"project-false": "Project False", "project-hidden": "Project Hidden",
+		"project-hidden-false": "Project Hidden False", "project-hidden-string": "Project Hidden String",
 		"project-locked": "Project Locked", "project-open": "Project Open",
 		"project-string": "Project String",
 	}
 	clusterOffered := map[string]string{"cluster-false": "Cluster False", "cluster-open": "Cluster Open"}
-	clusterAll := map[string]string{"cluster-false": "Cluster False", "cluster-locked": "Cluster Locked", "cluster-open": "Cluster Open"}
+	clusterAll := map[string]string{
+		"cluster-false": "Cluster False", "cluster-hidden": "Cluster Hidden",
+		"cluster-locked": "Cluster Locked", "cluster-open": "Cluster Open",
+	}
 	globalOffered := map[string]string{"global-inherits-open": "Global Inherits Open", "global-open": "Global Open"}
 	globalAll := map[string]string{
 		"global-inherits-locked": "Global Inherits Locked", "global-inherits-missing": "Global Inherits Missing",
@@ -107,18 +115,18 @@ func TestGrantRevokeAndRoleSourcesAnswerLockedRolesByScope(t *testing.T) {
 	}
 }
 
-// TestRoleSourceKeepsLockedRoleTemplates asserts RoleSource answers every
-// role template of the scope's context, locked ones included, and every
-// global role from one request.
-func TestRoleSourceKeepsLockedRoleTemplates(t *testing.T) {
+// TestRoleSourceKeepsLockedAndHiddenRoleTemplates asserts RoleSource answers
+// every role template of the scope's context, locked and hidden ones
+// included, and every global role from one request.
+func TestRoleSourceKeepsLockedAndHiddenRoleTemplates(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name string
 		tail []string
 		want []string
 	}{
-		{name: "project", tail: []string{"grant", "jane", "--project", "Default", "--role"}, want: []string{"project-false", "project-hidden", "project-locked", "project-open", "project-string"}},
-		{name: "cluster", tail: []string{"grant", "jane", "--cluster", "c-x", "--role"}, want: []string{"cluster-false", "cluster-locked", "cluster-open"}},
+		{name: "project", tail: []string{"grant", "jane", "--project", "Default", "--role"}, want: []string{"project-false", "project-hidden", "project-hidden-false", "project-hidden-string", "project-locked", "project-open", "project-string"}},
+		{name: "cluster", tail: []string{"grant", "jane", "--cluster", "c-x", "--role"}, want: []string{"cluster-false", "cluster-hidden", "cluster-locked", "cluster-open"}},
 		{name: "global", tail: []string{"grant", "jane", "--global", "--role"}, want: []string{"global-inherits-locked", "global-inherits-missing", "global-inherits-open", "global-open"}},
 	}
 	for _, tt := range tests {

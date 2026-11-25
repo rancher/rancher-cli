@@ -1069,6 +1069,11 @@ Never present a role list as permissions.
   disambiguates principals whose provider prefix cannot be inferred.
   Principals with no matching user trigger a provisioning warning;
   Rancher auto-creates the user when the binding applies. Dry-run/apply --yes.
+  A role template whose `hidden` field is true (Rancher tells its UI not to
+  display it) is accepted when typed in full, with a warning in the preview and
+  in the result: `role "admin" is a hidden role template: Rancher tells its UI
+  not to display it`. Relay the warning to the user and check that the role is
+  the one they mean. `revoke` does not warn.
   When Rancher refuses the read of users (a project owner, for example), the CLI
   warns and uses the subject exactly as typed if it is `local://<id>` or an id
   that looks like `u-lpnxw` (`u-`, `m-` or `user-` followed by at least five
@@ -1238,13 +1243,16 @@ Never present a role list as permissions.
   commands.
 - `rancher get roletemplates -o json` - filter `context=="cluster"` or
   `context=="project"` to find role names for `--role`; `-o table` shows the
-  same as a CONTEXT column. Once a scope flag (`--cluster`, `--project`, or
-  `--global`) is on the line, `--role <TAB>` completes live (requires the
-  network-completion opt-in). `grant --role <TAB>` leaves out role templates
-  whose `locked` field is true and, at global scope, global roles that inherit a
-  locked role template or one that does not exist (Rancher does not allow a new
-  binding to such a role), and `revoke --role <TAB>` still offers them. The
-  candidates in a NOT_FOUND error of `grant` follow the same rule, and
+  context in a CONTEXT column and the `hidden` field in a HIDDEN column. Once a
+  scope flag (`--cluster`, `--project`, or `--global`) is on the line,
+  `--role <TAB>` completes live (requires the network-completion opt-in).
+  `grant --role <TAB>` leaves out role templates whose `locked` field is true
+  and, at global scope, global roles that inherit a locked role template or one
+  that does not exist (Rancher does not allow a new binding to such a role).
+  It also leaves out role templates whose `hidden` field is true (Rancher tells
+  its UI not to display them); `grant --role` typed in full accepts one, with a
+  warning. `revoke --role <TAB>` still offers all of them. The candidates in a
+  NOT_FOUND error of `grant` follow the same rule, and
   `create user --global-role` completion and its NOT_FOUND candidates leave out
   the same global roles.
   Positional completion may return the full candidate list and rely on the

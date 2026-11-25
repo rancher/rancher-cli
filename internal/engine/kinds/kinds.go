@@ -1090,7 +1090,8 @@ var table = []Kind{
 
 		NoDeleteReason: "role templates and global roles are the roles that grant gives and revoke takes away",
 		Binding:        safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable}, // Rancher Kubernetes Public API (semi-official list, 2026-07-30)
-		Columns:        []Column{{Header: "CONTEXT", Path: []string{"context"}}, {Header: "DISPLAY NAME", Path: []string{"displayName"}}},
+		Columns:        []Column{{Header: "CONTEXT", Path: []string{"context"}}, {Header: "DISPLAY NAME", Path: []string{"displayName"}}, {Header: "HIDDEN", Path: []string{"hidden"}, Bool: true}},
+		GetDesc:        "HIDDEN is the hidden field of a role template: Rancher tells its UI not to display a hidden one. The grant command accepts one with a warning; the candidates in its NOT_FOUND error and its --role completion leave it out.",
 	},
 	{
 		Key: "globalrole", Name: "globalrole", Aliases: []string{"globalroles"},

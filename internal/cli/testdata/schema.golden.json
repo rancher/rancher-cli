@@ -8493,6 +8493,7 @@
       "auth": true,
       "commandType": "readOnly",
       "contract": "public",
+      "desc": "HIDDEN is the hidden field of a role template: Rancher tells its UI not to display a hidden one. The grant command accepts one with a warning; the candidates in its NOT_FOUND error and its --role completion leave it out.",
       "flags": [
         {
           "aliases": [
@@ -9107,7 +9108,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "public",
-      "desc": "Checks that the role exists for the scope (a roletemplate for project or cluster scope, a globalrole for global scope), finds the subject, checks that the subject does not already have the role there, and previews creating the binding. List the available roles with: `rancher get roletemplates` (project and cluster scopes) or `rancher get globalroles` (global scope). A subject that is not a principal is matched by user id, then by username. A display name is never matched: when the value is the display name of one or more users and the user id or username of no user, the command fails with NOT_FOUND and lists those users with their user ids. When Rancher refuses the read of users, the command warns and uses the subject exactly as typed if it is `local://<id>` or an id that looks like u-lpnxw (u-, m- or user- followed by at least five characters from bcdfghjklmnpqrstvwxz2456789). A username, an id that does not look like u-lpnxw, or a user principal other than local://<id> fails: pass the user id as local://<id>.",
+      "desc": "Checks that the role exists for the scope (a roletemplate for project or cluster scope, a globalrole for global scope), finds the subject, checks that the subject does not already have the role there, and previews creating the binding. List the available roles with: `rancher get roletemplates` (project and cluster scopes) or `rancher get globalroles` (global scope). A role template whose hidden field is true (Rancher tells its UI not to display it) is accepted with a warning; the candidates in a NOT_FOUND error for a role, and --role completion, leave it out. A subject that is not a principal is matched by user id, then by username. A display name is never matched: when the value is the display name of one or more users and the user id or username of no user, the command fails with NOT_FOUND and lists those users with their user ids. When Rancher refuses the read of users, the command warns and uses the subject exactly as typed if it is `local://<id>` or an id that looks like u-lpnxw (u-, m- or user- followed by at least five characters from bcdfghjklmnpqrstvwxz2456789). A username, an id that does not look like u-lpnxw, or a user principal other than local://<id> fails: pass the user id as local://<id>.",
       "destructive": "true",
       "examples": [
         "rancher grant u-abc123 --project p-x --cluster c-x --role project-member --apply --yes",
