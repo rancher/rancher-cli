@@ -270,9 +270,15 @@ type Error struct {
 	// Details carries an optional command-specific structured payload
 	// (e.g. revoke's partial-failure split). Shape is owned by the
 	// producing command; consumers decode by command context.
-	Details  any      `json:"details,omitempty"`
-	cause    error    // not serialized; enables errors.Is/As chaining
-	warnings []string // not serialized directly; rides the envelope's top-level "warnings", never data.error
+	Details any `json:"details,omitempty"`
+	// OutcomeUnknown is true on the error of a write whose request was sent
+	// and whose result the CLI does not know: the server did not say whether
+	// it applied the change. Such an error is never retryable: running the
+	// command again can apply the change a second time, and WithRetryable
+	// leaves Retryable false.
+	OutcomeUnknown bool     `json:"outcomeUnknown,omitempty"`
+	cause          error    // not serialized; enables errors.Is/As chaining
+	warnings       []string // not serialized directly; rides the envelope's top-level "warnings", never data.error
 }
 
 func New(code, message string) *Error { return &Error{Code: code, Message: message} }
@@ -302,9 +308,9 @@ func CodeExits() map[string]int {
 func (e *Error) WithHint(h string) *Error { e.Hint = h; return e }
 
 // WithMessage returns a copy of e with msg as its message; every other
-// field (code, hint, cause, retryable, candidates and their total, details,
-// warnings) carries over, so a caller amending the text cannot silently drop
-// the rest.
+// field (code, hint, cause, retryable, OutcomeUnknown, candidates and their
+// total, details, warnings) carries over. A caller amending the text cannot
+// silently drop the rest.
 func (e *Error) WithMessage(msg string) *Error {
 	c := *e
 	c.Message = msg
@@ -315,8 +321,12 @@ func (e *Error) WithMessage(msg string) *Error {
 	return &c
 }
 
-func (e *Error) WithCause(err error) *Error  { e.cause = err; return e }
-func (e *Error) WithRetryable(b bool) *Error { e.Retryable = b; return e }
+func (e *Error) WithCause(err error) *Error { e.cause = err; return e }
+
+// WithRetryable sets whether the error is worth retrying. An error with
+// OutcomeUnknown stays not retryable whatever b is: running the command
+// again can apply the change a second time.
+func (e *Error) WithRetryable(b bool) *Error { e.Retryable = b && !e.OutcomeUnknown; return e }
 
 // WithCandidates sets the candidates to c as the full list: it clears any
 // total an earlier WithCandidatesCut set.

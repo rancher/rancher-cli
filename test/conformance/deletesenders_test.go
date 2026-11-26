@@ -34,9 +34,9 @@ var deleteSenders = []struct {
 	file, function, pattern, reason string
 }{
 	{"internal/client/provider/client.go", "dynamicClient.Delete", clientGoDelete, "the delete with a resourceVersion precondition"},
-	{"internal/client/provider/client.go", "dynamicClient.Delete", deleteMethod, "names the method of the delete beside it for mapRequestErr; it builds no request"},
+	{"internal/client/provider/client.go", "dynamicClient.Delete", deleteMethod, "names the method of the delete beside it for the error mapping; it builds no request"},
 	{"internal/client/provider/client.go", "dynamicClient.DeleteWithUID", clientGoDelete, "the delete with a uid precondition"},
-	{"internal/client/provider/client.go", "dynamicClient.DeleteWithUID", deleteMethod, "names the method of the delete beside it for mapRequestErr; it builds no request"},
+	{"internal/client/provider/client.go", "dynamicClient.DeleteWithUID", deleteMethod, "names the method of the delete beside it for the error mapping; it builds no request"},
 	{"internal/cli/cloudcredclient.go", "cloudCredentialClient.Delete", deleteMethod, "the delete of a cloud credential through Norman, which takes no precondition"},
 	{"internal/cli/cloudcredclient.go", "cloudCredentialClient.send", deleteMethod, "leaves out the request body for that delete"},
 	{"internal/engine/provisioning/cloudcredwrite.go", "deleteCloudCredentialCmd.execute", deleteMethod, "names the method of the Norman delete in the error it returns; it builds no request"},

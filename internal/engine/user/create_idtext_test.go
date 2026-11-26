@@ -151,7 +151,7 @@ func TestAGrantCommandIsLeftOutForAValueAShellMisreads(t *testing.T) {
 			assert.Contains(t, clause, clierr.LeftOutNote, "username %q", value)
 		}
 
-		clauses := notBoundClauses("u-abc12", []string{value, "alpha"})
+		clauses := notBoundClauses("u-abc12", []notBoundRole{{role: value}, {role: "alpha"}})
 		assert.Equal(t, 1, strings.Count(clauses, clierr.LeftOutNote), "role %q", value)
 		assert.NotContains(t, clauses, "--role '"+value+"'", "role %q", value)
 		assert.Contains(t, clauses, "global role alpha was not bound; preview the grant with: "+clierr.Rancher+" grant 'u-abc12' --global --role 'alpha' --dry-run", "role %q", value)

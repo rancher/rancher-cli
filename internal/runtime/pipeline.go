@@ -1355,17 +1355,17 @@ func (c *countingWriter) Write(p []byte) (int, error) {
 }
 
 // errorText renders ce as the default-format stderr block: a header line
-// naming the code (and "retryable" when the error is retryable), an indented
-// hint line when present, an indented candidates line - each candidate
-// rendered "name (id)", its name and id shown with their hidden characters as
-// escapes - when present, and finally the details payload's own projected
-// lines (detailsTextLines) when one is attached, each value of which is shown
-// the same way. s styles the
+// naming the code (and "retryable" when output says the error is retryable,
+// clierr's RetryableInOutput), an indented hint line when present, an indented
+// candidates line - each candidate rendered "name (id)", its name and id shown
+// with their hidden characters as escapes - when present, and finally the
+// details payload's own projected lines (detailsTextLines) when one is
+// attached, each value of which is shown the same way. s styles the
 // "error (CODE):" and "hint:" prefixes only, never the message/hint body.
 // expand writes the remedy commands of a text that is already escaped.
 func errorText(ce *clierr.Error, s style.Style, expand func(string) string) string {
 	retry := ""
-	if ce.Retryable {
+	if ce.RetryableInOutput() {
 		retry = ", retryable"
 	}
 	prefix := fmt.Sprintf("error (%s%s):", ce.Code, retry)
@@ -1589,16 +1589,23 @@ func toClierr(ctx context.Context, err error) *clierr.Error {
 // err after its context was cancelled. A bare cancellation (err is the
 // context's own error, or wraps it) says "interrupted" alone; any other
 // surfaced error keeps its message, details and warnings, so a partial
-// outcome the command reported is not lost to the classification.
+// outcome the command reported is not lost to the classification. A
+// cancellation after a write's request was sent keeps the write's message,
+// hint and OutcomeUnknown: the change may be on the server.
 func interrupted(err error) *clierr.Error {
 	out := clierr.Interrupted().WithCause(err)
-	if errors.Is(err, context.Canceled) {
+	ce, ok := errors.AsType[*clierr.Error](err)
+	unknown := ok && ce.OutcomeUnknown
+	if errors.Is(err, context.Canceled) && !unknown {
 		return out
 	}
 	out.Message += ": " + err.Error()
-	if ce, ok := errors.AsType[*clierr.Error](err); ok {
+	if ok {
 		out.Details = ce.Details
 		out = out.WithWarnings(ce.Warnings()...)
+	}
+	if unknown {
+		out.Hint, out.OutcomeUnknown = ce.Hint, true
 	}
 	return out
 }

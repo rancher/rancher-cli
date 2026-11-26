@@ -323,12 +323,14 @@ func (r *dynamicClient) Create(ctx context.Context, gvr schema.GroupVersionResou
 	}
 	ctx, cancel := opCtx(ctx)
 	defer cancel()
+	ctx, written := traceWrite(ctx)
 	opts := metav1.CreateOptions{FieldManager: kube.FieldManager}
 	if dryRun {
 		opts.DryRun = []string{metav1.DryRunAll}
 	}
 	out, err := r.ri(gvr, ns).Create(ctx, obj, opts)
-	return out, mapRequestErr(ctx, http.MethodPost, err, r.request("create", gvr, ns, obj.GetName()))
+	w := write{method: http.MethodPost, gvr: gvr, ns: ns, name: obj.GetName(), dryRun: dryRun, written: written}
+	return out, r.mapWriteErr(ctx, w, err, r.request("create", gvr, ns, obj.GetName()))
 }
 
 func (r *dynamicClient) Update(ctx context.Context, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
@@ -339,6 +341,7 @@ func (r *dynamicClient) Update(ctx context.Context, gvr schema.GroupVersionResou
 	}
 	ctx, cancel := opCtx(ctx)
 	defer cancel()
+	ctx, written := traceWrite(ctx)
 	opts := metav1.UpdateOptions{FieldManager: kube.FieldManager}
 	if dryRun {
 		opts.DryRun = []string{metav1.DryRunAll}
@@ -348,8 +351,9 @@ func (r *dynamicClient) Update(ctx context.Context, gvr schema.GroupVersionResou
 	// The body's resourceVersion is the precondition. Without one, a 409
 	// cannot mean the resourceVersion is out of date.
 	req.Precondition = obj.GetResourceVersion() != ""
+	w := write{method: http.MethodPut, gvr: gvr, ns: ns, name: obj.GetName(), dryRun: dryRun, written: written}
 	return out, r.forbiddenHint(gvr, "update", ns, obj.GetName(),
-		r.curateNotFound(gvr, obj.GetName(), mapRequestErr(ctx, http.MethodPut, err, req)))
+		r.curateNotFound(gvr, obj.GetName(), r.mapWriteErr(ctx, w, err, req)))
 }
 
 func (r *dynamicClient) Delete(ctx context.Context, gvr schema.GroupVersionResource, ns, name, resourceVersion string, dryRun bool) error {
@@ -363,6 +367,7 @@ func (r *dynamicClient) Delete(ctx context.Context, gvr schema.GroupVersionResou
 	}
 	ctx, cancel := opCtx(ctx)
 	defer cancel()
+	ctx, written := traceWrite(ctx)
 	// Without a propagationPolicy the server applies the default for that
 	// kind: a Job keeps its pods and the server's response carries a warning
 	// for each request. Every delete, the dry-run preview included, sends
@@ -378,7 +383,8 @@ func (r *dynamicClient) Delete(ctx context.Context, gvr schema.GroupVersionResou
 	}
 	req := r.request("delete", gvr, ns, name)
 	req.Precondition = resourceVersion != ""
-	return r.curateNotFound(gvr, name, mapRequestErr(ctx, http.MethodDelete, r.ri(gvr, ns).Delete(ctx, name, opts), req))
+	w := write{method: http.MethodDelete, gvr: gvr, ns: ns, name: name, dryRun: dryRun, written: written}
+	return r.curateNotFound(gvr, name, r.mapWriteErr(ctx, w, r.ri(gvr, ns).Delete(ctx, name, opts), req))
 }
 
 var _ engine.UIDDeleter = (*dynamicClient)(nil)
@@ -422,11 +428,14 @@ func (r *dynamicClient) DeleteWithUID(ctx context.Context, gvr schema.GroupVersi
 	if err != nil {
 		return "", mapRequestErr(ctx, http.MethodDelete, err, req)
 	}
+	ctx, written := traceWrite(ctx)
 	res := r.tbl.Delete().AbsPath(segments...).SetHeader("Content-Type", "application/json").Body(body).Do(ctx)
 	// Error, not Raw, decodes a Status response into the *StatusError the
 	// status table reads.
 	if err := res.Error(); err != nil {
-		return "", r.curateNotFound(gvr, name, mapRequestErr(ctx, http.MethodDelete, err, req))
+		// The caller cannot get the object: the error names no get command.
+		w := write{method: http.MethodDelete, gvr: gvr, ns: ns, name: name, dryRun: dryRun, written: written, unreadable: true}
+		return "", r.curateNotFound(gvr, name, r.mapWriteErr(ctx, w, err, req))
 	}
 	raw, _ := res.Raw()
 	if !dryRun {

@@ -363,11 +363,24 @@ func cutAt(s string, limit int) string {
 	return s[:cut] + "…"
 }
 
-// classifyStatus is the status table. msg is err's text. When err ends
-// with the status's own text, a reason that is a JSON error object is
-// shown as its message, and a refusal that gave no reason keeps the text
-// err adds in front and words the rest for req.
-func classifyStatus(err error, se *apierrors.StatusError, req *Request) *Error {
+// statusReading is how the text of an error that holds a Kubernetes status
+// reads: the text the caller put in front of the status's own, whether err
+// ends with the status's own text, the reason the status gave and whether the
+// status gave none.
+type statusReading struct {
+	prefix  string
+	wrapped bool
+	// reason is the status's message, trimmed; a message that is a JSON error
+	// object gives its own message instead, and fromObject is true.
+	reason     string
+	fromObject bool
+	// noReason is true when err ends with the status's own text and that text
+	// is empty or unknown.
+	noReason bool
+}
+
+// readStatus reads the text of err, which holds se.
+func readStatus(err error, se *apierrors.StatusError) statusReading {
 	msg := err.Error()
 	prefix, wrapped := strings.CutSuffix(msg, se.Error())
 	if se.Error() == "" {
@@ -376,11 +389,31 @@ func classifyStatus(err error, se *apierrors.StatusError, req *Request) *Error {
 		wrapped = msg == "" || strings.HasSuffix(msg, ": ")
 	}
 	reason := strings.TrimSpace(se.ErrStatus.Message)
-	if m, ok := objectMessage(reason); ok && wrapped {
+	m, fromObject := objectMessage(reason)
+	fromObject = fromObject && wrapped
+	if fromObject {
 		reason = m
-		msg = prefix + m
 	}
-	noReason := wrapped && (reason == "" || reason == unknownMessage)
+	return statusReading{
+		prefix:     prefix,
+		wrapped:    wrapped,
+		reason:     reason,
+		fromObject: fromObject,
+		noReason:   wrapped && (reason == "" || reason == unknownMessage),
+	}
+}
+
+// classifyStatus is the status table. msg is err's text. When err ends
+// with the status's own text, a reason that is a JSON error object is
+// shown as its message, and a refusal that gave no reason keeps the text
+// err adds in front and words the rest for req.
+func classifyStatus(err error, se *apierrors.StatusError, req *Request) *Error {
+	msg := err.Error()
+	reading := readStatus(err, se)
+	prefix, wrapped, reason, noReason := reading.prefix, reading.wrapped, reading.reason, reading.noReason
+	if reading.fromObject {
+		msg = prefix + reason
+	}
 	code := int(se.ErrStatus.Code)
 	// The status-first wording needs a server and a text that ends with the
 	// status's own, so the caller's prefix is known.

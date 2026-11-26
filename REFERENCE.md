@@ -3793,6 +3793,43 @@ then `--allow-deprecated` for a command whose stability is `deprecated`.
 command whose `destructive` is `dependsOnInput`, `rancher schema` lists
 `--apply` only, and the preview adds `--yes` when the change is destructive.
 
+`data.error.outcomeUnknown` is `true` on the error of a write whose request
+was sent and whose result the CLI does not know: the connection failed, or the
+request timed out or was stopped, after it was sent, or the server responded
+with 502 or 504, or with 500 or 503 and a body that is not a Kubernetes Status.
+A proxy between the CLI and the Kubernetes API server, or the API server when a
+request runs past its own time limit, responds with 502 or 504 after the
+request may have reached the API server. Rancher's cluster proxy responds to a
+failed round trip with a 500, and the Kubernetes aggregation layer in front of
+ext.cattle.io responds to a failed proxy call with a 503, whether or not the
+request reached the API server; neither body is a Kubernetes Status. A 500 or
+503 that is a Kubernetes Status is the API server's own response and keeps its
+error. The error is `GENERIC` and not retryable: running the command again can
+apply the change a second time, or create a second object. Its message and
+`hint` give the `rancher get`
+command that reads the object, or lists the objects of its kind for a create
+that sent no name. Run that command first: if the object shows the change, do
+not repeat it. An error with no `hint` is a write the CLI has no command to
+read back: the message says to check whether the change is on the server. A
+delete of an object you cannot get, which is sent with a uid precondition, has
+no `hint` either: the message says to ask a user who can get the object to
+check, and names the command that lists the objects of its kind, which you may
+not be allowed to run. The field is set on the writes of the commands that
+create, patch or delete a resource through the Kubernetes API, and `create
+user` keeps it on an error after the user was created. `auth login`, which
+creates the derived token, and `auth logout`, which deletes it, do not set it.
+The partial-failure errors of `revoke` and `delete project`,
+which report a sequence of writes, do not carry it, and an error of those
+commands without it does not say that every write failed: read the objects
+before you run the command again. `app install`, `app upgrade`, `app
+uninstall`, `extension install`, `extension upgrade`, `extension uninstall`,
+`node drain`, `node stop-drain` and the cloud credential writes say the same
+about a lost response in their message and do not carry the field. The field is
+never set on a dry run, which changes nothing, or on a request that was not
+sent, such as one whose connection was refused. A command stopped after such a
+request was sent ends with `INTERRUPTED` and keeps the field, the message and
+the `hint`.
+
 `rancher create password-change-request` gives two of Rancher's responses to
 a PasswordChangeRequest a different error code, chosen by the text of the
 message. A 500 whose message contains `error updating password: invalid

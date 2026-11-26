@@ -47,7 +47,8 @@ func RefuseUnsupportedWorkflow(err error, evidence, detail string) error {
 // Code/Hint/Retryable when it is already a *clierr.Error rather than
 // flattening it to CodeGeneric - a caller inspecting Retryable to decide
 // whether to retry must see the classification the underlying call
-// actually carried, not always false.
+// actually carried, not always false. OutcomeUnknown is kept too: the step
+// whose request was sent may have been applied.
 //
 // The committed details replace the error's own details. A TLS_TRUST
 // error's message points at the certificate facts its details held, so
@@ -63,7 +64,9 @@ func CommittedPartialSuccess(err error, details clierr.CommittedContextDetails) 
 	if ce.Code == clierr.CodeTLSTrust {
 		msg += certificateFacts(ce)
 	}
-	return clierr.New(ce.Code, msg).WithHint(ce.Hint).WithRetryable(ce.Retryable).WithDetails(details)
+	out := clierr.New(ce.Code, msg).WithHint(ce.Hint).WithRetryable(ce.Retryable).WithDetails(details)
+	out.OutcomeUnknown = ce.OutcomeUnknown
+	return out
 }
 
 // certificateFacts renders the certificate lines of a TLS_TRUST error's

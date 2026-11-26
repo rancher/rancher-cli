@@ -237,19 +237,39 @@ func grantUserClause(username string) string {
 	return clierr.Text(clierr.Lead("preview the grant with: "), grantUserPreview(username))
 }
 
+// notBoundRole is a global role the committed user may not be bound to, with
+// the error of the GlobalRoleBinding create for it; err is nil for a role no
+// create was sent for.
+type notBoundRole struct {
+	role string
+	err  error
+}
+
 // notBoundClauses words, for each role that was not bound, how to grant it
-// to the committed user id, joined with "; ". An id that is not an object
-// name gets prose only: the CLI prints no command for an id it cannot quote.
-func notBoundClauses(id string, roles []string) string {
+// to the committed user id, joined with "; ". A role whose binding create has
+// an unknown result may be bound: its clause says what binding to look for
+// and the read command the error names, and no grant to preview. An id that
+// is not an object name gets prose only: the CLI prints no command for an id
+// it cannot quote.
+func notBoundClauses(id string, roles []notBoundRole) string {
 	quotable := len(validation.IsDNS1123Subdomain(id)) == 0
 	parts := make([]any, 0, 3*len(roles))
-	for i, role := range roles {
+	for i, r := range roles {
 		if i > 0 {
 			parts = append(parts, "; ")
 		}
-		parts = append(parts, "global role "+role+" was not bound")
+		if ce, ok := unknownOutcome(r.err); ok {
+			parts = append(parts, "global role "+r.role+" may be bound: look for a binding with userName "+clierr.ShellQuote(clierr.IDText(id))+" and globalRoleName "+r.role)
+			if ce.Hint != "" {
+				// The hint is the list of GlobalRoleBindings, whose default
+				// table shows neither field: -o json prints them.
+				parts = append(parts, " in the output of: "+ce.Hint+" -o json")
+			}
+			continue
+		}
+		parts = append(parts, "global role "+r.role+" was not bound")
 		if quotable {
-			parts = append(parts, clierr.Lead("; preview the grant with: "), grantPreview(id, role))
+			parts = append(parts, clierr.Lead("; preview the grant with: "), grantPreview(id, r.role))
 		}
 	}
 	return clierr.Text(parts...)

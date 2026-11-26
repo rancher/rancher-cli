@@ -11,6 +11,7 @@ package user
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -225,20 +226,20 @@ func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, 
 // token, and the recovery must not reintroduce the password-in-shell-
 // history/process-listing exposure this whole workflow exists to avoid.
 // It also stops before any binding is attempted and adds a grant clause for
-// each role not bound. A binding failure does not stop the remaining
+// each role not bound. When the Secret create's result is unknown the Secret
+// may exist: the recovery says to read it first and to set a password only
+// if it is not there. A binding failure does not stop the remaining
 // bindings: every role is attempted, then one error built from the first
-// failure names each role not bound. The user is never deleted.
+// failure whose result is unknown, or from the first failure when none is,
+// names each role not bound, and each role whose binding may exist. The user
+// is never deleted.
 func (c *createCmd) execute(ctx context.Context, client engine.ClusterClient, k kinds.Kind, username, displayName string, userObj *unstructured.Unstructured, password string, roles []string) (runtime.Result, error) {
 	createdUser, err := client.Create(ctx, k.GVR, "", userObj, false)
 	if err != nil {
 		return runtime.Result{}, err
 	}
 	name := createdUser.GetName()
-	recovery := fmt.Sprintf("the user %s was created without a password; the CLI prints no command for an id it cannot quote", clierr.ShellQuote(clierr.IDText(name)))
-	if len(validation.IsDNS1123Subdomain(name)) == 0 {
-		recovery = fmt.Sprintf(`the user %s was created without a password; to set one without putting it on the command line or in shell history, set PASSWORD in your shell (a password containing a double quote or backslash must be JSON-escaped in the manifest) and add --apply after reading the preview of: echo '{"apiVersion":"v1","kind":"Secret","metadata":{"name":"%s","namespace":"cattle-local-user-passwords"},"stringData":{"password":"'"$PASSWORD"'"}}' | `, name, name) +
-			clierr.Rancher + " create resource -f - --cluster local --dry-run"
-	}
+	recovery := fmt.Sprintf("the user %s was created without a password; %s", userText(name), setPasswordSteps(name, "one"))
 
 	secretObj := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "v1",
@@ -248,8 +249,15 @@ func (c *createCmd) execute(ctx context.Context, client engine.ClusterClient, k 
 	}}
 	createdSecret, err := client.Create(ctx, secretGVR, secretNamespace, secretObj, false)
 	if err != nil {
+		if ce, ok := unknownOutcome(err); ok {
+			recovery = passwordSecretMayExist(name, ce.Hint)
+		}
 		if len(roles) > 0 {
-			recovery += "; " + notBoundClauses(name, roles)
+			skipped := make([]notBoundRole, len(roles))
+			for i, role := range roles {
+				skipped[i] = notBoundRole{role: role}
+			}
+			recovery += "; " + notBoundClauses(name, skipped)
 		}
 		return runtime.Result{}, engine.CommittedPartialSuccess(err, clierr.CommittedContextDetails{
 			Committed: true, ResourceKind: "User", ResourceName: name, Recovery: recovery,
@@ -258,22 +266,29 @@ func (c *createCmd) execute(ctx context.Context, client engine.ClusterClient, k 
 
 	bk := mustKind("globalrolebinding")
 	bindings := make([]map[string]any, 0, len(roles))
-	var notBound []string
-	var firstErr error
+	var notBound []notBoundRole
+	var firstErr, unknownErr error
 	for _, role := range roles {
 		created, err := client.Create(ctx, bk.GVR, "", bindingObject(role, name), false)
 		if err != nil {
 			if firstErr == nil {
 				firstErr = err
 			}
-			notBound = append(notBound, role)
+			if _, ok := unknownOutcome(err); ok && unknownErr == nil {
+				unknownErr = err
+			}
+			notBound = append(notBound, notBoundRole{role: role, err: err})
 			continue
 		}
 		bindings = append(bindings, map[string]any{"name": created.GetName(), "globalRoleName": role})
 	}
 	if firstErr != nil {
+		returned := firstErr
+		if unknownErr != nil {
+			returned = unknownErr
+		}
 		recovery := fmt.Sprintf("the user %s was created; %s", clierr.ShellQuote(clierr.IDText(name)), notBoundClauses(name, notBound))
-		return runtime.Result{}, engine.CommittedPartialSuccess(firstErr, clierr.CommittedContextDetails{
+		return runtime.Result{}, engine.CommittedPartialSuccess(returned, clierr.CommittedContextDetails{
 			Committed: true, ResourceKind: "User", ResourceName: name, Recovery: recovery,
 		})
 	}
@@ -313,4 +328,49 @@ func (c *createCmd) execute(ctx context.Context, client engine.ClusterClient, k 
 	res.Kind = "UserCreated"
 	res.Data = data
 	return res, nil
+}
+
+// userText is the user id as the recovery names it: the id itself when it is
+// an object name, else quoted with the characters a terminal hides escaped.
+func userText(name string) string {
+	if len(validation.IsDNS1123Subdomain(name)) == 0 {
+		return name
+	}
+	return clierr.ShellQuote(clierr.IDText(name))
+}
+
+// setPasswordSteps words how to create the password Secret of the user name
+// without putting the password on the command line or in shell history; what
+// is what it sets ("one", "a password"). An id that is not an object name
+// gets prose only: the CLI prints no command for an id it cannot quote.
+func setPasswordSteps(name, what string) string {
+	if len(validation.IsDNS1123Subdomain(name)) != 0 {
+		return "the CLI prints no command for an id it cannot quote"
+	}
+	return clierr.Text(fmt.Sprintf(`to set %s without putting it on the command line or in shell history, set PASSWORD in your shell (a password containing a double quote or backslash must be JSON-escaped in the manifest) and add --apply after reading the preview of: echo '{"apiVersion":"v1","kind":"Secret","metadata":{"name":"%s","namespace":"cattle-local-user-passwords"},"stringData":{"password":"'"$PASSWORD"'"}}' | `, what, name) +
+		clierr.Rancher + " create resource -f - --cluster local --dry-run")
+}
+
+// passwordSecretMayExist is the recovery after the create of the password
+// Secret of the user name had an unknown result. The Secret may exist: it is
+// read first (read is the read command the error names, "" for none), and
+// the steps to set a password follow only for a Secret that is not there. A
+// Secret that is there holds the password this command sent.
+func passwordSecretMayExist(name, read string) string {
+	check := "check whether it exists first"
+	if read != "" {
+		check = "read it first with: " + read
+	}
+	check += "; if it is there, the user already has that password"
+	steps := setPasswordSteps(name, "a password")
+	if len(validation.IsDNS1123Subdomain(name)) == 0 {
+		steps = "only if it is not there, " + steps
+	}
+	return clierr.Text(fmt.Sprintf("the user %s was created and its password Secret may exist; %s; %s", userText(name), check, steps))
+}
+
+// unknownOutcome returns err as a *clierr.Error when it has OutcomeUnknown.
+func unknownOutcome(err error) (*clierr.Error, bool) {
+	ce, ok := errors.AsType[*clierr.Error](err)
+	return ce, ok && ce.OutcomeUnknown
 }

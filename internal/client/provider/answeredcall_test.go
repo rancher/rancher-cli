@@ -220,8 +220,9 @@ func probe(t *testing.T, ctx context.Context, rc *rest.Config, name string) {
 // status a deadline error names is the answer to the request in flight when
 // the deadline came, never an earlier request's of the same call: a 404
 // followed by a request that hangs, and a 429 whose retry hangs, read as no
-// answer; a 429 whose wait the deadline cuts names 429, also for a POST,
-// whose message and cause then say nothing of a GET.
+// answer, and a POST whose retry after a 429 hangs is an unknown outcome with
+// the timeout as its cause; a 429 whose wait the deadline cuts names 429, also
+// for a POST, whose message and cause then say nothing of a GET.
 func TestADeadlineNamesOnlyTheAnswerOfTheRequestThatRanOutOfTime(t *testing.T) {
 	t.Cleanup(SetRequestTimeoutForTest(time.Second))
 
@@ -250,6 +251,31 @@ func TestADeadlineNamesOnlyTheAnswerOfTheRequestThatRanOutOfTime(t *testing.T) {
 		_, err := c.Get(t.Context(), guardNamespaces, "", "a")
 		assert.Equal(t, 2, int(hits.Load()), "the retry was sent")
 		assertNoAnswerTimeout(t, err)
+	})
+
+	t.Run("a 429 whose retry of a POST hangs", func(t *testing.T) {
+		defer kube.SetRetryLimitsForTest(time.Second, 10*time.Second)()
+		defer SetRequestTimeoutForTest(2 * time.Second)()
+		var hits atomic.Int32
+		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if hits.Add(1) == 1 {
+				_, _ = io.Copy(io.Discard, r.Body)
+				writeAnswer(w, 429, "1", cloudflareBody)
+				return
+			}
+			hang(r)
+		}))
+		t.Cleanup(srv.Close)
+		c, _ := tlsClient(t, srv, "local")
+		_, err := c.Create(t.Context(), guardNamespaces, "", unavailableObject(), false)
+		assert.Equal(t, 2, int(hits.Load()), "the retry was sent")
+		ce, ok := errors.AsType[*clierr.Error](err)
+		require.True(t, ok, "%v", err)
+		assert.True(t, ce.OutcomeUnknown, ce.Message)
+		assert.False(t, ce.Retryable)
+		assert.Contains(t, ce.Message, "(the request timed out)")
+		_, answered := clierr.HTTPStatus(err)
+		assert.False(t, answered)
 	})
 
 	t.Run("a 429 whose wait the deadline cuts", func(t *testing.T) {

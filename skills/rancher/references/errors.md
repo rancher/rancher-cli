@@ -37,7 +37,29 @@
   the exec plugin finds that `config.yaml` changed during a call and `--name`
   now identifies another entry or none (the message starts "config.yaml changed
   while this call was running"). Any other CONFLICT from a check in the CLI
-  carries its own `retryable`.
+  carries its own `retryable`. A timeout, a 502 or a 504 on a write whose
+  request was sent is not retryable, nor is a 500 or a 503 whose body is not a
+  Kubernetes Status: see `outcomeUnknown` below.
+
+- `outcomeUnknown: true` means a write's request was sent and the CLI does not
+  know whether the server applied it (the connection was lost, the request
+  timed out or was stopped, or the server responded with 502 or 504, or with
+  500 or 503 and a body that is not a Kubernetes Status). The change may be on
+  the server. Do not run the command again yet: run the `hint`, a `rancher get`
+  command that reads the object (or lists the objects of its kind when the
+  create sent no name). If the object shows the change, do not repeat it; if it
+  does not, run the command again. For a delete, an object that is gone, or
+  that has a `metadata.deletionTimestamp`, means the delete was applied. For a
+  create that sent no name, look in the list for the object this command
+  created. With no `hint`, the CLI cannot read the object back: check whether
+  the change is on the server with a command of your own, or tell the user; a
+  delete of an object you cannot get says to ask a user who can get it. `create
+  user` keeps the field on an error after the user was created. `revoke` and
+  `delete project` can leave the same doubt in the `message` inside `details`;
+  `app install`, `app upgrade`, `app uninstall`, `extension install`,
+  `extension upgrade`, `extension uninstall`, `node drain`, `node stop-drain`
+  and the cloud credential writes in their `message`, in each case without the
+  field.
 
 - A temporary 403 from Kubernetes admission (the server could not check the
   request yet) is `GENERIC` and retryable. The message is the Status message,

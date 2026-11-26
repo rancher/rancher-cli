@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -66,6 +67,10 @@ type guardPath struct {
 	// whole number of seconds in Retry-After, whether or not the path repeats
 	// the request.
 	noRecord bool
+	// write is true for a write that is not a dry run: a 502 or a 504 to it,
+	// and a 500 or a 503 whose body is not a Kubernetes Status, leave open
+	// whether the server applied it (unknownResponse).
+	write bool
 	// run makes one call, through the cluster, against srv, with the context
 	// that carries the call's record of answers.
 	run func(t *testing.T, ctx context.Context, srv *testtransport.Answers, cluster string) error
@@ -121,18 +126,18 @@ func guardPaths() []guardPath {
 				_, err := guardClient(t, srv, cluster).Create(ctx, guardNamespaces, "", unavailableObject(), true)
 				return err
 			}},
-		{name: "update", method: "Update", retries: true, named: true, clusterOK: true,
+		{name: "update", method: "Update", retries: true, named: true, clusterOK: true, write: true,
 			run: func(t *testing.T, ctx context.Context, srv *testtransport.Answers, cluster string) error {
 				t.Helper()
 				_, err := guardClient(t, srv, cluster).Update(ctx, guardNamespaces, "", unavailableObject(), false)
 				return err
 			}},
-		{name: "delete", method: "Delete", retries: true, named: true, clusterOK: true,
+		{name: "delete", method: "Delete", retries: true, named: true, clusterOK: true, write: true,
 			run: func(t *testing.T, ctx context.Context, srv *testtransport.Answers, cluster string) error {
 				t.Helper()
 				return guardClient(t, srv, cluster).Delete(ctx, guardNamespaces, "", "a", "1", false)
 			}},
-		{name: "delete with a uid precondition", method: "DeleteWithUID", retries: true, named: true, clusterOK: true,
+		{name: "delete with a uid precondition", method: "DeleteWithUID", retries: true, named: true, clusterOK: true, write: true,
 			run: func(t *testing.T, ctx context.Context, srv *testtransport.Answers, cluster string) error {
 				t.Helper()
 				_, err := guardClient(t, srv, cluster).(engine.UIDDeleter).DeleteWithUID(ctx, guardNamespaces, "", "a", "u1", false)
@@ -309,6 +314,47 @@ func (p guardPath) assertAnswered(t *testing.T, err error, status int) *clierr.E
 	return nil
 }
 
+// isKubernetesStatusBody reports whether body is the JSON of a Kubernetes
+// Status.
+func isKubernetesStatusBody(body string) bool {
+	var s struct {
+		Kind string `json:"kind"`
+	}
+	return json.Unmarshal([]byte(body), &s) == nil && s.Kind == "Status"
+}
+
+// unknownResponse reports whether the response in row leaves open whether the
+// server applied the write p sends: a 502 or a 504 with any body, a 500 or a
+// 503 whose body is not a Kubernetes Status.
+func (p guardPath) unknownResponse(row unavailableRow) bool {
+	if !p.write {
+		return false
+	}
+	switch row.status {
+	case http.StatusBadGateway, http.StatusGatewayTimeout:
+		return true
+	case http.StatusInternalServerError, http.StatusServiceUnavailable:
+		return !isKubernetesStatusBody(row.body)
+	}
+	return false
+}
+
+// assertUnknownResponse asserts err is the error of a write that got the
+// response status, which leaves open whether the server applied it:
+// OutcomeUnknown, GENERIC, not retryable, and the status still in its chain.
+func assertUnknownResponse(t *testing.T, err error, status int) *clierr.Error {
+	t.Helper()
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "%T: %v", err, err)
+	assert.True(t, ce.OutcomeUnknown, ce.Message)
+	assert.False(t, ce.Retryable, ce.Message)
+	assert.Equal(t, clierr.CodeGeneric, ce.Code)
+	got, ok := clierr.HTTPStatus(err)
+	assert.True(t, ok, "no status in %q", ce.Message)
+	assert.Equal(t, status, got)
+	return ce
+}
+
 // TestEveryClientPathFailsAtOnceOnAnUnavailableServer asserts, over every
 // way a command sends a request to the server, that a server answering a 5xx
 // with a Retry-After header of 1 or 120 seconds gets the same one request as
@@ -322,7 +368,9 @@ func (p guardPath) assertAnswered(t *testing.T, err error, status int) *clierr.E
 // with a record of its answers is granted the cap on that 429, one second
 // here, whether or not it repeats the request, because the answered
 // transport grants the wait when it sees the answer; a path with no record
-// is granted none.
+// is granted none. A 502 or a 504 to a write that is not a dry run, and a 500
+// or a 503 to it with a body that is not a Kubernetes Status (the body here),
+// is the error whose result is unknown instead (assertUnknownResponse).
 func TestEveryClientPathFailsAtOnceOnAnUnavailableServer(t *testing.T) {
 	guardSeams(t)
 	for _, p := range guardPaths() {
@@ -335,8 +383,9 @@ func TestEveryClientPathFailsAtOnceOnAnUnavailableServer(t *testing.T) {
 					if !p.several {
 						assert.Equal(t, 1, base.count, "a request answered %d with no Retry-After", status)
 					}
-					ce := p.assertAnswered(t, base.err, status)
-					if p.named {
+					if p.unknownResponse(row) {
+						_ = assertUnknownResponse(t, base.err, status)
+					} else if ce := p.assertAnswered(t, base.err, status); p.named {
 						assert.Contains(t, ce.Message, p.prefix+base.server+" answered HTTP "+strconv.Itoa(status))
 					}
 					t.Logf("requests %s %d with no Retry-After: %d", p.name, status, base.count)
@@ -344,8 +393,9 @@ func TestEveryClientPathFailsAtOnceOnAnUnavailableServer(t *testing.T) {
 						got := answerOf(t, p, row, retryAfter, "local")
 						assert.Equal(t, base.count, got.count, "Retry-After %s", retryAfter)
 						assert.Zero(t, got.granted, "a %d is granted no wait, Retry-After %s", status, retryAfter)
-						ce := p.assertAnswered(t, got.err, status)
-						if p.named {
+						if p.unknownResponse(row) {
+							_ = assertUnknownResponse(t, got.err, status)
+						} else if ce := p.assertAnswered(t, got.err, status); p.named {
 							assert.Contains(t, ce.Message, p.prefix+got.server+" answered HTTP "+strconv.Itoa(status))
 						}
 					}
@@ -387,7 +437,10 @@ func TestEveryClientPathFailsAtOnceOnAnUnavailableServer(t *testing.T) {
 // and the cluster sentence through a cluster; the plain status text for
 // 502, 503, 429 and 500, with the agent note for a 502 through a cluster;
 // the text a server sent with its answer, a Kubernetes Status or plain
-// text, kept as received.
+// text, kept as received. A 502 to a write that is not a dry run, and a 500
+// or a 503 to it whose body is not a Kubernetes Status, is the error whose
+// result is unknown, with the text the server gave and, for a 502 through a
+// cluster, the clause about the cluster's agent.
 func TestEveryClientPathWordsAnUnavailableServerTheSame(t *testing.T) {
 	guardSeams(t)
 	const (
@@ -399,17 +452,22 @@ func TestEveryClientPathWordsAnUnavailableServerTheSame(t *testing.T) {
 		cluster string
 		row     unavailableRow
 		want    string
+		// detail is what the cause of the unknown result of a write adds after
+		// the status: the text the server gave, with ": " in front, or "".
+		detail string
 	}{
-		{"530 to Rancher", "local", unavailableRow{530, "application/json", cloudflareBody}, " answered HTTP 530: " + rancher + " - retry later"},
-		{"502 to Rancher", "local", unavailableRow{502, "application/json", cloudflareBody}, " answered HTTP 502 Bad Gateway - retry later"},
-		{"503 to Rancher", "local", unavailableRow{503, "application/json", cloudflareBody}, " answered HTTP 503 Service Unavailable - retry later"},
-		{"429 to Rancher", "local", unavailableRow{429, "application/json", cloudflareBody}, " answered HTTP 429 Too Many Requests - retry later"},
-		{"500 to Rancher", "local", unavailableRow{500, "application/json", cloudflareBody}, " answered HTTP 500 Internal Server Error - retry later"},
-		{"530 through a cluster", "c-m-x", unavailableRow{530, "application/json", cloudflareBody}, " answered HTTP 530: cluster 'c-m-x' could not be reached - retry later"},
-		{"502 through a cluster", "c-m-x", unavailableRow{502, "application/json", cloudflareBody}, " answered HTTP 502 Bad Gateway: cluster 'c-m-x' could not be reached - " + agent},
-		{"503 through a cluster", "c-m-x", unavailableRow{503, "application/json", cloudflareBody}, " answered HTTP 503 Service Unavailable - retry later"},
-		{"a Status 503", "local", unavailableRow{503, "application/json", guardStatusBody}, " answered HTTP 503 Service Unavailable: etcdserver: request timed out - retry later"},
-		{"a plain text 502", "local", unavailableRow{502, "text/plain", "upstream connect error"}, " answered HTTP 502 Bad Gateway: upstream connect error - retry later"},
+		{"530 to Rancher", "local", unavailableRow{530, "application/json", cloudflareBody}, " answered HTTP 530: " + rancher + " - retry later", ""},
+		{"502 to Rancher", "local", unavailableRow{502, "application/json", cloudflareBody}, " answered HTTP 502 Bad Gateway - retry later", ""},
+		{"503 to Rancher", "local", unavailableRow{503, "application/json", cloudflareBody}, " answered HTTP 503 Service Unavailable - retry later", ""},
+		{"429 to Rancher", "local", unavailableRow{429, "application/json", cloudflareBody}, " answered HTTP 429 Too Many Requests - retry later", ""},
+		{"500 to Rancher", "local", unavailableRow{500, "application/json", cloudflareBody}, " answered HTTP 500 Internal Server Error - retry later", ""},
+		{"530 through a cluster", "c-m-x", unavailableRow{530, "application/json", cloudflareBody}, " answered HTTP 530: cluster 'c-m-x' could not be reached - retry later", ""},
+		{"502 through a cluster", "c-m-x", unavailableRow{502, "application/json", cloudflareBody}, " answered HTTP 502 Bad Gateway: cluster 'c-m-x' could not be reached - " + agent, ""},
+		{"503 through a cluster", "c-m-x", unavailableRow{503, "application/json", cloudflareBody}, " answered HTTP 503 Service Unavailable - retry later", ""},
+		{"a Status 503", "local", unavailableRow{503, "application/json", guardStatusBody}, " answered HTTP 503 Service Unavailable: etcdserver: request timed out - retry later", ""},
+		{"a text 502", "local", unavailableRow{502, "text/plain", "upstream connect error"}, " answered HTTP 502 Bad Gateway: upstream connect error - retry later", ": upstream connect error"},
+		{"a text 500", "local", unavailableRow{500, "text/plain", "upstream request failed"}, " answered HTTP 500 Internal Server Error: upstream request failed - retry later", ": upstream request failed"},
+		{"a text 503 through a cluster", "c-m-x", unavailableRow{503, "text/plain", "no healthy upstream"}, " answered HTTP 503 Service Unavailable: no healthy upstream - retry later", ": no healthy upstream"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, p := range guardPaths() {
@@ -419,6 +477,15 @@ func TestEveryClientPathWordsAnUnavailableServerTheSame(t *testing.T) {
 				t.Run(p.name, func(t *testing.T) {
 					t.Parallel()
 					got := answerOf(t, p, tc.row, "", tc.cluster)
+					if p.unknownResponse(tc.row) {
+						cause := "(the server responded with " + strconv.Itoa(tc.row.status) + tc.detail
+						if tc.cluster != engine.LocalCluster {
+							cause += agentClause(tc.cluster, tc.row.status)
+						}
+						ce := assertUnknownResponse(t, got.err, tc.row.status)
+						assert.Contains(t, ce.Message, cause+"); ")
+						return
+					}
 					ce := assertAnswered(t, got.err, tc.row.status)
 					assert.Equal(t, p.prefix+got.server+tc.want, ce.Message)
 				})

@@ -500,6 +500,30 @@ func NotFoundCurated(k Kind, name, clusterID string) error {
 		WithHintCommand(hint)
 }
 
+// ReadCommand is the get command that reads the object called name of kind
+// k in namespace ns, through the proxy of cluster (the --cluster value of the
+// request); with an empty name it lists the objects of k there. It has the
+// flags that get of k takes: --cluster with the namespace's value for an
+// NSCluster kind, whose namespace is a cluster id, and with cluster for a
+// Downstream kind that is not ProjectBackingNamespace; --namespace when ns is
+// set, for an NSPlain or NSWorkspace kind only.
+func ReadCommand(k Kind, ns, name, cluster string) clierr.Command {
+	cmd := clierr.NewCommand("get").Word(k.Word())
+	if name != "" {
+		cmd = cmd.Arg(name)
+	}
+	switch {
+	case k.Policy == NSCluster && ns != "":
+		cmd = cmd.FlagValue("--cluster", ns)
+	case k.Scope == Downstream && !k.ProjectBackingNamespace && cluster != "":
+		cmd = cmd.FlagValue("--cluster", cluster)
+	}
+	if ns != "" && (k.Policy == NSPlain || k.Policy == NSWorkspace) {
+		cmd = cmd.FlagValue("--namespace", ns)
+	}
+	return cmd
+}
+
 // ForbiddenCommand is the caller-scoped command for an RBAC refusal of a
 // kind verb, and false when there is none: the generated verbs keep kubectl's
 // semantics on the local cluster's proxy, where Rancher answers some

@@ -203,7 +203,9 @@ Exit codes: `0` ok · `2` usage/validation/confirmation · `3` auth ·
   for a command that changes something previews it (`--dry-run`); the
   message says how to apply it.
 - `retryable: true` → retry is reasonable; otherwise do not repeat the identical call.
-  Which errors are retryable is in the topic `errors`.
+  Which errors are retryable is in the topic `errors`. With `outcomeUnknown: true`
+  the write may have been applied: read the object before you run the command
+  again (topic `errors`).
 - `AMBIGUOUS_SELECTION` returns a `candidates` list - pick with the user, don't
   guess.
 - `NOT_FOUND` for a project, cluster, cloud credential, pod, user or role lists
