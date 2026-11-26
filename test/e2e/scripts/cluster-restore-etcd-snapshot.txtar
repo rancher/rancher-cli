@@ -1,0 +1,133 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+# Seed a custom cluster (an empty rkeConfig), its RKEControlPlane and two
+# etcd snapshot objects of it: one with no metadata and one whose metadata
+# has a Kubernetes version and an rkeConfig. Both are taken in 2099, after
+# the cluster is created. The harness runs no controllers: the status writes
+# below stand in for Rancher's. The Steve API of the harness serves only its
+# own management clusters; it refuses the read of the cluster's management
+# Cluster that checks readiness, and the command warns that it skipped the
+# check. provisioningcluster is Sensitive: every write needs --yes.
+exec rancher create resource -f restore-cluster.yaml --apply --yes
+flipstatus local provisioning.cattle.io/v1/clusters fleet-default e2e-restore {"clusterName":"c-m-restore1"}
+seedobj rke.cattle.io/v1/rkecontrolplanes fleet-default restore-plane.yaml
+seedobj rke.cattle.io/v1/etcdsnapshots fleet-default restore-snapshot.yaml
+seedobj rke.cattle.io/v1/etcdsnapshots fleet-default restore-bare-snapshot.yaml
+
+# the preview: a server-side dry-run, not reversible, with the one field in
+# the diff, and the default restore mode named in a warning.
+exec rancher cluster restore-etcd-snapshot e2e-restore --snapshot e2e-restore-snap --dry-run -o json
+jsonquery stdout data.reversible false
+jsonquery stdout data.previewSource serverDryRun
+jsonquery stdout 'data.diff.#' 1
+jsonquery stdout 'data.diff.0.path' /spec/rkeConfig/etcdSnapshotRestore
+jsonquery stdout 'warnings.#(%"--restore-mode was not given: the Rancher UI*")#|#' 1
+jsonquery stdout 'warnings.#(%"cannot read the management cluster of cluster e2e-restore *")#|#' 1
+
+# a restore mode the snapshot does not offer is refused: with no metadata
+# only none is offered.
+! exec rancher cluster restore-etcd-snapshot e2e-restore --snapshot e2e-restore-bare --restore-mode all --dry-run
+stderr 'error \(VALIDATION\):'
+stderr 'is not offered for etcd-snapshot e2e-restore-bare'
+
+# an etcd snapshot that does not exist is refused.
+! exec rancher cluster restore-etcd-snapshot e2e-restore --snapshot e2e-restore-none --dry-run
+stderr 'error \(NOT_FOUND\):'
+stderr 'no etcd-snapshot e2e-restore-none in namespace fleet-default'
+
+# an apply without --yes is refused, and nothing is written.
+! exec rancher cluster restore-etcd-snapshot e2e-restore --snapshot e2e-restore-snap --apply
+stderr 'error \(CONFIRMATION_REQUIRED\):'
+exec rancher get provisioning-cluster e2e-restore -o json
+! stdout etcdSnapshotRestore
+
+# the run that waits: Rancher copies the request into the status of the
+# RKEControlPlane and ends the phase at Finished once the write is in.
+exec rancher cluster restore-etcd-snapshot e2e-restore --snapshot e2e-restore-snap --restore-mode none --apply --yes --timeout 2m -o json &restorecmd&
+waitobj provisioning.cattle.io/v1/clusters fleet-default e2e-restore spec.rkeConfig.etcdSnapshotRestore.generation
+waitwatchopen e2e-restore
+flipstatus local rke.cattle.io/v1/rkecontrolplanes fleet-default e2e-restore {"etcdSnapshotRestore":{"generation":1,"name":"e2e-restore-snap","restoreRKEConfig":"none"},"etcdSnapshotRestorePhase":"Finished"}
+wait restorecmd
+jsonquery stdout data.waited true
+jsonquery stdout data.written true
+jsonquery stdout data.generation 1
+jsonquery stdout data.phase Finished
+jsonquery stdout data.snapshot e2e-restore-snap
+jsonquery stdout data.restoreMode none
+
+# with --wait=false the command returns once the server accepts the request;
+# it writes the next generation, 2, and the mode the snapshot's default gives.
+exec rancher cluster restore-etcd-snapshot e2e-restore --snapshot e2e-restore-snap --apply --yes --wait=false
+stdout 'cluster/e2e-restore etcd snapshot restore requested'
+exec rancher get provisioning-cluster e2e-restore -o json
+jsonquery stdout data.spec.rkeConfig.etcdSnapshotRestore.generation 2
+jsonquery stdout data.spec.rkeConfig.etcdSnapshotRestore.name e2e-restore-snap
+
+# generation 2 is now in progress: running the command again changes nothing.
+exec rancher cluster restore-etcd-snapshot e2e-restore --snapshot e2e-restore-snap --apply --yes --wait=false
+stdout 'cluster/e2e-restore changed nothing; the etcd snapshot restore already requested is in progress'
+
+# a flag error is refused before any request.
+! exec rancher cluster restore-etcd-snapshot e2e-restore --snapshot e2e-restore-snap --wait=false --timeout 5m
+stderr 'error \(VALIDATION\):'
+stderr 'conflicts with --timeout'
+
+# a cluster with no spec.rkeConfig that Rancher has not linked to a management
+# Cluster yet is refused, retryable.
+exec rancher create resource -f restore-unlinked.yaml --apply --yes
+! exec rancher cluster restore-etcd-snapshot e2e-restore-unlinked --snapshot e2e-restore-snap --dry-run
+stderr 'error \(GENERIC, retryable\):'
+stderr 'Rancher has not linked cluster e2e-restore-unlinked to its management cluster yet'
+
+-- restore-cluster.yaml --
+apiVersion: provisioning.cattle.io/v1
+kind: Cluster
+metadata:
+  name: e2e-restore
+  namespace: fleet-default
+spec:
+  kubernetesVersion: v1.30.5+rke2r1
+  rkeConfig: {}
+-- restore-unlinked.yaml --
+apiVersion: provisioning.cattle.io/v1
+kind: Cluster
+metadata:
+  name: e2e-restore-unlinked
+  namespace: fleet-default
+spec: {}
+-- restore-plane.yaml --
+apiVersion: rke.cattle.io/v1
+kind: RKEControlPlane
+metadata:
+  name: e2e-restore
+  namespace: fleet-default
+spec:
+  clusterName: e2e-restore
+-- restore-snapshot.yaml --
+apiVersion: rke.cattle.io/v1
+kind: ETCDSnapshot
+metadata:
+  name: e2e-restore-snap
+  namespace: fleet-default
+spec:
+  clusterName: e2e-restore
+snapshotFile:
+  name: e2e-restore-snap.zip
+  nodeName: node-1
+  status: successful
+  createdAt: "2099-01-01T00:00:00Z"
+  metadata: eyJwcm92aXNpb25pbmctY2x1c3Rlci1zcGVjIjoiSDRzSUFBQUFBQUFDLzZ0V3lpNU5TaTNLU3kxSkxRNUxMU3JPek05VHNsSXFNOVF6TnRBejFTN0tUalVxTWxUU1VRSXluUFB6MGpMVGxheXFsWElUa3pNeTgxTGRjL0tURW5NUXdzbDVtVUN0eVlrNW1jbjVTclcxdFFBZytYMExXd0FBQUE9PSJ9
+-- restore-bare-snapshot.yaml --
+apiVersion: rke.cattle.io/v1
+kind: ETCDSnapshot
+metadata:
+  name: e2e-restore-bare
+  namespace: fleet-default
+spec:
+  clusterName: e2e-restore
+snapshotFile:
+  name: e2e-restore-bare.zip
+  nodeName: node-1
+  status: successful
+  createdAt: "2099-01-01T00:00:00Z"

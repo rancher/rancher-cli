@@ -38,7 +38,17 @@ func unlinkedClusterError(name string) *clierr.Error {
 // message for an imported cluster names the kinds only when the kind table has
 // a row for each of them.
 func classifyNoRKEConfig(name, id string, mgmt map[string]any, hasKind func(key string) bool) *clierr.Error {
+	return classifyNoRKEConfigFor(clusterops.OperationSnapshot, name, id, mgmt, hasKind)
+}
+
+// classifyNoRKEConfigFor is classifyNoRKEConfig for the operation kind: the
+// texts for the local cluster and for another driver name the operation, the
+// etcd snapshot restore or, for any other kind, the etcd snapshot.
+func classifyNoRKEConfigFor(kind clusterops.OperationKind, name, id string, mgmt map[string]any, hasKind func(key string) bool) *clierr.Error {
 	if id == engine.LocalCluster {
+		if kind == clusterops.OperationRestore {
+			return clierr.New(clierr.CodeValidation, "this CLI does not restore etcd snapshots of the local cluster")
+		}
 		return clierr.New(clierr.CodeValidation, "this CLI does not take etcd snapshots of the local cluster")
 	}
 	if _, imported := clusterops.ImportedDistribution(mgmt, true); imported {
@@ -58,6 +68,10 @@ func classifyNoRKEConfig(name, id string, mgmt map[string]any, hasKind func(key 
 	if driver == "" {
 		return clierr.New(clierr.CodeGeneric,
 			fmt.Sprintf("Rancher has not detected the distribution of cluster %s yet; try again later", name)).WithRetryable(true)
+	}
+	if kind == clusterops.OperationRestore {
+		return clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("Rancher restores etcd snapshots only on RKE2 and K3s clusters; cluster %s has driver %s", name, driver))
 	}
 	return clierr.New(clierr.CodeValidation,
 		fmt.Sprintf("Rancher takes etcd snapshots only for RKE2 and K3s clusters; cluster %s has driver %s", name, driver))

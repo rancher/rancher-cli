@@ -134,7 +134,10 @@ const (
 // names the cluster, snapshotFile.status is successful, and snapshotFile.createdAt
 // is strictly after the management Cluster's metadata.creationTimestamp. A
 // creationTimestamp that is absent or not an RFC 3339 time leaves the time
-// comparison out. The problems are returned in that order.
+// comparison out. The problems are returned in that order. The cluster object
+// may be the management Cluster of an imported cluster or the provisioning
+// Cluster of a provisioned one, with the name of the provisioning Cluster as
+// clusterID; both carry metadata.creationTimestamp.
 func CheckRestorableSnapshot(snapshot, managementCluster map[string]any, clusterID string) SnapshotProblem {
 	switch {
 	case nestedString(snapshot, "spec", "clusterName") == "":

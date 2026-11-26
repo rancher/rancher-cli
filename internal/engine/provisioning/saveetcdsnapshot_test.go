@@ -316,24 +316,25 @@ func TestSaveRefusesAnotherRunningOperation(t *testing.T) {
 		status  map[string]any
 		running string
 		state   string
-		hint    bool
+		// hint is the expected hint, "" when the refusal has none.
+		hint string
 	}{
-		{"restore, no status copy", map[string]any{"etcdSnapshotRestore": restore(1)}, map[string]any{}, "an etcd snapshot restore", "phase requested, not started", false},
-		{"restore, copy differs", map[string]any{"etcdSnapshotRestore": restore(2)}, map[string]any{"etcdSnapshotRestore": restore(1), "etcdSnapshotRestorePhase": phaseFinished}, "an etcd snapshot restore", "phase Finished", false},
-		{"restore, started", map[string]any{"etcdSnapshotRestore": restore(1)}, map[string]any{"etcdSnapshotRestore": restore(1), "etcdSnapshotRestorePhase": "Started"}, "an etcd snapshot restore", "phase Started", false},
-		{"restore, finished", map[string]any{"etcdSnapshotRestore": restore(1)}, map[string]any{"etcdSnapshotRestore": restore(1), "etcdSnapshotRestorePhase": phaseFinished}, "", "", false},
-		{"restore, failed", map[string]any{"etcdSnapshotRestore": restore(1)}, map[string]any{"etcdSnapshotRestore": restore(1), "etcdSnapshotRestorePhase": phaseFailed}, "", "", false},
-		{"restore field absent", map[string]any{}, map[string]any{}, "", "", false},
-		{"certificate rotation, not applied", map[string]any{"rotateCertificates": gen(2)}, map[string]any{"certificateRotationGeneration": int64(1)}, "a certificate rotation", "", false},
-		{"certificate rotation, applied", map[string]any{"rotateCertificates": gen(2)}, map[string]any{"certificateRotationGeneration": int64(2)}, "", "", false},
-		{"encryption key rotation, no status copy", map[string]any{"rotateEncryptionKeys": gen(1)}, map[string]any{}, "an encryption key rotation", "phase requested, not started", false},
-		{"encryption key rotation, rotating", map[string]any{"rotateEncryptionKeys": gen(1)}, map[string]any{"rotateEncryptionKeys": gen(1), "rotateEncryptionKeysPhase": "Rotate"}, "an encryption key rotation", "phase Rotate", false},
-		{"encryption key rotation, done", map[string]any{"rotateEncryptionKeys": gen(1)}, map[string]any{"rotateEncryptionKeys": gen(1), "rotateEncryptionKeysPhase": "Done"}, "", "", false},
-		{"encryption key rotation, failed", map[string]any{"rotateEncryptionKeys": gen(1)}, map[string]any{"rotateEncryptionKeys": gen(1), "rotateEncryptionKeysPhase": phaseFailed}, "", "", false},
-		{"upgrade, applied version differs", map[string]any{}, map[string]any{"appliedSpec": map[string]any{"kubernetesVersion": "v1.30.4+rke2r1"}}, "a Kubernetes upgrade", "", true},
-		{"upgrade, applied version equal", map[string]any{}, map[string]any{"appliedSpec": map[string]any{"kubernetesVersion": "v1.31.4+rke2r1"}}, "", "", false},
-		{"upgrade, no applied spec", map[string]any{}, map[string]any{}, "", "", false},
-		{"snapshot and restore together", map[string]any{"etcdSnapshotCreate": gen(1), "etcdSnapshotRestore": restore(1)}, map[string]any{}, "an etcd snapshot restore", "phase requested, not started", false},
+		{"restore, no status copy", map[string]any{"etcdSnapshotRestore": restore(1)}, map[string]any{}, "an etcd snapshot restore", "phase requested, not started", clierr.NewCommand("cluster restore-etcd-snapshot").Arg("prod").FlagValue("--snapshot", "s1").FlagValue("--restore-mode", "none").Flag("--dry-run").Field()},
+		{"restore, copy differs", map[string]any{"etcdSnapshotRestore": restore(2)}, map[string]any{"etcdSnapshotRestore": restore(1), "etcdSnapshotRestorePhase": phaseFinished}, "an etcd snapshot restore", "phase Finished", clierr.NewCommand("cluster restore-etcd-snapshot").Arg("prod").FlagValue("--snapshot", "s1").FlagValue("--restore-mode", "none").Flag("--dry-run").Field()},
+		{"restore, started", map[string]any{"etcdSnapshotRestore": restore(1)}, map[string]any{"etcdSnapshotRestore": restore(1), "etcdSnapshotRestorePhase": "Started"}, "an etcd snapshot restore", "phase Started", clierr.NewCommand("cluster restore-etcd-snapshot").Arg("prod").FlagValue("--snapshot", "s1").FlagValue("--restore-mode", "none").Flag("--dry-run").Field()},
+		{"restore, finished", map[string]any{"etcdSnapshotRestore": restore(1)}, map[string]any{"etcdSnapshotRestore": restore(1), "etcdSnapshotRestorePhase": phaseFinished}, "", "", ""},
+		{"restore, failed", map[string]any{"etcdSnapshotRestore": restore(1)}, map[string]any{"etcdSnapshotRestore": restore(1), "etcdSnapshotRestorePhase": phaseFailed}, "", "", ""},
+		{"restore field absent", map[string]any{}, map[string]any{}, "", "", ""},
+		{"certificate rotation, not applied", map[string]any{"rotateCertificates": gen(2)}, map[string]any{"certificateRotationGeneration": int64(1)}, "a certificate rotation", "", ""},
+		{"certificate rotation, applied", map[string]any{"rotateCertificates": gen(2)}, map[string]any{"certificateRotationGeneration": int64(2)}, "", "", ""},
+		{"encryption key rotation, no status copy", map[string]any{"rotateEncryptionKeys": gen(1)}, map[string]any{}, "an encryption key rotation", "phase requested, not started", ""},
+		{"encryption key rotation, rotating", map[string]any{"rotateEncryptionKeys": gen(1)}, map[string]any{"rotateEncryptionKeys": gen(1), "rotateEncryptionKeysPhase": "Rotate"}, "an encryption key rotation", "phase Rotate", ""},
+		{"encryption key rotation, done", map[string]any{"rotateEncryptionKeys": gen(1)}, map[string]any{"rotateEncryptionKeys": gen(1), "rotateEncryptionKeysPhase": "Done"}, "", "", ""},
+		{"encryption key rotation, failed", map[string]any{"rotateEncryptionKeys": gen(1)}, map[string]any{"rotateEncryptionKeys": gen(1), "rotateEncryptionKeysPhase": phaseFailed}, "", "", ""},
+		{"upgrade, applied version differs", map[string]any{}, map[string]any{"appliedSpec": map[string]any{"kubernetesVersion": "v1.30.4+rke2r1"}}, "a Kubernetes upgrade", "", clierr.NewCommand("cluster upgrade").Arg("prod").FlagValue("--k8s-version", "v1.31.4+rke2r1").Flag("--dry-run").Field()},
+		{"upgrade, applied version equal", map[string]any{}, map[string]any{"appliedSpec": map[string]any{"kubernetesVersion": "v1.31.4+rke2r1"}}, "", "", ""},
+		{"upgrade, no applied spec", map[string]any{}, map[string]any{}, "", "", ""},
+		{"snapshot and restore together", map[string]any{"etcdSnapshotCreate": gen(1), "etcdSnapshotRestore": restore(1)}, map[string]any{}, "an etcd snapshot restore", "phase requested, not started", clierr.NewCommand("cluster restore-etcd-snapshot").Arg("prod").FlagValue("--snapshot", "s1").FlagValue("--restore-mode", "none").Flag("--dry-run").Field()},
 	}
 	for _, tc := range rows {
 		t.Run(tc.name, func(t *testing.T) {
@@ -346,14 +347,19 @@ func TestSaveRefusesAnotherRunningOperation(t *testing.T) {
 			}
 			ce := asCode(t, err)
 			assert.Equal(t, clierr.CodeGeneric, ce.Code)
-			assert.True(t, ce.Retryable)
+			assert.Equal(t, tc.running != "an etcd snapshot restore", ce.Retryable, "only the refusal for a restore is not retryable")
 			want := "cluster prod has " + tc.running + " in progress;"
 			if tc.state != "" {
 				want = "cluster prod has " + tc.running + " in progress (" + tc.state + ");"
 			}
 			assert.Contains(t, ce.Message, want)
-			if tc.hint {
-				assert.Equal(t, clierr.NewCommand("cluster upgrade").Arg("prod").FlagValue("--k8s-version", "v1.31.4+rke2r1").Flag("--dry-run").Field(), ce.Hint)
+			if tc.hint != "" {
+				assert.Equal(t, tc.hint, ce.Hint)
+				if tc.running == "an etcd snapshot restore" {
+					assert.Contains(t, ce.Message, "Rancher runs one operation at a time; to see its phase, run the command in the hint")
+				} else {
+					assert.Contains(t, ce.Message, "Rancher runs one operation at a time; to wait for it, run the command in the hint")
+				}
 			} else {
 				assert.Empty(t, ce.Hint)
 				assert.Contains(t, ce.Message, "Rancher runs one operation at a time; try again after it ends")

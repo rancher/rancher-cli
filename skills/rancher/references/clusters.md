@@ -214,9 +214,33 @@ upgrade goes on; wait again by running the same command with the same version.
   then run it with `--apply --yes`; the command waits until Rancher reports the
   snapshot taken and lists the cluster's snapshots. Take a snapshot before an
   upgrade or another change that is hard to undo. It refuses while another
-  operation is in progress on the cluster (the error is retryable: try again
-  after the operation ends) and while the cluster is not ready. If you run it
+  operation is in progress on the cluster (try again after the operation ends;
+  the error for a restore in progress is not retryable) and while the cluster is
+  not ready. If you run it
   again while its own snapshot is in progress, it changes nothing and waits for
   that snapshot. `--wait=false` returns once the server accepts the request. It
   refuses an imported cluster: an etcd snapshot of one is a manifest of the kind
   `etcd-snapshot-save`, created with `create resource -f`.
+- `rancher cluster restore-etcd-snapshot <cluster> --snapshot <name>` restores a
+  cluster that Rancher provisions with RKE2 or K3s from one of its etcd
+  snapshots; `<name>` is the NAME column of `rancher get etcd-snapshots`. Always
+  preview it first with `--dry-run`: the preview names the restore mode, what that
+  mode replaces (`none` etcd only, `kubernetesVersion` also the Kubernetes
+  version, `all` also the cluster configuration) and what the restore loses.
+  Rancher stops Kubernetes on every node (the API server is down until the restore
+  ends), and every object created or changed after the snapshot was taken is lost.
+  Run it with `--apply --yes` only when the user asked for that snapshot and that
+  restore mode. The command checks that the snapshot is a successful snapshot of
+  this cluster taken after the cluster was created and that the snapshot offers the
+  restore mode; without `--restore-mode` it writes the Rancher UI's default for the
+  snapshot, which the preview states. It waits until Rancher reports the restore
+  finished, refuses while another operation is in progress on the cluster (try
+  again after the operation ends; the error for a restore in progress is not
+  retryable) and while the cluster is not ready, and refuses an imported
+  cluster: restoring one is a manifest of the kind `etcd-snapshot-restore`. If you
+  run it with `--apply --yes` again with the same snapshot while its restore is in
+  progress, it changes nothing and waits for that restore; once that restore has
+  ended, the same run requests a new restore. To see the phase of a restore in
+  progress, run the command with `--dry-run` (it is the hint of the refusal and of the
+  timeout error): it sends no write. Never run `--apply --yes`
+  again only to wait; run it only when the preview says the restore is in progress.

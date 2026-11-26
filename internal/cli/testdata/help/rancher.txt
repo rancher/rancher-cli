@@ -12,7 +12,7 @@ COMMANDS:
    app:             Install a chart from a repository as an app, upgrade an app, or uninstall an app (list charts with `rancher charts`, read apps with `rancher get app`)
    auth:            Auth commands
    charts:          List the charts and versions the repositories of a cluster offer
-   cluster:         Scale a machine pool, manage cluster-autoscaler settings, upgrade the Kubernetes version of a cluster, set its upgrade strategy or take an etcd snapshot (create a provisioning cluster with `rancher create cluster` and delete it with `rancher delete provisioning-cluster`)
+   cluster:         Scale a machine pool, manage cluster-autoscaler settings, upgrade the Kubernetes version of a cluster, set its upgrade strategy, take an etcd snapshot or restore a cluster from one (create a provisioning cluster with `rancher create cluster` and delete it with `rancher delete provisioning-cluster`)
    completion:      Print a shell completion script (ignores -o; always the raw script)
    config:          Config commands
    create:          Create resources

@@ -143,6 +143,7 @@ var surfaceConcepts = []surfaceConcept{
 	{"repo", "repo"},
 	{"require-installed", "require-installed"},
 	{"reset-values", "reset-values"},
+	{"restore-mode", "restore-mode"},
 	{"role", "role"},
 	{"scope", "scope"},
 	{"search", "search"},
@@ -154,6 +155,7 @@ var surfaceConcepts = []surfaceConcept{
 	{"since", "since"},
 	{"size", "size"},
 	{"skip-verify", "skip-verify"},
+	{"snapshot", "snapshot"},
 	{"subresource", "subresource"},
 	{"system-default-registry", "system-default-registry"},
 	{"tags", "tags"},
@@ -384,7 +386,7 @@ var surfaceVerbs = surfaceVerbTable{
 		{verbs: []string{"install", "upgrade", "uninstall"}},
 		{verbs: []string{"grant", "revoke"}},
 		{commands: []string{
-			"cluster scale", "cluster upgrade", "cluster save-etcd-snapshot",
+			"cluster scale", "cluster upgrade", "cluster save-etcd-snapshot", "cluster restore-etcd-snapshot",
 			"cluster pause-autoscaling", "cluster resume-autoscaling",
 			"node drain", "node stop-drain",
 		}},
@@ -500,12 +502,13 @@ var surfaceShortAllowlist = surfaceAllowlist{name: "surfaceShortAllowlist", coun
 	{"-c (--config)", "the short form of --config; kubectl's -c is --container"},
 }}
 
-var surfaceObjectAllowlist = surfaceAllowlist{name: "surfaceObjectAllowlist", count: 11, rows: []surfaceRow{
+var surfaceObjectAllowlist = surfaceAllowlist{name: "surfaceObjectAllowlist", count: 12, rows: []surfaceRow{
 	{"auth get-token --name", "a flag of the exec block of a kubeconfig, which Rancher writes and existing kubeconfig files have"},
 	{"cluster clear-autoscaling <cluster>", "the cluster is the object of the cluster commands"},
 	{"cluster pause-autoscaling <cluster>", "the cluster is the object of the cluster commands"},
 	{"cluster resume-autoscaling <cluster>", "the cluster is the object of the cluster commands"},
 	{"cluster save-etcd-snapshot <cluster>", "the cluster is the object of the cluster commands"},
+	{"cluster restore-etcd-snapshot <cluster>", "the cluster is the object of the cluster commands"},
 	{"cluster scale <cluster>", "the cluster is the object of the cluster commands"},
 	{"cluster set-autoscaling <cluster>", "the cluster is the object of the cluster commands"},
 	{"cluster set-upgrade-strategy <cluster>", "the cluster is the object of the cluster commands"},

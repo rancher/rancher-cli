@@ -729,7 +729,9 @@ func TestUpgradeLocalIsRefusedBeforeAnyRead(t *testing.T) {
 
 // TestUpgradeRunningOperations asserts each of the four operations in progress
 // makes the command refuse with a retryable GENERIC error, and that only the
-// refusal for an etcd snapshot has a hint, the command that waits for it. A
+// refusals for an etcd snapshot and an etcd snapshot restore have a hint, the
+// command that waits for the snapshot or previews the restore again; the one
+// for a restore is not retryable. A
 // running upgrade alone does not refuse, and a control plane that cannot be
 // read warns and goes on.
 func TestUpgradeRunningOperations(t *testing.T) {
@@ -749,12 +751,16 @@ func TestUpgradeRunningOperations(t *testing.T) {
 			_, _, err := f.plan(t, upgradeInput("prod", "v1.31.5+rke2r1"))
 			ce := asCode(t, err)
 			assert.Equal(t, clierr.CodeGeneric, ce.Code)
-			assert.True(t, ce.Retryable)
+			assert.Equal(t, field != "etcdSnapshotRestore", ce.Retryable, "only the refusal for a restore is not retryable")
 			assert.Contains(t, ce.Message, "in progress")
-			if field == "etcdSnapshotCreate" {
+			switch field {
+			case "etcdSnapshotCreate":
 				assert.Equal(t, clierr.NewCommand("cluster save-etcd-snapshot").Arg("prod").Flag("--dry-run").Field(), ce.Hint)
 				assert.Contains(t, ce.Message, "Rancher runs one operation at a time; to wait for it, run the command in the hint")
-			} else {
+			case "etcdSnapshotRestore":
+				assert.Equal(t, clierr.NewCommand("cluster restore-etcd-snapshot").Arg("prod").FlagValue("--snapshot", "s1").FlagValue("--restore-mode", "none").Flag("--dry-run").Field(), ce.Hint)
+				assert.Contains(t, ce.Message, "Rancher runs one operation at a time; to see its phase, run the command in the hint")
+			default:
 				assert.Empty(t, ce.Hint)
 				assert.Contains(t, ce.Message, "Rancher runs one operation at a time; try again after it ends")
 			}

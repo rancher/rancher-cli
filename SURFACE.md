@@ -132,6 +132,9 @@ with the default. Values are lowercase with a hyphen between words. The test fai
 description, outside backticks, has a `|` between two letters or digits, or a list of three or more lowercase words in
 parentheses, separated by commas.
 
+Kept on purpose: `--restore-mode` of `cluster restore-etcd-snapshot` takes Rancher's values of `restoreRKEConfig`
+(`kubernetesVersion`), which the operator also writes in the field and in an `etcd-snapshot-restore` manifest.
+
 Checked by: `TestEveryValueListIsAnEnum` (internal/cli/surfaceconventions_test.go)
 
 Not checked yet: the help rows that print the enum, its default and the command's own `-o` values; their test is

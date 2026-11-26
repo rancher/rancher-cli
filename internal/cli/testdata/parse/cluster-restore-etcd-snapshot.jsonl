@@ -1,0 +1,22 @@
+{"line":["cluster","restore-etcd-snapshot","--snapshot","v"],"kind":"runs","command":"cluster restore-etcd-snapshot","flags":{"snapshot":"v"},"exit":0}
+{"line":["cluster","restore-etcd-snapshot","--snapshot=v"],"kind":"runs","command":"cluster restore-etcd-snapshot","flags":{"snapshot":"v"},"exit":0}
+{"line":["cluster","restore-etcd-snapshot","-snapshot","v"],"kind":"runs","command":"cluster restore-etcd-snapshot","flags":{"snapshot":"v"},"exit":0}
+{"line":["cluster","restore-etcd-snapshot","--snapshot"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --snapshot; pass --help for usage","  hint: rancher schema"]}
+{"line":["cluster","restore-etcd-snapshot","--restore-mode","v"],"kind":"runs","command":"cluster restore-etcd-snapshot","flags":{"restore-mode":"v"},"exit":0}
+{"line":["cluster","restore-etcd-snapshot","--restore-mode=v"],"kind":"runs","command":"cluster restore-etcd-snapshot","flags":{"restore-mode":"v"},"exit":0}
+{"line":["cluster","restore-etcd-snapshot","-restore-mode","v"],"kind":"runs","command":"cluster restore-etcd-snapshot","flags":{"restore-mode":"v"},"exit":0}
+{"line":["cluster","restore-etcd-snapshot","--namespace","v"],"kind":"runs","command":"cluster restore-etcd-snapshot","flags":{"namespace":"v"},"exit":0}
+{"line":["cluster","restore-etcd-snapshot","--namespace=v"],"kind":"runs","command":"cluster restore-etcd-snapshot","flags":{"namespace":"v"},"exit":0}
+{"line":["cluster","restore-etcd-snapshot","-n","v"],"kind":"runs","command":"cluster restore-etcd-snapshot","flags":{"namespace":"v"},"exit":0}
+{"line":["cluster","restore-etcd-snapshot","--wait"],"kind":"runs","command":"cluster restore-etcd-snapshot","flags":{"wait":true},"exit":0}
+{"line":["cluster","restore-etcd-snapshot","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["cluster","restore-etcd-snapshot","--wait=false"],"kind":"runs","command":"cluster restore-etcd-snapshot","flags":{"wait":false},"exit":0}
+{"line":["cluster","restore-etcd-snapshot","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["cluster","restore-etcd-snapshot","-wait"],"kind":"runs","command":"cluster restore-etcd-snapshot","flags":{"wait":true},"exit":0}
+{"line":["cluster","restore-etcd-snapshot","--timeout","v"],"kind":"runs","command":"cluster restore-etcd-snapshot","flags":{"timeout":"v"},"exit":0}
+{"line":["cluster","restore-etcd-snapshot","--timeout=v"],"kind":"runs","command":"cluster restore-etcd-snapshot","flags":{"timeout":"v"},"exit":0}
+{"line":["cluster","restore-etcd-snapshot","-timeout","v"],"kind":"runs","command":"cluster restore-etcd-snapshot","flags":{"timeout":"v"},"exit":0}
+{"line":["cluster","restore-etcd-snapshot"],"kind":"runs","command":"cluster restore-etcd-snapshot","exit":0}
+{"line":["cluster","restore-etcd-snapshot","--help"],"kind":"help","command":"cluster restore-etcd-snapshot","exit":0,"helpPath":"cluster-restore-etcd-snapshot.txt"}
+{"line":["cluster","restore-etcd-snapshot","x"],"kind":"runs","command":"cluster restore-etcd-snapshot","args":["x"],"exit":0}
+{"line":["cluster","restore-etcd-snapshot","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}

@@ -81,7 +81,8 @@
 - `patch` reads the object before it updates it, and needs `get` as well as
   `update`. The same is true of `cluster scale`, `cluster set-autoscaling`,
   `cluster clear-autoscaling`, `cluster pause-autoscaling`, `cluster
-  resume-autoscaling` and `cluster save-etcd-snapshot` (they read the
+  resume-autoscaling`, `cluster save-etcd-snapshot` and `cluster
+  restore-etcd-snapshot` (they read the
   provisioning cluster), the three `oidc-client` secret commands (they read the
   OIDC client) and `project add-namespace|remove-namespace` (they read the
   namespace). `cluster upgrade` and `cluster set-upgrade-strategy` read the

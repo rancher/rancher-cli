@@ -148,7 +148,7 @@ func TestOnlyGetDeleteAppAndNodeActionsDeclareTheWaitFlags(t *testing.T) {
 		}
 	}
 	require.NotEmpty(t, deletes)
-	want := slices.Concat(wantGetWaitCommands(), deletes, []string{"app install", "app uninstall", "app upgrade", "extension install", "extension upgrade", "extension uninstall", "cluster upgrade", "cluster save-etcd-snapshot", "node drain", "node stop-drain", "create cloud-credential"})
+	want := slices.Concat(wantGetWaitCommands(), deletes, []string{"app install", "app uninstall", "app upgrade", "extension install", "extension upgrade", "extension uninstall", "cluster upgrade", "cluster save-etcd-snapshot", "cluster restore-etcd-snapshot", "node drain", "node stop-drain", "create cloud-credential"})
 	assert.ElementsMatch(t, want, got)
 	assert.Empty(t, commandsDeclaringForWithoutWait(cmds))
 }

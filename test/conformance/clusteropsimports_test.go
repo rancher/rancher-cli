@@ -22,7 +22,7 @@ const clusteropsDir = "internal/engine/provisioning/clusterops"
 // and run no process, and the structured errors. A complete package may import
 // the package only because it can never reach a client through it.
 var clusteropsImportAllowlist = map[string]bool{
-	"cmp": true, "errors": true, "fmt": true, "maps": true, "slices": true, "sort": true, "strconv": true, "strings": true, "time": true,
+	"bytes": true, "cmp": true, "compress/gzip": true, "encoding/base64": true, "encoding/json": true, "errors": true, "fmt": true, "io": true, "maps": true, "slices": true, "sort": true, "strconv": true, "strings": true, "time": true,
 	modulePrefix + "internal/clierr": true,
 }
 

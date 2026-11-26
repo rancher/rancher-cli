@@ -355,6 +355,9 @@ type scrubFake struct {
 	updates  int
 	oidc     *oidcFixture
 	decorate func(obj *unstructured.Unstructured)
+	// snapshot, when set, makes every Get of an etcd snapshot object return
+	// an object it fills.
+	snapshot func(obj *unstructured.Unstructured)
 	// firstGet changes the response to the first Get of the row's kind only.
 	firstGet func(obj *unstructured.Unstructured)
 	// sent are copies of the objects the real (not dry-run) updates received.
@@ -506,6 +509,10 @@ func (f *scrubFake) Get(_ context.Context, gvr schema.GroupVersionResource, ns, 
 		return f.answer(gvr, obj), nil
 	case gvr.Resource == "secrets" && !f.isKind(gvr):
 		return f.base(gvr, ns, name), nil
+	case gvr.Resource == "etcdsnapshots" && !f.isKind(gvr) && f.snapshot != nil:
+		obj := f.base(gvr, ns, name)
+		f.snapshot(obj)
+		return f.answer(gvr, obj), nil
 	}
 	obj := f.base(gvr, ns, name)
 	if gvr.Resource == "roletemplates" {
@@ -1158,6 +1165,12 @@ func handWrittenScrubRows() []scrubRow {
 		{command: "cluster save-etcd-snapshot", kind: "provisioningcluster", class: classNames, reason: saveEtcdSnapshotResultReason,
 			input: saveScrubInput("node-1"), deps: saveScrubDeps,
 			setup: func(f *scrubFake, _ *plantSet) { f.decorate = saveScrubObject }},
+		{command: "cluster restore-etcd-snapshot", kind: "provisioningcluster", class: classNames, reason: restoreEtcdSnapshotResultReason,
+			input: restoreScrubInput("node-1"), deps: saveScrubDeps,
+			setup: func(f *scrubFake, _ *plantSet) {
+				f.decorate = restoreScrubObject
+				f.snapshot = restoreScrubSnapshot
+			}},
 		{command: "app install", kind: "operation", class: classNames, reason: appResultReason,
 			input: in([]string{appRelease}, map[string]string{"cluster": "prod", "namespace": appNS, "repo": appRepo, "chart": appChart}),
 			deps: appScrubDeps(func(s *appServer) {
@@ -1575,6 +1588,38 @@ func (upgradeScrubRoot) GetJSON(_ context.Context, path string) ([]byte, error) 
 // shows no value of the object: the result has the cluster name, its
 // namespace and id, the field written and the generation.
 const saveEtcdSnapshotResultReason = "the result of cluster save-etcd-snapshot is the cluster name, its namespace and id, the field it wrote and the generation; it has no value of the object"
+
+// restoreEtcdSnapshotResultReason says why the cluster restore-etcd-snapshot
+// row shows no value of the object: the result has the cluster name, its
+// namespace and id, the field written, the generation, the etcd snapshot and
+// the restore mode.
+const restoreEtcdSnapshotResultReason = "the result of cluster restore-etcd-snapshot is the cluster name, its namespace and id, the field it wrote, the generation, the etcd snapshot and the restore mode; it has no value of the object"
+
+// restoreScrubInput is the input of a cluster restore-etcd-snapshot row: the
+// cluster, the etcd snapshot and --wait=false. The row then ends when the
+// server accepts the update.
+func restoreScrubInput(cluster string) func(*plantSet) fieldCoverageInput {
+	return func(*plantSet) fieldCoverageInput {
+		return fieldCoverageInput{args: []string{cluster}, values: map[string]string{"snapshot": "snap-1"}, bools: map[string]bool{"wait": false}}
+	}
+}
+
+// restoreScrubObject makes the row's provisioning Cluster a custom cluster
+// linked to the management Cluster saveScrubRoots serves, created before the
+// etcd snapshot of restoreScrubSnapshot was taken.
+func restoreScrubObject(obj *unstructured.Unstructured) {
+	saveScrubObject(obj)
+	_ = unstructured.SetNestedField(obj.Object, "2020-01-01T00:00:00Z", "metadata", "creationTimestamp")
+}
+
+// restoreScrubSnapshot makes the etcd snapshot object a successful snapshot
+// of the provisioning Cluster of restoreScrubObject.
+func restoreScrubSnapshot(obj *unstructured.Unstructured) {
+	_ = unstructured.SetNestedField(obj.Object, "node-1", "spec", "clusterName")
+	_ = unstructured.SetNestedField(obj.Object, "successful", "snapshotFile", "status")
+	_ = unstructured.SetNestedField(obj.Object, "2099-01-01T00:00:00Z", "snapshotFile", "createdAt")
+	_ = unstructured.SetNestedField(obj.Object, "snap-1", "snapshotFile", "name")
+}
 
 // saveScrubInput is the input of a cluster save-etcd-snapshot row: the
 // cluster and --wait=false. The row then ends when the server accepts the

@@ -240,10 +240,14 @@ func TestCommandSitesFullCallback(t *testing.T) {
 		{name: "cluster pause-autoscaling has no --pool", words: []string{"cluster", "pause-autoscaling", "prod", "--pool"}, hits: map[string]int{}},
 		{name: "cluster resume-autoscaling has no --pool", words: []string{"cluster", "resume-autoscaling", "prod", "--pool"}, hits: map[string]int{}},
 		{name: "cluster save-etcd-snapshot has no --pool", words: []string{"cluster", "save-etcd-snapshot", "prod", "--pool"}, hits: map[string]int{}},
+		{name: "cluster restore-etcd-snapshot has no --pool", words: []string{"cluster", "restore-etcd-snapshot", "prod", "--pool"}, hits: map[string]int{}},
 		// the cluster commands' --timeout ladder
 		{name: "cluster save-etcd-snapshot --timeout", words: []string{"cluster", "save-etcd-snapshot", "prod", "--timeout"}, want: []string{"10m", "1h", "2h", "30m"}, hits: map[string]int{}},
 		{name: "cluster save-etcd-snapshot --timeout after --wait=false", words: []string{"cluster", "save-etcd-snapshot", "prod", "--wait=false", "--timeout"}, hits: map[string]int{}},
 		{name: "cluster save-etcd-snapshot --timeout after --wait=true", words: []string{"cluster", "save-etcd-snapshot", "prod", "--wait=true", "--timeout"}, want: []string{"10m", "1h", "2h", "30m"}, hits: map[string]int{}},
+		{name: "cluster restore-etcd-snapshot --timeout", words: []string{"cluster", "restore-etcd-snapshot", "prod", "--timeout"}, want: []string{"10m", "1h", "2h", "30m"}, hits: map[string]int{}},
+		{name: "cluster restore-etcd-snapshot --timeout after --wait=false", words: []string{"cluster", "restore-etcd-snapshot", "prod", "--wait=false", "--timeout"}, hits: map[string]int{}},
+		{name: "cluster restore-etcd-snapshot --timeout after --wait=true", words: []string{"cluster", "restore-etcd-snapshot", "prod", "--wait=true", "--timeout"}, want: []string{"10m", "1h", "2h", "30m"}, hits: map[string]int{}},
 		// cluster set-upgrade-strategy: the concurrency flags offer static
 		// values, the grace period and drain timeout flags read the typed cluster
 		{name: "cluster set-upgrade-strategy --control-plane-concurrency", words: []string{"cluster", "set-upgrade-strategy", "prod", "--control-plane-concurrency"}, want: []string{"1", "2", "3"}, hits: map[string]int{}},

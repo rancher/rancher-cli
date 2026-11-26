@@ -35,6 +35,7 @@ var outputShapeInventory = map[string]runtime.OutputShape{
 	"cluster pause-autoscaling":         runtime.ShapeText,
 	"cluster resume-autoscaling":        runtime.ShapeText,
 	"cluster save-etcd-snapshot":        runtime.ShapeText,
+	"cluster restore-etcd-snapshot":     runtime.ShapeText,
 	"cluster scale":                     runtime.ShapeText,
 	"cluster set-autoscaling":           runtime.ShapeText,
 	"cluster set-upgrade-strategy":      runtime.ShapeText,

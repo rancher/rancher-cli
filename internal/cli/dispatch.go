@@ -269,10 +269,14 @@ func dispatchSite(
 	lc completion.Completer,
 	tail []string,
 ) []string {
-	// Layer 1: enum static, for flag values AND positionals.
+	// Layer 1: enum static, for flag values AND positionals. A flag the
+	// command's live completer lists in LiveEnumFlags is not answered here: its
+	// values depend on what the line names, and only the live layer answers it.
 	if site.Kind == SiteFlagValue {
-		if cands := enumCandidates(site, d); len(cands) > 0 {
-			return cands
+		if !liveEnumFlag(lc, site.FlagName) {
+			if cands := enumCandidates(site, d); len(cands) > 0 {
+				return cands
+			}
 		}
 		// The --timeout of the access commands, of every delete and of the
 		// cluster commands: a static ladder of durations, owned here like
@@ -371,6 +375,22 @@ func dispatchSite(
 	cands := liveCandidates(ctx, site, d, lc, tail)
 	completionDebugf("done: %d candidates", len(cands))
 	return cands
+}
+
+// liveEnumFlags is implemented by a command whose live completer answers the
+// values of some enum flags itself, because the values offered depend on the
+// objects the line names. dispatchSite skips the static enum of exactly the
+// flags it lists and goes to the live layer, which offers nothing when the
+// network is off or a read fails, never the static values.
+type liveEnumFlags interface {
+	LiveEnumFlags() []string
+}
+
+// liveEnumFlag reports whether the command's live completer lists the flag in
+// LiveEnumFlags.
+func liveEnumFlag(lc completion.Completer, flag string) bool {
+	c, ok := lc.(liveEnumFlags)
+	return ok && slices.Contains(c.LiveEnumFlags(), flag)
 }
 
 // completionNetworkEnabled reports whether live completion is configured;

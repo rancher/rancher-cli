@@ -13,6 +13,7 @@ package provisioning
 import (
 	"context"
 	"fmt"
+	"maps"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -70,6 +71,9 @@ type day2Target struct {
 	// waiting is true when the operation the command requests is already in
 	// progress.
 	waiting bool
+	// running is the operation in progress that a waiting run waits for, as
+	// RunningOperations reports it.
+	running clusterops.Operation
 	// phase is the phase Rancher reports for the operation in progress.
 	phase string
 	// notes are the warnings of the reads that failed, in the order the Plan
@@ -110,11 +114,49 @@ func notReadyError(name, condType, status, message string) *clierr.Error {
 		fmt.Sprintf("cluster %s is not ready (%s); the Rancher UI offers etcd snapshots, etcd snapshot restores, certificate rotations and encryption key rotations only on a ready cluster", name, state))
 }
 
+// day2Match says which running operation of the command's own kind a run
+// waits for. The zero value matches any operation of the kind; a restore
+// matches only a running restore of the same etcd snapshot and, when the run
+// types a restore mode, the same mode.
+type day2Match struct {
+	// snapshot is the name of the etcd snapshot object a restore names.
+	snapshot string
+	// mode is the restore mode typed, "" when none was.
+	mode string
+}
+
+// matches reports whether a running operation is the request of this run.
+func (m day2Match) matches(kind clusterops.OperationKind, running clusterops.Operation) bool {
+	if running.Kind != kind {
+		return false
+	}
+	if kind != clusterops.OperationRestore {
+		return true
+	}
+	if name, _ := running.Request["name"].(string); name != m.snapshot {
+		return false
+	}
+	return m.mode == "" || runningRestoreMode(running) == m.mode
+}
+
+// runningRestoreMode is the restore mode of a running restore as Rancher reads
+// it: an empty restoreRKEConfig is none.
+func runningRestoreMode(running clusterops.Operation) string {
+	if mode, _ := running.Request["restoreRKEConfig"].(string); mode != "" {
+		return mode
+	}
+	return clusterops.RestoreModeNone
+}
+
 // readDay2Target reads the provisioning Cluster, the management Cluster and
 // the RKEControlPlane in the order of the checks and refuses what the Rancher
 // UI and Rancher's one operation at a time refuse. It returns the target of a
-// request, or of a waiting run when the operation is already in progress.
-func readDay2Target(ctx context.Context, clients engine.ClusterClientFactory, roots engine.RootClientFactory, in runtime.Input, op day2Operation) (*day2Target, error) {
+// request, or of a waiting run when the operation is already in progress. A
+// restore of mode kubernetesVersion or all that is running makes Rancher write
+// the snapshot's Kubernetes version into the provisioning Cluster before the
+// planner records it as applied; a Kubernetes upgrade is then reported beside
+// the restore, and a waiting run for that restore does not refuse it.
+func readDay2Target(ctx context.Context, clients engine.ClusterClientFactory, roots engine.RootClientFactory, in runtime.Input, op day2Operation, match day2Match) (*day2Target, error) {
 	client, prov, ns, name, err := fetchClusterFamilyTarget(ctx, clients, in, "update")
 	if err != nil {
 		if clierr.IsNotFound(err) {
@@ -133,7 +175,7 @@ func readDay2Target(ctx context.Context, clients engine.ClusterClientFactory, ro
 		if err != nil {
 			return nil, err
 		}
-		return nil, classifyNoRKEConfig(name, id, mgmt.Object, kindRegistered)
+		return nil, classifyNoRKEConfigFor(op.kind, name, id, mgmt.Object, kindRegistered)
 	}
 
 	cp, err := fetchControlPlane(ctx, client, ns, name)
@@ -148,8 +190,11 @@ func readDay2Target(ctx context.Context, clients engine.ClusterClientFactory, ro
 
 	if cp != nil {
 		for _, running := range clusterops.RunningOperations(prov.Object, cp.Object) {
-			if running.Kind == op.kind {
-				t.waiting, t.phase = true, running.Phase
+			if match.matches(op.kind, running) {
+				t.waiting, t.phase, t.running = true, running.Phase, running
+				continue
+			}
+			if t.waiting && op.kind == clusterops.OperationRestore && running.Kind == clusterops.OperationUpgrade && restoresVersion(t.running) {
 				continue
 			}
 			return nil, runningOperationError(name, ns, running)
@@ -171,6 +216,13 @@ func readDay2Target(ctx context.Context, clients engine.ClusterClientFactory, ro
 		return nil, notReadyError(name, condType, status, message)
 	}
 	return t, nil
+}
+
+// restoresVersion reports whether a running restore has the mode
+// kubernetesVersion or all, which write the snapshot's Kubernetes version.
+func restoresVersion(running clusterops.Operation) bool {
+	mode := runningRestoreMode(running)
+	return mode == clusterops.RestoreModeKubernetesVersion || mode == clusterops.RestoreModeAll
 }
 
 // nextGeneration is the generation to write: one more than the higher of the
@@ -201,18 +253,29 @@ type day2Plan struct {
 	wait   clusterWait
 	// generation is the generation written, or in a waiting run the one read.
 	generation int64
+	// snapshot and mode are the etcd snapshot object a restore names and the
+	// restore mode the run typed, "" when none was; both are empty for the
+	// other operations.
+	snapshot, mode string
+	// data are the keys a restore adds to the result's data, and done the text
+	// of the finished operation; set by the Plan, empty for the save.
+	data map[string]any
+	done string
 }
 
 // buildEffect makes the Effect of the request: the provisioning Cluster as
-// read with the field of spec.rkeConfig set to the next generation, or, in a
-// waiting run, as read. warnings come after the two every operation carries;
-// the target's notes come last. The executor is wrapped to report and wait.
-func (p *day2Plan) buildEffect(ctx context.Context, warnings []string) (safety.Effect, runtime.ExecuteFunc, error) {
+// read with the field of spec.rkeConfig set to the next generation and the
+// request's other fields, or, in a waiting run, as read. warnings come after
+// the two every operation carries; the target's notes come last. The executor
+// is wrapped to report and wait.
+func (p *day2Plan) buildEffect(ctx context.Context, warnings []string, fields map[string]any) (safety.Effect, runtime.ExecuteFunc, error) {
 	t := p.target
 	after := t.prov.DeepCopy()
 	if !t.waiting {
 		p.generation = t.nextGeneration(p.op)
-		if err := unstructured.SetNestedField(after.Object, map[string]any{"generation": p.generation}, "spec", "rkeConfig", p.op.field); err != nil {
+		request := map[string]any{"generation": p.generation}
+		maps.Copy(request, fields)
+		if err := unstructured.SetNestedField(after.Object, request, "spec", "rkeConfig", p.op.field); err != nil {
 			return safety.Effect{}, nil, err
 		}
 	} else {
@@ -264,6 +327,8 @@ func (p *day2Plan) recovery() clierr.Command {
 	switch p.op.kind {
 	case clusterops.OperationSnapshot:
 		return saveEtcdSnapshotRecovery(p.target.name, p.target.ns)
+	case clusterops.OperationRestore:
+		return restoreEtcdSnapshotRecovery(p.target.name, p.target.ns, p.snapshot, p.mode)
 	}
 	panic("day2 operation " + string(p.op.kind) + " has no recovery command")
 }
@@ -299,6 +364,7 @@ func (p *day2Plan) wrap(exec runtime.ExecuteFunc) runtime.ExecuteFunc {
 		if t.clusterID != "" {
 			data["clusterId"] = t.clusterID
 		}
+		maps.Copy(data, p.data)
 		set := func(text runtime.Result, warnings ...string) runtime.Result {
 			res.Text, res.StyledText, res.Data = text.Text, text.StyledText, data
 			res.Warnings = append(res.Warnings, warnings...)
@@ -325,7 +391,11 @@ func (p *day2Plan) wrap(exec runtime.ExecuteFunc) runtime.ExecuteFunc {
 		data["waited"] = true
 		data["phase"] = end.phase
 		warnings := p.reportAfterDone(ctx, data)
-		done := runtime.MutationText("cluster", t.name, p.op.done)
+		doneText := p.op.done
+		if p.done != "" {
+			doneText = p.done
+		}
+		done := runtime.MutationText("cluster", t.name, doneText)
 		if t.waiting {
 			first := fmt.Sprintf("cluster/%s changed nothing; waiting for the %s already requested", t.name, p.op.kind)
 			text := clierr.Plain(first + "\n").Append(clierr.Plain(done.Text).TrimSuffix("\n")).AppendString("\n")
@@ -408,6 +478,10 @@ func (p *day2Plan) waitDone(ctx context.Context) (day2End, error) {
 			return failed(fmt.Sprintf("stopped waiting for the %s; it was requested and goes on", subject))
 		},
 		OnTimeout: func(object *unstructured.Unstructured, _ *clierr.Error) error {
+			if p.op.kind == clusterops.OperationRestore {
+				return failed(fmt.Sprintf("timed out after %s waiting for the %s of cluster %s; it was requested and goes on; last state: %s; %s",
+					p.wait.TimeoutText, p.op.kind, t.name, p.lastState(object), restoreInProgressAdvice))
+			}
 			return failed(fmt.Sprintf("timed out after %s waiting for the %s of cluster %s; it was requested and goes on; last state: %s; to wait again, run the same command: while the %s is in progress it changes nothing and waits; once the %s has ended it requests a new one, and --dry-run previews that request",
 				p.wait.TimeoutText, p.op.kind, t.name, p.lastState(object), p.op.kind, p.op.kind))
 		},

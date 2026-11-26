@@ -39,6 +39,12 @@ func (upgradeStrategyCmd) LiveSource() completion.Source { return complete.Upgra
 // command; every other site is declined.
 func (saveEtcdSnapshotCmd) LiveSource() completion.Source { return complete.SaveEtcdSnapshotSource() }
 
+// LiveSource completes the <cluster> argument, --snapshot and --restore-mode,
+// each only with values the command accepts; every other site is declined.
+func (restoreEtcdSnapshotCmd) LiveSource() completion.Source {
+	return complete.RestoreEtcdSnapshotSource()
+}
+
 // LiveSource completes the <driver> argument and the field names after --set and
 // --from-file; every other site is declined.
 func (createCloudCredentialCmd) LiveSource() completion.Source {

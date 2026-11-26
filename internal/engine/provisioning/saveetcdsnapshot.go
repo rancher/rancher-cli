@@ -79,7 +79,7 @@ func (c *saveEtcdSnapshotCmd) Plan(ctx context.Context, in runtime.Input) (safet
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
-	target, err := readDay2Target(ctx, c.clients, c.roots, in, etcdSnapshotOperation)
+	target, err := readDay2Target(ctx, c.clients, c.roots, in, etcdSnapshotOperation, day2Match{})
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
@@ -88,7 +88,7 @@ func (c *saveEtcdSnapshotCmd) Plan(ctx context.Context, in runtime.Input) (safet
 	if target.waiting {
 		warning = p.waitingRunWarning()
 	}
-	return p.buildEffect(ctx, []string{warning})
+	return p.buildEffect(ctx, []string{warning}, nil)
 }
 
 // saveEtcdSnapshotRecovery is the command that previews the request again:

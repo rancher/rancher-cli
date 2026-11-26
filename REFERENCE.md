@@ -986,7 +986,9 @@ Every kind that `rancher schema` lists gets its generated verbs by these rules:
   with `VALIDATION` and an "unknown command" message that gives the reason. The
   columns follow the Rancher UI, since the server's Table has only the Name and
   Created At columns. `rancher cluster save-etcd-snapshot` takes a snapshot of a
-  provisioned cluster ([Taking an etcd snapshot](#taking-an-etcd-snapshot-of-a-provisioned-cluster)).
+  provisioned cluster ([Taking an etcd snapshot](#taking-an-etcd-snapshot-of-a-provisioned-cluster)),
+  and `rancher cluster restore-etcd-snapshot` restores a provisioned cluster from one
+  ([Restoring a provisioned cluster](#restoring-a-provisioned-cluster-from-an-etcd-snapshot)).
   To take a snapshot of an imported cluster, create an `etcd-snapshot-save`
   ([Day-2 operations on imported clusters](#day-2-operations-on-imported-clusters)).
 - `etcd-snapshot-save`, `etcd-snapshot-restore`, `encryption-key-rotation` and
@@ -1292,8 +1294,8 @@ inspect cluster <name>` that every refused get of a management cluster has.
 
 The commands that change a provisioning cluster (`cluster scale`, `cluster
 set-autoscaling`, `cluster clear-autoscaling`, `cluster pause-autoscaling`,
-`cluster resume-autoscaling`, `cluster save-etcd-snapshot`, `cluster upgrade`,
-`cluster set-upgrade-strategy`), the `oidc-client` secret commands and `project
+`cluster resume-autoscaling`, `cluster save-etcd-snapshot`, `cluster
+restore-etcd-snapshot`, `cluster upgrade`, `cluster set-upgrade-strategy`), the `oidc-client` secret commands and `project
 add-namespace` and `project remove-namespace` read their object first in the
 same way, and their hint starts `this command reads the <kind> first`. The hint
 of `cluster upgrade` and `cluster set-upgrade-strategy` names only `get`: for an
@@ -1820,11 +1822,13 @@ wait, the command stops waiting and exits 0, with a warning and `waited` false
 in the result.
 
 Rancher runs one operation at a time on a cluster. The command refuses, with a
-retryable `GENERIC` error, while an etcd snapshot restore, a certificate
-rotation, an encryption key rotation or a Kubernetes upgrade is in progress, and
-it refuses while the cluster is not ready: the Rancher UI offers the operation
-only when the management cluster's `Connected` condition is `True`, or, when it
-has no such condition, its `Ready` condition. When the cluster's own snapshot is
+retryable `GENERIC` error, while a certificate rotation, an encryption key
+rotation or a Kubernetes upgrade is in progress, and, with a `GENERIC` error that
+is not retryable, while an etcd snapshot restore is in progress (its hint is
+`cluster restore-etcd-snapshot` with `--dry-run`). It refuses while the cluster is not ready: the
+Rancher UI offers the operation only when the management cluster's `Connected`
+condition is `True`, or, when it has no such condition, its `Ready` condition.
+When the cluster's own snapshot is
 already in progress, run the same command again with `--apply --yes`: it changes
 nothing and waits for that snapshot. A snapshot that ended, `Finished` or
 `Failed`, is not in progress, and the command requests a new one. When the
@@ -1847,6 +1851,140 @@ provisioning-cluster` and read the server's response before you apply it:
 
     rancher patch provisioning-cluster <cluster> --namespace <namespace> --type merge \
       --patch '{"spec":{"rkeConfig":{"etcdSnapshotCreate":{"generation":<generation>}}}}' --dry-run
+
+### Restoring a provisioned cluster from an etcd snapshot
+
+`rancher cluster restore-etcd-snapshot <cluster> --snapshot <name>` restores a
+cluster that Rancher provisions with RKE2 or K3s (a node-driver cluster, or a
+custom cluster whose `spec.rkeConfig` is empty) from one of its etcd snapshots,
+as the Rancher UI does. `<name>` is the NAME column of `rancher get
+etcd-snapshots`, the name of the etcd-snapshot object, not the name of the
+snapshot file. Preview the request, then apply it:
+
+    rancher cluster restore-etcd-snapshot <cluster> --snapshot <name> --dry-run
+    rancher cluster restore-etcd-snapshot <cluster> --snapshot <name> --apply --yes
+
+The command writes the next generation of `spec.rkeConfig.etcdSnapshotRestore`
+on the provisioning cluster, with the snapshot's name and the restore mode in
+`restoreRKEConfig`. The generation is one more than the higher of that field's
+generation and the generation Rancher copied into the status of the cluster's
+RKEControlPlane. The write goes through the usual gates: the server-side dry-run
+preview, `--apply` and `--yes` (the preview says the change is not reversible),
+and the resourceVersion of the preview; a change made in between is refused as
+`CONFLICT`.
+
+A restore is destructive. Rancher stops Kubernetes on every node of the cluster
+(the cluster's API server is down until the restore ends), removes the server
+certificate files on the etcd and control plane nodes, replaces the cluster's
+etcd data with the snapshot and starts the nodes again. Every Kubernetes object
+created or changed after the snapshot was taken is lost, objects deleted since
+then come back, and Rancher deletes the Node objects of nodes that are no longer
+part of the cluster. A restore cannot be undone; the only way back is to restore another
+snapshot. The preview says all of this, names the time of the snapshot
+and where it is (the node, or the S3 bucket), and warns when a snapshot in S3 has
+no S3 cloud credential in the etcd snapshot object or in `spec.rkeConfig.etcd.s3`:
+Rancher then restores it with no S3 credentials.
+
+`--restore-mode` is the field `restoreRKEConfig`, and the preview names what each
+mode replaces, with the Rancher UI's label for it:
+
+- `none` (Only etcd): the cluster's configuration and Kubernetes version stay as
+  they are.
+- `kubernetesVersion` (Kubernetes version and etcd): Rancher first sets
+  `spec.kubernetesVersion` to the version recorded in the snapshot.
+- `all` (Cluster config, Kubernetes version and etcd): Rancher first replaces
+  `spec.kubernetesVersion` and, from the snapshot, the `machineGlobalConfig`,
+  `machineSelectorConfig`, `chartValues`, `registries`, `upgradeStrategy`,
+  `additionalManifest` and `networking` of `spec.rkeConfig`, the
+  `defaultPodSecurityAdmissionConfigurationTemplateName` of the cluster, and the
+  cluster agent, Fleet agent and webhook deployment customizations. Machine pools
+  are not restored.
+
+`kubernetesVersion` keeps its capital letter because the values are Rancher's own.
+Without `--restore-mode` the command writes the Rancher UI's default mode
+for the snapshot, and a warning says which. The modes a snapshot offers come from
+the `etcdsnapshot.rke.io/restore-mode-options` annotation Rancher sets on it
+(Rancher v2.13 sets none, and every mode the snapshot's metadata allows is
+offered) and from the cluster spec recorded in the snapshot's metadata: `all`
+needs a recorded `rkeConfig`, and `kubernetesVersion` and `all` need a recorded
+Kubernetes version. A snapshot with no readable metadata offers only `none`.
+
+The command checks the snapshot, before the preview, as the Rancher UI does. It
+refuses, with `VALIDATION`, a snapshot with no `spec.clusterName` or of another
+cluster, a snapshot whose `rke.cattle.io/cluster-name` label names another
+cluster, a snapshot whose status is not successful (the error carries the
+snapshot's message), a snapshot with no `createdAt` or taken at or before the
+time the cluster was created, and a restore mode the snapshot does not offer (the
+error lists the modes it offers). It also refuses a snapshot whose metadata has
+a Kubernetes version that Rancher cannot parse, because Rancher would fail the
+restore on every attempt and block every other operation on the cluster, and a
+snapshot taken before Kubernetes 1.25 restored with mode `none` onto a cluster at
+1.25 or newer, which Rancher does not restore (the error names the snapshot's
+version, the cluster's version and the modes of the snapshot that Rancher
+restores). A cluster spec in the metadata
+larger than 16 MiB is not read: the modes follow the annotation alone, the check for
+Kubernetes 1.25 is not made and a warning says so. A name with no etcd-snapshot is
+`NOT_FOUND`, with the cluster's restorable etcd-snapshots as candidates (up to
+ten, newest first) and the command for the newest as its hint. If the etcd
+snapshot cannot be read (HTTP 403), the error is `RBAC`.
+
+The command waits until the request Rancher copied into the status of the
+RKEControlPlane equals the generation written and its
+`etcdSnapshotRestorePhase` is `Finished`; the result then says the cluster was
+restored from the snapshot. A phase `Failed` for that generation ends the wait
+with an error that gives the reason and message of the RKEControlPlane's `Ready`
+condition. When the status of the RKEControlPlane has a later generation than the
+one written, another write replaced the request and the wait ends at once with an
+error. A timeout (`--timeout`, default 30m) or a stopped command ends the wait
+with an error that says the restore was requested and goes on; a cluster deleted
+during the wait ends it with an error that says so. None of these errors is
+retryable, and each has the same command with `--dry-run` as its hint (for a
+deleted cluster, `get provisioning-clusters`). The timeout error says that the
+command in the hint sends no write and shows the phase while the restore is in
+progress, and previews a new restore, which `--apply --yes` would request, once
+the restore has ended. `--wait=false` returns once the
+server accepts the request. If Rancher refuses (HTTP 403) to get the RKEControlPlane,
+the command stops waiting and exits 0, with a warning and `waited` false in the
+result.
+
+Rancher runs one operation at a time on a cluster. The command refuses, with a
+retryable `GENERIC` error, while an etcd snapshot, a certificate rotation, an
+encryption key rotation or a Kubernetes upgrade is in progress, and while the
+cluster is not ready (the same rule as the snapshot command). When a restore of
+the same etcd-snapshot and the same restore mode (any mode when `--restore-mode`
+is not given) is in progress, the command run with `--dry-run` sends no write
+and shows the phase of the restore; run with `--apply --yes` it changes nothing
+and waits for that restore. Run it with `--apply --yes` only after the preview
+says the restore is in progress: a restore that ended, `Finished` or `Failed`, is
+not in progress, and the command then requests a new restore, which stops
+Kubernetes on every node again. A restore of another snapshot or mode is
+refused, and the refusal, which is not retryable, has as its hint the command for
+the restore in progress with `--dry-run`; it says that this command shows the
+phase while the restore is in progress and previews a new restore once it has
+ended. During a `kubernetesVersion` or `all` restore Rancher also reports a
+Kubernetes upgrade in progress; the command waits on the restore and does not refuse the
+upgrade. `cluster save-etcd-snapshot` and `cluster upgrade` refuse while a
+restore is in progress with the same text and hint, and that refusal is not
+retryable either.
+
+The cluster must be one Rancher provisions. An imported cluster
+(`spec.rkeConfig` absent or null), a hosted cluster and the local cluster are
+refused with `VALIDATION`; Rancher restores an imported RKE2 or K3s cluster
+through `etcd-snapshot-restore` objects, which `rancher create resource -f`
+creates ([Day-2 operations on imported
+clusters](#day-2-operations-on-imported-clusters)).
+
+The Cluster Owner role grants `update` on the provisioning cluster and `get` on
+its etcd snapshots, which the command needs. Tab completion offers the
+provisioning clusters of the namespace that have `spec.rkeConfig`, then the
+etcd-snapshots the command accepts and the restore modes the chosen snapshot
+offers; with no offer, for example when the role does not grant `list` on them,
+type the names. If the command refuses a restore, you can preview the same change
+of the field with `rancher patch provisioning-cluster` and read the server's
+response before you apply it:
+
+    rancher patch provisioning-cluster <cluster> --namespace <namespace> --type merge \
+      --patch '{"spec":{"rkeConfig":{"etcdSnapshotRestore":{"generation":<generation>,"name":"<name>","restoreRKEConfig":"none"}}}}' --dry-run
 
 ## Upgrading a cluster's Kubernetes version
 
@@ -1923,8 +2061,10 @@ dry-run preview marks the upgrade as not reversible (`data.reversible` is false)
 
 On a provisioned cluster, while an etcd snapshot, an etcd snapshot restore, a
 certificate rotation or an encryption key rotation is in progress, the command
-refuses with a retryable `GENERIC` error that names the operation and, when
-Rancher reports one, its state; try again after the operation ends. While an
+refuses with a `GENERIC` error that names the operation and, when Rancher reports
+one, its state; the error is retryable except for a restore, whose
+hint is `cluster restore-etcd-snapshot` with `--dry-run`. Except for a restore,
+try again after the operation ends. While an
 upgrade is in progress the command does not refuse: the preview warns that the
 new version replaces the version it upgrades to. If the RKEControlPlane cannot
 be read, the command warns and does not refuse.

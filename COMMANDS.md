@@ -104,6 +104,7 @@ See also `create oidc-client` in [Create](#create), which creates the client its
 | `cluster upgrade <cluster> --k8s-version <version>` | Upgrade the Kubernetes version of a provisioned or imported RKE2 or K3s cluster with the version checks of the Rancher UI, and wait until Rancher reports the upgrade done; the preview names the newest etcd snapshot, because the upgrade cannot be reversed with this command - destructive; dry-run/apply --yes |
 | `cluster set-upgrade-strategy <cluster>` | Set how Rancher upgrades the nodes of a provisioned or imported RKE2 or K3s cluster: the concurrency of control plane and worker nodes and whether Rancher drains them first, with the drain options for a provisioned cluster; the preview is a server dry-run, the command writes the Rancher UI's defaults for the drain options a cluster does not have when it turns drain on, and does not wait for an upgrade - destructive for a provisioned cluster; dry-run/apply --yes, an imported cluster needs --apply only |
 | `cluster save-etcd-snapshot <cluster>` | Take an etcd snapshot of a provisioned RKE2 or K3s cluster as the Rancher UI does, wait until Rancher reports it taken and list the cluster's snapshots; the command refuses while another operation is in progress on the cluster and while the cluster is not ready - destructive; dry-run/apply --yes |
+| `cluster restore-etcd-snapshot <cluster> --snapshot <name>` | Restore a provisioned RKE2 or K3s cluster from one of its etcd snapshots as the Rancher UI does: Rancher stops Kubernetes on every node and replaces the cluster's etcd data with the snapshot; the command checks the snapshot and `--restore-mode` (`none`, `kubernetesVersion`, `all`; default: the Rancher UI's default for the snapshot), refuses while another operation is in progress on the cluster and while the cluster is not ready, and waits until Rancher reports the restore finished - destructive; dry-run/apply --yes |
 
 See also `create cluster` in [Create](#create) and `delete provisioning-cluster`
 for lifecycle; `get provisioning-cluster` for reads.
@@ -220,6 +221,6 @@ Per-kind verb rules and kind notes:
 Generated per kind from the 73-kind table: `get <kind>` (73), `patch <kind>`
 (73), `delete <kind>` (43 - 42 deletable kinds, including the Rancher role binding
 kinds, `token`, `kubeconfig`, `management-token`, `user`, and `oidcclient`, plus a `provisioning-cluster` override) -
-189 generated commands, 275 total together with the fixed commands above. The authoritative, always-current list is
+189 generated commands, 276 total together with the fixed commands above. The authoritative, always-current list is
 `rancher schema --all -o json`.
 <!-- /conformance:surface-counts -->

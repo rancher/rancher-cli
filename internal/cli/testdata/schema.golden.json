@@ -1118,6 +1118,72 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "Restores a provisioned cluster from one of its etcd snapshots by writing the next generation of spec.rkeConfig.etcdSnapshotRestore on its provisioning cluster, as the Rancher UI does, then waits until Rancher reports the restore finished. Rancher stops Kubernetes on every node of the cluster (its API server is down until the restore ends), replaces the cluster's etcd data with the snapshot and starts the nodes again; every Kubernetes object created or changed after the snapshot was taken is lost, and a restore cannot be undone. --snapshot takes the name of an etcd-snapshot, the NAME column of `rancher get etcd-snapshots`. --restore-mode sets restoreRKEConfig in that field: none restores etcd only, kubernetesVersion also sets the Kubernetes version recorded in the snapshot, and all also restores the cluster configuration recorded in it. Without --restore-mode the command writes the Rancher UI's default mode for the snapshot. Before the preview the command refuses an etcd snapshot that is not a successful snapshot of this cluster taken after the cluster was created, a restore mode the snapshot does not offer, and a snapshot taken before Kubernetes 1.25 for a cluster at 1.25 or newer with restore mode none. It also refuses while another operation is in progress on the cluster, because Rancher runs one operation at a time, and while the cluster is not ready. Running the command again with --apply --yes while its own restore is in progress changes nothing and waits for that restore; once that restore has ended, running it again requests a new restore. A run with --dry-run shows the phase of a restore in progress and sends no write. --wait=false returns once the server accepts the request. Imported clusters, hosted clusters and the local cluster are refused.",
+      "destructive": "true",
+      "examples": [
+        "rancher cluster restore-etcd-snapshot my-cluster --snapshot my-snapshot --dry-run",
+        "rancher cluster restore-etcd-snapshot my-cluster --snapshot my-snapshot --apply --yes"
+      ],
+      "flags": [
+        {
+          "desc": "`name` of the etcd-snapshot to restore, the NAME column of `rancher get etcd-snapshots`",
+          "name": "snapshot",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "restore mode: none|kubernetesVersion|all (default: the Rancher UI's default for the snapshot)",
+          "enum": [
+            "none",
+            "kubernetesVersion",
+            "all"
+          ],
+          "name": "restore-mode",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "Fleet workspace (namespace) of the provisioning cluster (default: fleet-default)",
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "desc": "wait until Rancher reports the operation done before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 1h (default 30m)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "cluster",
+      "name": "cluster restore-etcd-snapshot",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Restore an RKE2 or K3s cluster from one of its etcd snapshots"
+    },
+    {
+      "args": [
+        {
+          "desc": "provisioning cluster `name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
       "desc": "Removes the provisioning.cattle.io/cluster-autoscaler-paused annotation from the provisioning cluster. The cluster autoscaler then manages again every machine pool that has autoscalingMinSize and autoscalingMaxSize set. If autoscaling is not paused, the command succeeds and changes nothing. Like every change to a provisioning cluster, it requires --yes with --apply.",
       "destructive": "true",
       "examples": [
@@ -15396,9 +15462,10 @@
         "cluster resume-autoscaling",
         "cluster upgrade",
         "cluster save-etcd-snapshot",
+        "cluster restore-etcd-snapshot",
         "cluster set-upgrade-strategy"
       ],
-      "desc": "Scale a machine pool, manage cluster-autoscaler settings, upgrade the Kubernetes version of a cluster, set its upgrade strategy or take an etcd snapshot; to create or delete a provisioning cluster use `rancher create cluster` and `rancher delete provisioning-cluster`, and to read one use `rancher get provisioning-cluster`.",
+      "desc": "Scale a machine pool, manage cluster-autoscaler settings, upgrade the Kubernetes version of a cluster, set its upgrade strategy, take an etcd snapshot or restore a cluster from one; to create or delete a provisioning cluster use `rancher create cluster` and `rancher delete provisioning-cluster`, and to read one use `rancher get provisioning-cluster`.",
       "name": "cluster"
     },
     {

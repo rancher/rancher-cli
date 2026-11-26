@@ -162,7 +162,7 @@ needs `SKILL.md` and the files in `references/`.
 | [Servers & configuration](COMMANDS.md#servers--configuration) | servers, config file, completion settings |
 | [Create](COMMANDS.md#create) | project, namespace, secret, resource -f, token, kubeconfig, cluster, machine-config, cloud-credential |
 | [Projects & access](COMMANDS.md#projects--access) | project namespace membership, grant, revoke |
-| [Cluster scaling & autoscaling](COMMANDS.md#cluster-scaling--autoscaling) | machine-pool scale, cluster-autoscaler set/clear/pause/resume, Kubernetes version upgrade, upgrade strategy (`cluster set-upgrade-strategy`), etcd snapshot (`cluster save-etcd-snapshot`) |
+| [Cluster scaling & autoscaling](COMMANDS.md#cluster-scaling--autoscaling) | machine-pool scale, cluster-autoscaler set/clear/pause/resume, Kubernetes version upgrade, upgrade strategy (`cluster set-upgrade-strategy`), etcd snapshot (`cluster save-etcd-snapshot`), etcd snapshot restore (`cluster restore-etcd-snapshot`) |
 | [Nodes](COMMANDS.md#nodes) | drain a node (`node drain`) or stop a drain (`node stop-drain`); Rancher runs the drain, and `get management-node` shows its state |
 | [Read & inspect](COMMANDS.md#read--inspect) | cloud credentials, Kubernetes versions, composite cluster/pod/deployment/project/user reads, images, usage, charts |
 | [Apps](COMMANDS.md#apps) | install a chart from a ClusterRepo as a Helm release (`app install`), upgrade one (`app upgrade`), uninstall one (`app uninstall`); Rancher runs Helm, previews come from server reads |

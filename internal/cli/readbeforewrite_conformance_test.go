@@ -48,12 +48,13 @@ func generatedPatchCommands() map[string]bool {
 // TestEveryCommandThatReadsBeforeItWritesNamesTheMissingVerb until it is
 // listed here.
 var dedicatedReadsBeforeWrite = map[string]readBeforeWrite{
-	"cluster scale":              {word: "command", verb: "update"},
-	"cluster set-autoscaling":    {word: "command", verb: "update"},
-	"cluster clear-autoscaling":  {word: "command", verb: "update"},
-	"cluster pause-autoscaling":  {word: "command", verb: "update"},
-	"cluster resume-autoscaling": {word: "command", verb: "update"},
-	"cluster save-etcd-snapshot": {word: "command", verb: "update"},
+	"cluster scale":                 {word: "command", verb: "update"},
+	"cluster set-autoscaling":       {word: "command", verb: "update"},
+	"cluster clear-autoscaling":     {word: "command", verb: "update"},
+	"cluster pause-autoscaling":     {word: "command", verb: "update"},
+	"cluster resume-autoscaling":    {word: "command", verb: "update"},
+	"cluster save-etcd-snapshot":    {word: "command", verb: "update"},
+	"cluster restore-etcd-snapshot": {word: "command", verb: "update"},
 	// An imported cluster's version and upgrade strategy are written to its
 	// management Cluster, not to the provisioning Cluster the command reads.
 	"cluster upgrade":              {word: "command"},

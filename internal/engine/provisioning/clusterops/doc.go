@@ -4,8 +4,11 @@
 // RKE2 or K3s clusters, which etcd snapshots belong to a cluster, and the rules
 // of the day-2 operations of an imported cluster: the restore modes the Rancher
 // UI offers, the certificate services of a distribution, and the age of the
-// newest etcd snapshot. Its functions read objects as decoded JSON
-// (map[string]any) and make no request.
+// newest etcd snapshot; and the checks of a restore of a provisioned cluster
+// from an etcd snapshot object: the snapshot rules of the Rancher UI, the
+// cluster spec recorded in the snapshot's metadata, and the check for a
+// snapshot taken before Kubernetes 1.25 that Rancher's planner makes. Its
+// functions read objects as decoded JSON (map[string]any) and make no request.
 //
 // The package imports the standard library packages it needs and
 // internal/clierr, and nothing else: a completion package may import it

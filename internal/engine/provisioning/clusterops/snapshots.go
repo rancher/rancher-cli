@@ -8,8 +8,11 @@ import (
 
 // SnapshotOfCluster reports whether an etcd snapshot object belongs to the
 // cluster: its spec.clusterName equals cluster. The objects of one namespace
-// can belong to several clusters, and the label rke.cattle.io/cluster-name
-// says nothing the field does not.
+// can belong to several clusters, and the field decides which one a snapshot
+// belongs to. Only the restore of a provisioned cluster
+// (CheckProvisionedRestore) also refuses a label rke.cattle.io/cluster-name
+// that names another cluster, because the Rancher UI lists a provisioned
+// cluster's snapshots by the label.
 func SnapshotOfCluster(snapshot map[string]any, cluster string) bool {
 	name := nestedString(snapshot, "spec", "clusterName")
 	return name != "" && name == cluster
