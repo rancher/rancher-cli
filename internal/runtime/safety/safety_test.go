@@ -50,6 +50,42 @@ func TestEffectJSONShape(t *testing.T) {
 	assert.NotContains(t, m, "tier")
 }
 
+// TestRequiredGates asserts the flags of every combination of a destructive
+// change and a stability, in the order --apply, --yes, --allow-deprecated.
+func TestRequiredGates(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		row         string
+		destructive bool
+		stability   Stability
+		want        []string
+	}{
+		{"nonDestructiveStable", false, Stable, []string{"--apply"}},
+		{"nonDestructiveBeta", false, Beta, []string{"--apply"}},
+		{"nonDestructiveDeprecated", false, Deprecated, []string{"--apply", "--allow-deprecated"}},
+		{"destructiveStable", true, Stable, []string{"--apply", "--yes"}},
+		{"destructiveBeta", true, Beta, []string{"--apply", "--yes"}},
+		{"destructiveDeprecated", true, Deprecated, []string{"--apply", "--yes", "--allow-deprecated"}},
+		{"noStability", true, "", []string{"--apply", "--yes"}},
+	} {
+		t.Run(tc.row, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, RequiredGates(tc.destructive, tc.stability))
+		})
+	}
+}
+
+// TestEffectGatesSerialize asserts the Effect writes its gates as a list under
+// "gates".
+func TestEffectGatesSerialize(t *testing.T) {
+	t.Parallel()
+	b, err := json.Marshal(Effect{Action: ActionDelete, Gates: RequiredGates(true, Deprecated)})
+	require.NoError(t, err)
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(b, &m))
+	assert.Equal(t, []any{"--apply", "--yes", "--allow-deprecated"}, m["gates"])
+}
+
 // TestEffectWarningsNeverSerialize asserts the json:"-" tag deliberately kept on
 // Warnings: the Effect marshals inside the envelope's data
 // field, and renderEffect (internal/runtime/pipeline.go) copies these into

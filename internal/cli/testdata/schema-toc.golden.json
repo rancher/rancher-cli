@@ -57,6 +57,10 @@
         "type": "bool"
       },
       {
+        "name": "gates",
+        "type": "array"
+      },
+      {
         "name": "uid",
         "type": "string"
       },

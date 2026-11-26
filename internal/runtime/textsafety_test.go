@@ -180,7 +180,7 @@ func TestErrorTextQuotesControlCharacters(t *testing.T) {
 // previewEffect is an Effect for a preview row: a create of project/web with
 // set applied.
 func previewEffect(set func(*safety.Effect)) safety.Effect {
-	eff := safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionCreate, DisplayKind: "project", DisplayName: "web"}
+	eff := safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionCreate, DisplayKind: "project", DisplayName: "web", Gates: []string{safety.GateApply}}
 	set(&eff)
 	return eff
 }

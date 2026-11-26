@@ -86,6 +86,7 @@ func TestDryRunTextListsTheEffectObjects(t *testing.T) {
 	eff := safety.Effect{
 		PreviewSource: safety.PreviewServerDryRun,
 		Action:        safety.ActionDelete, DisplayKind: "project", DisplayName: "p-1", Cluster: "c-abc", Destructive: true,
+		Gates:   []string{safety.GateApply, safety.GateYes},
 		Objects: append(namespaceObjects(safety.OutcomeRancherKeeps, "apps"), namespaceObjects(safety.OutcomeRancherDeletes, "legacy")...),
 	}
 	assert.Equal(t, "delete project/p-1\n"+

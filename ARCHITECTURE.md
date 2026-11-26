@@ -665,10 +665,15 @@ decode error are unknown, which never blocks. The day-2 operation rows use the
      gate inputs - the command's Plan cannot override the contract or stability.
    - `Effect.Server` is stamped from the factory's resolved identity; `Effect.Cluster` is
      set by Plan. Dry-run output and gating state *where* the mutation lands.
-3. `--dry-run` renders the Effect and stops (the executor closure is discarded).
+3. `--dry-run` renders the Effect and stops (the executor closure is discarded). The
+   text output ends with the gate flags of the next item, and the JSON lists them as
+   `gates`.
 4. Gates, in order: `--apply` (always) → `--yes` (only if `Destructive`) →
    `--allow-deprecated` (only if `Stability == deprecated`). A missing gate →
-   `CONFIRMATION_REQUIRED`.
+   `CONFIRMATION_REQUIRED`. `safety.RequiredGates` returns the list. The refusal
+   computes it from `Effect.Destructive` and the binding; the pipeline sets
+   `Effect.Gates` from the same function before the dry-run branch, for the
+   preview and the JSON.
 5. `exec(ctx)` runs the real write; the result renders through the envelope.
 
 **Server-side dry-run has real RBAC semantics.** `--dry-run` sends `DryRunAll` to the API
@@ -1352,6 +1357,16 @@ Execute structurally cannot act on anything Plan did not preview.
 **Pipeline-stamped gate inputs.** Contract, stability, destructiveness, and server identity
 that drive the gates are stamped by the pipeline from the resolver binding and factory -
 never read from values the command returned - so a command cannot weaken its own gates.
+
+**One list of gate flags.** `safety.RequiredGates(destructive, stability)` is the only
+place that decides which flags a mutation needs: `--apply`, then `--yes` for a destructive
+change, then `--allow-deprecated` for a deprecated stability. After Plan returns, the
+pipeline sets `Effect.Gates` from it, and the text preview and the `gates` field of the
+JSON Effect show that list, whatever a Plan set there. The refusal of a run computes the
+list again from `Effect.Destructive` and the binding, never from `Effect.Gates`: a Plan
+cannot weaken a gate through `Effect.Gates`, and `--yes` follows the `Destructive` the
+Plan returns, which the registry test checks against the schema. The `gates` of the schema manifest come from the same function. A
+preview therefore cannot name fewer flags than the apply needs.
 
 **Machine-local pin file.** The credential-store decision is a machine-local probe result
 (`credstore-pin`), not portable config. Only a login writes it, under the login's config

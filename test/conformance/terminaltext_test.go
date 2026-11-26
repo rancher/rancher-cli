@@ -278,7 +278,9 @@ func terminalRowNames() []string {
 
 // previewPrinted are the paths of safety.Effect that the dry-run preview
 // prints, previewNotPrinted the ones it does not (the warnings have rows of
-// their own) and previewByHand the ones the row sets itself.
+// their own), previewByHand the ones the row sets itself and previewByPipeline
+// the ones the pipeline sets from constants, whatever a Plan returned: the row
+// plants hostile text there, and the expected preview text shows it is replaced.
 var (
 	previewPrinted = []string{
 		"DisplayKind", "DisplayName", "Server", "Cluster",
@@ -287,6 +289,8 @@ var (
 	}
 	previewNotPrinted = []string{"Target", "ResourceVersion", "UID", "Objects[].Code", "Warnings[]"}
 	previewByHand     = []string{"Action", "PreviewSource", "WriteVia"}
+	// previewByPipeline is the one path the pipeline sets after Plan returns.
+	previewByPipeline = []string{"Gates[]"}
 	// previewWithCommand are the printed paths that keep this process's
 	// marker, so a command of the CLI planted there expands.
 	previewWithCommand = []string{"DisplayKind", "DisplayName", "Server", "Cluster"}
@@ -305,8 +309,8 @@ func previewObjectText(p string) string {
 func plantedEffect(t *testing.T) safety.Effect {
 	t.Helper()
 	typ := reflect.TypeFor[safety.Effect]()
-	assert.ElementsMatch(t, remedytest.TextPaths(typ), slices.Concat(previewPrinted, previewNotPrinted, previewByHand),
-		"every text field of an Effect is printed, not printed or set by the row")
+	assert.ElementsMatch(t, remedytest.TextPaths(typ), slices.Concat(previewPrinted, previewNotPrinted, previewByHand, previewByPipeline),
+		"every text field of an Effect is printed, not printed, set by the row or set by the pipeline")
 	planted := remedytest.PlantText(t, typ, func(p string) string {
 		switch {
 		case slices.Contains(previewWithCommand, p):

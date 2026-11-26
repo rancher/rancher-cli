@@ -201,7 +201,8 @@ Every command that changes the server runs these steps, in order:
 
 1. `--dry-run` previews the change (the action, the fields the command sets
    or changes, and warnings) and changes nothing. The preview succeeds only
-   if the server-side dry-run succeeds.
+   if the server-side dry-run succeeds. The last line of the text preview names
+   every flag the apply needs, and the JSON preview lists them as `data.gates`.
 2. `--apply` executes. A command that changes the server, run with neither
    `--dry-run` nor `--apply`, is refused with `CONFIRMATION_REQUIRED`, and
    the refusal names the exact flags required.

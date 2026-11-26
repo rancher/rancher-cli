@@ -3763,6 +3763,16 @@ envelope's `retryable` field; the `hint`, when present, is the remedy.
 When a candidate list is cut to its first entries,
 `data.error.candidatesTotal` gives the size of the full list.
 
+The `--dry-run` preview of a command that changes the server names every flag
+its `--apply` run needs: the text ends with `dry-run preview - re-run with
+<flags> to apply the change`, and the JSON or YAML preview lists the same flags
+in `data.gates`. The flags are `--apply`, then `--yes` for a destructive change,
+then `--allow-deprecated` for a command whose stability is `deprecated`.
+`rancher schema` lists the same flags as the `gates` of the command, and the
+`CONFIRMATION_REQUIRED` message names the ones the run was not given. For a
+command whose `destructive` is `dependsOnInput`, `rancher schema` lists
+`--apply` only, and the preview adds `--yes` when the change is destructive.
+
 `rancher create password-change-request` gives two of Rancher's responses to
 a PasswordChangeRequest a different error code, chosen by the text of the
 message. A 500 whose message contains `error updating password: invalid
@@ -3803,8 +3813,9 @@ Agents may execute a present hint after the same inspection any other
 emitted text gets before being treated as argv.
 
 A hint or remedy that changes something carries `--dry-run`, and the
-message says to add the gates of the command (`--apply`, and `--yes` for a
-destructive change) after reading the preview. A command that deletes a
+message says to add the gates of the command (`--apply`, `--yes` for a
+destructive change, and `--allow-deprecated` for a deprecated command) after
+reading the preview. A command that deletes a
 token or kubeconfig the CLI created or recorded keeps `--apply --yes`: the
 header of a created kubeconfig file and the text that says how to create a
 token or kubeconfig again name the delete that way, or the command that lists

@@ -15,6 +15,11 @@
   `data.waited` of `true` means the Job is gone, not its pods; read
   `rancher get pod --cluster <c> --namespace <ns>` until they are gone.
 
+- A preview names every flag the apply needs: the last line of its text reads
+  `re-run with <flags> to apply the change`, and the json or yaml preview lists
+  them in `data.gates`. Run the same command again without `--dry-run`, with
+  those gate flags and no other gate flags.
+
 - Patch and create previews include a field-level diff (`data.diff`) - show
   it. Its `path` is an RFC 6901 pointer (`~1` for `/`, `~0` for `~`), usable
   verbatim as the `path` of an operation in a `--patch` JSON Patch. A

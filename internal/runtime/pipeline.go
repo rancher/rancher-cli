@@ -265,6 +265,9 @@ func runMutating(ctx context.Context, c MutatingCommand, in Input, streams IO, b
 		}
 		eff.Server = server
 	}
+	// eff.Gates is for the preview and the JSON; a value a Plan set is
+	// replaced, and the refusal below never reads it.
+	eff.Gates = safety.RequiredGates(eff.Destructive, b.Stability)
 	if streams.DryRun {
 		return 0, renderEffect(streams, eff)
 	}
@@ -756,19 +759,34 @@ func confirmationMessage(streams IO, missing []string) string {
 	return "confirmation required for this mutation; re-run with " + flags
 }
 
-// missingFlags computes the confirmation flags absent for this Effect and binding.
+// missingFlags returns the flags the change needs that the run was not given,
+// in the order of safety.RequiredGates. It reads the Effect's Destructive flag
+// and the binding, never eff.Gates: a Plan cannot weaken a gate through
+// eff.Gates. --yes follows the Destructive the Plan returns.
 func missingFlags(streams IO, eff safety.Effect, b safety.Binding) []string {
 	var missing []string
-	if !streams.Apply {
-		missing = append(missing, "--apply")
-	}
-	if eff.Destructive && !streams.Yes {
-		missing = append(missing, "--yes")
-	}
-	if b.Stability == safety.Deprecated && !streams.AllowDeprecated {
-		missing = append(missing, "--allow-deprecated")
+	for _, gate := range safety.RequiredGates(eff.Destructive, b.Stability) {
+		if !streams.givenGate(gate) {
+			missing = append(missing, gate)
+		}
 	}
 	return missing
+}
+
+// givenGate reports whether the run was given the gate flag. A flag that
+// safety.RequiredGates can return and this switch lacks reads as not given; the
+// refusal names it and the run never applies.
+func (streams IO) givenGate(gate string) bool {
+	switch gate {
+	case safety.GateApply:
+		return streams.Apply
+	case safety.GateYes:
+		return streams.Yes
+	case safety.GateAllowDeprecated:
+		return streams.AllowDeprecated
+	default:
+		return false
+	}
 }
 
 // payloadExclusivityRule is the single source for the Result channel
@@ -1156,13 +1174,15 @@ func renderEffect(streams IO, eff safety.Effect) *clierr.Error {
 // DisplayKind/DisplayName identity (a generateName preview may carry a
 // trailing "*" - never the committed success identity), the target
 // server/cluster when set, a change summary from the Effect's diff entries,
-// and the confirmation gate line naming the flags a real run needs.
+// and the confirmation gate line naming the flags of eff.Gates, the ones a
+// real run needs.
 // Effect.Warnings are deliberately NOT part of this body (see renderEffect).
 // Each field and value is written as clierr.ValueText writes it: one that has
 // a control character, an invisible format character, a line or paragraph
 // separator or an invalid UTF-8 byte shows as a double-quoted string with
 // escapes, and a remedy command in the server, cluster, kind or name stays
-// for renderEffect to expand.
+// for renderEffect to expand. It reads eff.Gates, which runMutating sets
+// before it renders the preview: an Effect with no Gates prints no flags.
 func dryRunText(eff safety.Effect) string {
 	var lines []string
 	if eff.Server != "" {
@@ -1187,11 +1207,7 @@ func dryRunText(eff safety.Effect) string {
 		lines = append(lines, output.Printable(fmt.Sprintf("%s: %s -> %s", clierr.ValueText(d.Path), clierr.ValueText(diffValueText(d.From)), clierr.ValueText(diffValueText(d.To)))))
 	}
 	lines = append(lines, ObjectLines(eff.Objects, eff.DisplayKind)...)
-	gate := "dry-run preview - re-run with --apply"
-	if eff.Destructive {
-		gate += " --yes"
-	}
-	gate += " to apply the change"
+	gate := "dry-run preview - re-run with " + strings.Join(eff.Gates, " ") + " to apply the change"
 	lines = append(lines, gate)
 	return textLinesString(fmt.Sprintf("%s %s/%s", eff.Action, clierr.ValueText(eff.DisplayKind), clierr.ValueText(eff.DisplayName)), lines...)
 }

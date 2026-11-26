@@ -130,14 +130,7 @@ func Gates(ct CommandType, destructive, stability string) []string {
 	if ct != Mutating {
 		return nil
 	}
-	gates := []string{"--apply"}
-	if destructive == "true" {
-		gates = append(gates, "--yes")
-	}
-	if stability == string(safety.Deprecated) {
-		gates = append(gates, "--allow-deprecated")
-	}
-	return gates
+	return safety.RequiredGates(destructive == "true", safety.Stability(stability))
 }
 
 func gateLine(ct CommandType, destructive, stability string) string {

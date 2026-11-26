@@ -54,6 +54,29 @@ type Binding struct {
 	Stability Stability
 }
 
+// The flags that gate a mutation, spelled as they are typed on the command line.
+const (
+	GateApply           = "--apply"
+	GateYes             = "--yes"
+	GateAllowDeprecated = "--allow-deprecated"
+)
+
+// RequiredGates lists the flags a real run of a mutation needs, in the order
+// the refusal and the preview name them: --apply always, --yes for a
+// destructive change, --allow-deprecated for a deprecated stability. The
+// refusal of a run, the preview, the Effect and the schema manifest all take
+// the list from here.
+func RequiredGates(destructive bool, stability Stability) []string {
+	gates := []string{GateApply}
+	if destructive {
+		gates = append(gates, GateYes)
+	}
+	if stability == Deprecated {
+		gates = append(gates, GateAllowDeprecated)
+	}
+	return gates
+}
+
 // PreviewSource says where an Effect comes from. Every Plan sets one of the
 // two values; the pipeline refuses any other, the empty value included.
 type PreviewSource string
@@ -200,6 +223,11 @@ type Effect struct {
 	ConflictDetection bool          `json:"conflictDetection"`
 	Reversible        bool          `json:"reversible"`
 	Destructive       bool          `json:"destructive"`
+	// Gates are the flags a real run of the command needs, in the order
+	// RequiredGates lists them. The pipeline sets them from Destructive and the
+	// command's stability after Plan returns, and replaces any value a Plan set.
+	// The refusal of a run does not read them.
+	Gates []string `json:"gates"`
 	// UID is the uid precondition of a delete of an object the caller cannot
 	// get, taken from the response to its dry-run delete; a delete that sends
 	// a resourceVersion precondition leaves it empty.

@@ -288,6 +288,7 @@ func effectSchema() EffectSchema {
 			{Name: "conflictDetection", Type: "bool"},
 			{Name: "reversible", Type: "bool"},
 			{Name: "destructive", Type: "bool"},
+			{Name: "gates", Type: "array"},
 			{Name: "uid", Type: "string"},
 			{Name: "objects", Type: "array"},
 			{Name: "writeVia", Type: "string"},
