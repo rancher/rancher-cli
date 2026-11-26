@@ -320,3 +320,66 @@ func TestNamespaceFixtureDedicatedFieldsWinOverTheFreeFormMaps(t *testing.T) {
 	assert.Equal(t, map[string]any{"kubernetes.io/metadata.name": "apps", "field.cattle.io/projectId": "p-1"}, meta["labels"])
 	assert.Equal(t, map[string]any{"field.cattle.io/projectId": "c-abc:p-1", "field.cattle.io/creatorId": "u-abc"}, meta["annotations"])
 }
+
+// TestNamespaceFixtureServesItsCreationTimeAndEachNamespaceByName asserts a
+// namespace served in full carries the creation time of its fixture, one served
+// with a few fields only never does, and that steve's path of one namespace
+// responds with that namespace for a caller who may get it. For any other name
+// it responds 403 Forbidden to a caller who is not an administrator, whether
+// the namespace is missing or listed with a few fields only, 404 NotFound to an
+// administrator, and 403 PermissionDenied to a caller who sees no namespace;
+// each error body has an empty links object.
+func TestNamespaceFixtureServesItsCreationTimeAndEachNamespaceByName(t *testing.T) {
+	t.Parallel()
+	visibility := func(_, cluster string) ([]testrancher.NamespaceFixture, bool) {
+		if cluster == "c-none" {
+			return nil, true
+		}
+		return []testrancher.NamespaceFixture{
+			{Name: "apps", Project: "p-1", CreationTimestamp: "2026-11-24T09:00:00Z"},
+			{Name: "no-time", Project: "p-1"},
+			{Name: "hidden", WithoutGet: true, CreationTimestamp: "2026-11-24T09:00:00Z"},
+		}, true
+	}
+	_, srv := newFacade(t, testrancher.Options{SeedToken: projectsSeed, NamespaceVisibility: visibility}, &recordingHandler{})
+	user := jsonLogin(t, srv)
+	items := namespaceItems(t, srv, "c-abc")
+	assert.Equal(t, "2026-11-24T09:00:00Z", itemMeta(t, items, "apps")["creationTimestamp"])
+	assert.NotContains(t, itemMeta(t, items, "no-time"), "creationTimestamp")
+	assert.NotContains(t, itemMeta(t, items, "hidden"), "creationTimestamp", "an item with a few fields only has no creation time")
+
+	status, body := getDecoded(t, srv, "/k8s/clusters/c-abc/v1/namespaces/apps", user)
+	require.Equal(t, http.StatusOK, status)
+	assert.Equal(t, "apps", body["id"])
+	assert.Equal(t, "c-abc:p-1", body["metadata"].(map[string]any)["annotations"].(map[string]any)["field.cattle.io/projectId"])
+
+	forbidden := func(name string) string {
+		return `namespaces "` + name + `" is forbidden: User "user-e2e" cannot get resource "namespaces" in API group "" in the namespace "` + name + `"`
+	}
+	tests := []struct {
+		name    string
+		path    string
+		bearer  string
+		status  int
+		code    string
+		message string
+	}{
+		{name: "a missing namespace for a user", path: "/k8s/clusters/c-abc/v1/namespaces/missing", bearer: user,
+			status: http.StatusForbidden, code: "Forbidden", message: forbidden("missing")},
+		{name: "a namespace listed with a few fields only for a user", path: "/k8s/clusters/c-abc/v1/namespaces/hidden", bearer: user,
+			status: http.StatusForbidden, code: "Forbidden", message: forbidden("hidden")},
+		{name: "a missing namespace for an administrator", path: "/k8s/clusters/c-abc/v1/namespaces/missing", bearer: projectsSeed,
+			status: http.StatusNotFound, code: "NotFound", message: `namespaces "missing" not found`},
+		{name: "any namespace for a user who sees none", path: "/k8s/clusters/c-none/v1/namespaces/apps", bearer: user,
+			status: http.StatusForbidden, code: "PermissionDenied", message: "Method GET not supported"},
+	}
+	for _, tt := range tests {
+		status, body = getDecoded(t, srv, tt.path, tt.bearer)
+		assert.Equal(t, tt.status, status, tt.name)
+		assert.Equal(t, "error", body["type"], tt.name)
+		assert.Equal(t, tt.code, body["code"], tt.name)
+		assert.Equal(t, tt.message, body["message"], tt.name)
+		assert.EqualValues(t, tt.status, body["status"], tt.name)
+		assert.Equal(t, map[string]any{}, body["links"], "%s: steve's errors carry a links object", tt.name)
+	}
+}

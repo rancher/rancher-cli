@@ -86,6 +86,7 @@ func TestExpectedProbeSet(t *testing.T) {
 		"delete-downstream/get-refused-for-a-delete-only-role",
 		"delete/get-refused-at-the-cluster-scope", "delete/get-refused-for-a-namespace",
 		"delete/get-refused-in-a-named-group",
+		"namespaces-downstream/member-steve-namespaces",
 	}
 	var got []string
 	for _, p := range All() {
@@ -161,15 +162,34 @@ func TestEveryProbeHasItsRecordedGoldens(t *testing.T) {
 	}
 }
 
+// downstreamProbesAwaitingRecord lists the downstream probes that have no
+// recorded golden, each with the reason. A row whose probe has a golden fails
+// the test.
+var downstreamProbesAwaitingRecord = map[string]string{}
+
+// TestEveryDownstreamProbeHasItsRecordedGolden asserts that every downstream
+// probe has a recorded golden, except the probes of
+// downstreamProbesAwaitingRecord, which have none, and that each row of that
+// list names a downstream probe.
 func TestEveryDownstreamProbeHasItsRecordedGolden(t *testing.T) {
 	t.Parallel()
+	names := map[string]bool{}
 	for _, p := range All() {
 		if !p.Downstream {
 			continue
 		}
+		names[p.Name] = true
 		path := GoldenPath(filepath.Join("testdata", "downstream"), p.Name)
 		_, err := os.Stat(path)
+		if reason, awaiting := downstreamProbesAwaitingRecord[p.Name]; awaiting {
+			assert.NotEmpty(t, reason, p.Name)
+			assert.True(t, os.IsNotExist(err), "downstream probe %s has a golden at %s: remove its row from downstreamProbesAwaitingRecord", p.Name, path)
+			continue
+		}
 		require.NoError(t, err, "downstream probe %s must have a recorded golden at %s", p.Name, path)
+	}
+	for name := range downstreamProbesAwaitingRecord {
+		assert.True(t, names[name], "downstreamProbesAwaitingRecord lists %q, which is no downstream probe", name)
 	}
 }
 
@@ -428,6 +448,7 @@ func TestTokenUsesRightAfterACreateOrDeleteWaitForTheirRecordedStatus(t *testing
 		{"owner-downstream/scoped-creates-and-reviews", "review-local-with-the-scoped-v3-token"}:                "cluster-scoped token refused outside its cluster; never deleted",
 		{"revoke/ext-token-deleted-by-another-token-of-its-user", "second-delete-with-the-other-token"}:         "bearer already accepted on the previous request; the object is read by a direct get",
 		{"serverfacts/install-uuid-no-global-role", "read"}:                                                     "login bearer right after the login",
+		{"access-downstream/member-cluster-token", "steve-namespaces-with-the-cluster-token"}:                   "cluster token already accepted by the read before it",
 		{"login/user-base-user-creates-an-ext-token", "ext-create-with-the-login-bearer"}:                       "login bearer right after the login",
 		{"login/clusters-create-user-cannot-create-an-ext-token", "ext-create-with-the-login-bearer"}:           "login bearer right after the login",
 	}

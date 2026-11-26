@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"sync"
@@ -83,8 +82,8 @@ func (c *Connection) Used() int {
 // GetJSON issues one GET for p, with the bearer token when the connection
 // has one, and decodes the JSON body into dst. accept is the Accept header,
 // "" for application/json. A request past the allowance returns
-// ErrAllowanceExceeded without sending; a non-2xx status and an
-// undecodable body are errors.
+// ErrAllowanceExceeded without sending; a non-2xx status is a *StatusError,
+// and an undecodable body is an error.
 func (c *Connection) GetJSON(ctx context.Context, p Path, accept string, dst any) error {
 	if p.path == "" {
 		return ErrEmptyPath
@@ -117,7 +116,7 @@ func (c *Connection) GetJSON(ctx context.Context, p Path, accept string, dst any
 	}
 	c.traceRequest(p.path, resp.StatusCode, len(body), time.Since(start), nil)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("HTTP %d", resp.StatusCode)
+		return &StatusError{Status: resp.StatusCode}
 	}
 	return json.Unmarshal(body, dst)
 }

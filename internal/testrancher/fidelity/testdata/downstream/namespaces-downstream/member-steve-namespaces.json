@@ -1,0 +1,89 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.3@sha256:3f3a50c6e49c1cf5b4673bef236e0f260f36055de4d073438e38c441dc97aa9b",
+  "observations": [
+    {
+      "name": "projects",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "count": 1,
+        "data": [
+          {
+            "apiVersion": "management.cattle.io/v3",
+            "id": "{downstream}/{project}",
+            "kind": "Project",
+            "spec": "\u003cspec\u003e",
+            "type": "management.cattle.io.project"
+          }
+        ],
+        "revision": "\u003crevision\u003e",
+        "type": "collection"
+      }
+    },
+    {
+      "name": "list",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "count": 1,
+        "data": [
+          {
+            "apiVersion": "v1",
+            "id": "default",
+            "kind": "Namespace",
+            "metadata": {
+              "annotations": {
+                "field.cattle.io/projectId": "{downstream}:{project}"
+              },
+              "creationTimestamp": "\u003cts\u003e",
+              "fields": "\u003cfields\u003e",
+              "labels": {
+                "field.cattle.io/projectId": "{project}",
+                "kubernetes.io/metadata.name": "default"
+              },
+              "name": "default",
+              "resourceVersion": "\u003crv\u003e",
+              "uid": "\u003cuid\u003e"
+            },
+            "spec": "\u003cspec\u003e",
+            "status": {
+              "phase": "Active"
+            },
+            "type": "namespace"
+          }
+        ],
+        "revision": "\u003crevision\u003e",
+        "type": "collection"
+      }
+    },
+    {
+      "name": "get-own-namespace",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "id": "default",
+        "kind": "Namespace",
+        "metadata": {
+          "annotations": {
+            "field.cattle.io/projectId": "{downstream}:{project}"
+          },
+          "creationTimestamp": "\u003cts\u003e",
+          "fields": "\u003cfields\u003e",
+          "labels": {
+            "field.cattle.io/projectId": "{project}",
+            "kubernetes.io/metadata.name": "default"
+          },
+          "name": "default",
+          "resourceVersion": "\u003crv\u003e",
+          "uid": "\u003cuid\u003e"
+        },
+        "spec": "\u003cspec\u003e",
+        "status": {
+          "phase": "Active"
+        },
+        "type": "namespace"
+      }
+    }
+  ]
+}

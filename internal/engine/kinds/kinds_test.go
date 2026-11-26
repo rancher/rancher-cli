@@ -364,20 +364,25 @@ func TestValidateRejectsProjectBackingNamespaceOutsideManagementPlainRows(t *tes
 	}
 }
 
-// TestValidateRejectsSteveReadOnForbiddenOutsideManagementRows asserts
-// SteveReadOnForbidden is accepted on a Management row, refused on a
-// downstream row, and refused together with ServerTable.
-func TestValidateRejectsSteveReadOnForbiddenOutsideManagementRows(t *testing.T) {
+// TestValidateAcceptsSteveReadOnForbiddenOnlyWhereThereIsASteveRead asserts
+// SteveReadOnForbidden is accepted on a Management row and on the namespace
+// row, refused on any other downstream row, and that a row that sets it
+// together with ServerTable needs a table builder.
+func TestValidateAcceptsSteveReadOnForbiddenOnlyWhereThereIsASteveRead(t *testing.T) {
 	t.Parallel()
-	row := func(scope Scope) []Kind {
-		return []Kind{{Key: "foo", Name: "foo", K8sKind: "Foo", Aliases: []string{"foos"}, Policy: NSNone, Scope: scope, SteveReadOnForbidden: true}}
+	row := func(key string, scope Scope, serverTable bool) []Kind {
+		return []Kind{{Key: key, Name: key, K8sKind: "Foo", Aliases: []string{key + "s"}, Policy: NSNone, Scope: scope, SteveReadOnForbidden: true, ServerTable: serverTable}}
 	}
-	require.NoError(t, validateKinds(row(Management)))
-	err := validateKinds(row(Downstream))
-	require.ErrorContains(t, err, `kind "foo" sets SteveReadOnForbidden but is not a Management kind; the Steve read reaches only the local cluster`)
+	require.NoError(t, validateKinds(row("foo", Management, false)))
+	require.NoError(t, validateKinds(row("namespace", Downstream, true)), "the namespace row has a Steve read and a table builder")
 
-	table := []Kind{{Key: "foo", Name: "foo", K8sKind: "Foo", Aliases: []string{"foos"}, Policy: NSNone, Scope: Management, SteveReadOnForbidden: true, ServerTable: true}}
-	require.ErrorContains(t, validateKinds(table), `kind "foo" sets ServerTable together with SteveReadOnForbidden`)
+	for _, key := range []string{"foo", "node", "pod"} {
+		err := validateKinds(row(key, Downstream, false))
+		require.ErrorContains(t, err, `kind "`+key+`" sets SteveReadOnForbidden but is a downstream kind with no Steve read`, key)
+	}
+
+	err := validateKinds(row("foo", Management, true))
+	require.ErrorContains(t, err, `kind "foo" sets ServerTable together with SteveReadOnForbidden and has no table builder`)
 }
 
 // TestValidateRejectsNamespaceDescOutsideManagementPlainAndWorkspaceRows

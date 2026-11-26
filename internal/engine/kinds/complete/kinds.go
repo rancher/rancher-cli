@@ -2,6 +2,8 @@ package complete
 
 import (
 	"context"
+	"errors"
+	"slices"
 
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime/completion"
@@ -14,13 +16,19 @@ import (
 // false for a kind that does not complete, and for a kind whose namespace
 // is the cluster (a project): its names come from the projects the caller
 // can read, which its own source lists (projects/complete), never from the
-// management LIST.
+// management LIST. A downstream kind that sets SteveReadOnForbidden (the
+// namespace kind) is two requests: the Kubernetes list and, after a 403, the
+// Steve list.
 func requirements(k kinds.Kind) (completion.Requirements, bool) {
 	if !k.Completable || k.Policy == kinds.NSCluster {
 		return completion.Requirements{}, false
 	}
 	if k.Scope == kinds.Downstream {
-		return completion.Requirements{Cluster: completion.ClusterResolved, Credential: completion.CredentialAny, Allowance: completion.AllowanceOne}, true
+		allowance := completion.AllowanceOne
+		if k.SteveReadOnForbidden {
+			allowance = completion.AllowanceTwo
+		}
+		return completion.Requirements{Cluster: completion.ClusterResolved, Credential: completion.CredentialAny, Allowance: allowance}, true
 	}
 	return completion.Requirements{Cluster: completion.ClusterNone, Credential: completion.CredentialManagement, Allowance: completion.AllowanceOne}, true
 }
@@ -32,8 +40,10 @@ func requirements(k kinds.Kind) (completion.Requirements, bool) {
 // namespace and node kinds, the shared --namespace and --node flags. A kind
 // with a Handle also describes each name by the fields of the row's
 // Handle.Lookup (a display name); a kind without one gets no description. A
-// kind that sets SteveReadOnForbidden lists its objects through the Steve
-// API for every caller, in one request.
+// management kind that sets SteveReadOnForbidden lists its objects through the
+// Steve API for every caller, in one request. The downstream kind that sets it
+// (namespace) lists through the Kubernetes API and reads the Steve API of the
+// typed cluster only after a 403: an administrator makes one request.
 func KindSource(key string) completion.Source {
 	k, known := kinds.ByKey(key)
 	return completion.Source{
@@ -64,25 +74,19 @@ func NodeSource() completion.Source { return KindSource("node") }
 // downstream kind under a typed --project answers nothing when the project
 // already scopes it; a namespaced kind needs --namespace typed (or the
 // row's default namespace for a workspace kind) and the namespace must be
-// a path segment. A kind that sets SteveReadOnForbidden is listed through the
-// Steve API, which has the objects under data; the names are each object's
-// metadata.name, never Steve's id, which is <namespace>/<name>. The server's
-// order is kept and a continue token is not followed.
+// a path segment. A management kind that sets SteveReadOnForbidden is listed
+// through the Steve API, which has the objects under data; the names are each
+// object's metadata.name, never Steve's id, which is <namespace>/<name>. The
+// downstream kind that sets it is listed through the Kubernetes API, and
+// through the Steve API of the typed cluster only after the Kubernetes API
+// responds with 403. The server's order is kept and a continue token is not followed.
 func listNames(ctx context.Context, conn *completion.Connection, req completion.Request, k kinds.Kind) completion.Result {
 	p, ok := listPath(req, k)
 	if !ok {
 		return completion.Result{}
 	}
-	var list completion.ItemList
-	if k.SteveReadOnForbidden {
-		var page struct {
-			Data []map[string]any `json:"data"`
-		}
-		if err := conn.GetJSON(ctx, p, "", &page); err != nil {
-			return completion.Result{}
-		}
-		list = completion.ItemList{Items: page.Data}
-	} else if err := conn.GetJSON(ctx, p, "", &list); err != nil {
+	list, ok := readItems(ctx, conn, req, k, p)
+	if !ok {
 		return completion.Result{}
 	}
 	paths := k.DescriptionPaths()
@@ -106,20 +110,81 @@ func listNames(ctx context.Context, conn *completion.Connection, req completion.
 	return completion.Result{Names: names, Descriptions: descriptions}
 }
 
+// readItems reads the collection at p, the path listPath returned for k. A
+// management kind that sets SteveReadOnForbidden is read through the Steve API
+// only, and the others through the Kubernetes API only, except the downstream
+// kind that sets it: after the Kubernetes API responds with 403, the Steve API
+// of the typed cluster is read as the second request. Any other response, and a
+// refusal from Steve, leaves nothing to offer. The Steve API lists a namespace
+// the caller has no permission to get with a few fields only, and `get` of it
+// by name fails with the Kubernetes API's error; the name positional therefore
+// offers only the namespaces Steve lists in full, and a --namespace value
+// offers every namespace Steve lists, because the caller has a role in each.
+func readItems(ctx context.Context, conn *completion.Connection, req completion.Request, k kinds.Kind, p completion.Path) (completion.ItemList, bool) {
+	if k.SteveReadOnForbidden && k.Scope == kinds.Management {
+		return steveItems(ctx, conn, p)
+	}
+	var list completion.ItemList
+	err := conn.GetJSON(ctx, p, "", &list)
+	if err == nil {
+		return list, true
+	}
+	if status, ok := errors.AsType[*completion.StatusError](err); !k.SteveReadOnForbidden || !ok || !status.Forbidden() {
+		return completion.ItemList{}, false
+	}
+	steve, err := completion.SteveClusterCollectionPath(req.ClusterID, k.SteveType())
+	if err != nil {
+		return completion.ItemList{}, false
+	}
+	list, ok := steveItems(ctx, conn, steve)
+	if ok && req.Flag == "" {
+		list.Items = slices.DeleteFunc(list.Items, func(item map[string]any) bool { return !listedInFull(item) })
+	}
+	return list, ok
+}
+
+// listedInFull reports whether a namespace item of the Steve list is the whole
+// object: every namespace the Kubernetes API returns in full carries the
+// kubernetes.io/metadata.name label, and Steve's item of a namespace the
+// caller cannot get does not.
+func listedInFull(item map[string]any) bool {
+	meta, _ := item["metadata"].(map[string]any)
+	labels, _ := meta["labels"].(map[string]any)
+	name, _ := labels[namespaceNameLabel].(string)
+	return name != ""
+}
+
+// namespaceNameLabel is the label the Kubernetes API sets on every namespace
+// with the namespace's name.
+const namespaceNameLabel = "kubernetes.io/metadata.name"
+
+// steveItems reads the Steve collection at p, whose objects are under data.
+func steveItems(ctx context.Context, conn *completion.Connection, p completion.Path) (completion.ItemList, bool) {
+	var page struct {
+		Data []map[string]any `json:"data"`
+	}
+	if err := conn.GetJSON(ctx, p, "", &page); err != nil {
+		return completion.ItemList{}, false
+	}
+	return completion.ItemList{Items: page.Data}, true
+}
+
 // listPath derives the collection path for k at the site, one arm per
 // (scope, namespace policy) class, or reports false when a typed project
-// scopes the kind out or the site gives it no namespace to list in. A kind
-// that sets SteveReadOnForbidden is listed at the Steve collection path of the
-// typed --namespace, or of the row's default namespace when none is typed.
-// Only a row with a workspace namespace has such a path; any other row that
-// sets SteveReadOnForbidden lists nothing.
+// scopes the kind out or the site gives it no namespace to list in. A
+// management kind that sets SteveReadOnForbidden is listed at the Steve
+// collection path of the typed --namespace, or of the row's default namespace
+// when none is typed. Only a row with a workspace namespace has such a path;
+// any other management row that sets SteveReadOnForbidden lists nothing. The
+// downstream kind that sets it has the Kubernetes path: readItems reads the
+// Steve API after a 403.
 func listPath(req completion.Request, k kinds.Kind) (completion.Path, bool) {
 	if k.Scope == kinds.Downstream && kinds.ProjectScopable(k) && req.Project != "" {
 		return completion.Path{}, false
 	}
 	g, v, r := k.GVR.Group, k.GVR.Version, k.GVR.Resource
 	ns := completion.TailFlag(req.Tail, "namespace")
-	if k.SteveReadOnForbidden {
+	if k.SteveReadOnForbidden && k.Scope == kinds.Management {
 		if k.Policy != kinds.NSWorkspace {
 			return completion.Path{}, false
 		}

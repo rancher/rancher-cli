@@ -663,17 +663,21 @@ func TestGetTypeObjectReturnsAProtocolErrorForAResponseItCannotTrust(t *testing.
 	}
 }
 
-// TestSteveTypesOfTheClusterAndProjectRowsAreTheTypesTheReadersUse asserts the
-// constants of the cluster and project readers equal the Steve type of their
-// rows.
-func TestSteveTypesOfTheClusterAndProjectRowsAreTheTypesTheReadersUse(t *testing.T) {
+// TestSteveTypesOfTheClusterProjectAndNamespaceRowsAreTheTypesTheReadersUse
+// asserts the constants of the cluster, project and namespace readers equal the
+// Steve type of their rows, which the namespace name completion spells as
+// k.SteveType().
+func TestSteveTypesOfTheClusterProjectAndNamespaceRowsAreTheTypesTheReadersUse(t *testing.T) {
 	t.Parallel()
 	cluster, ok := kinds.ByKey("managementcluster")
 	require.True(t, ok)
 	project, ok := kinds.ByKey("project")
 	require.True(t, ok)
+	namespace, ok := kinds.ByKey("namespace")
+	require.True(t, ok)
 	assert.Equal(t, ClustersType, cluster.SteveType())
 	assert.Equal(t, ProjectsType, project.SteveType())
+	assert.Equal(t, NamespacesType, namespace.SteveType())
 }
 
 // TestTypeObjectReadersDecodeWholeNumbersAsInt64 asserts a whole number in an

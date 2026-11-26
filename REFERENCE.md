@@ -771,6 +771,31 @@ proxy to the local cluster refuses them to a caller who cannot get the local
 cluster. Name completion of a provisioning cluster, an etcd snapshot or a
 management node lists the objects through the Steve API.
 
+`get namespaces` also reads through the Steve API when the Kubernetes API
+responds with 403 to the list of every namespace, as it does to a project owner
+or member: Rancher gives them permission to get the namespaces of their projects
+by name but not to list the namespaces of the cluster. `get namespace <name>`
+reads one namespace the same way when the Kubernetes API refuses the get. The
+output is the namespaces the Steve API lists for you, not every namespace of the
+cluster. Without `--project`, a warning says so and names `rancher access
+projects --cluster <id>`, which lists the projects you can see; with
+`--project`, the list is the project's namespaces. If Rancher lists no namespace
+for you, such as a cluster member with no project, you get an empty list and
+exit 0, where the Kubernetes API's refusal was `RBAC` (exit 6). For a namespace
+you have no permission to get but have a role in, the Steve API returns only its
+name, its phase and a few labels and annotations. `get` shows it with those
+fields and counts such namespaces in a warning. `get namespace <name>` of such a
+namespace fails with the Kubernetes API's error, because the Steve API refuses
+the get too. With `--selector`, `get` leaves them out and counts them in a
+warning, because their labels cannot be read. The text table has the columns the
+API server prints, NAME, STATUS and AGE, and the AGE of a namespace with no
+creation time is blank. Name completion of a namespace and of every
+`--namespace` value lists the namespaces through the Kubernetes API and reads
+the Steve API of the cluster only after the Kubernetes API responds with 403.
+Name completion of the namespace name of `get`, `patch` and `delete` offers
+only the namespaces you have permission to get; a `--namespace` value also
+offers the namespaces the Steve API lists with a few fields.
+
 ## Project scope (--project)
 
 `--project <id-or-name>` selects a project on the cluster that `--cluster`
@@ -806,8 +831,10 @@ the project its `field.cattle.io/projectId` annotation (`<cluster>:<project>`)
 names, on the cluster the namespace is in; the label of the same name does not
 decide which project a namespace belongs to. `get namespaces --project <p>` asks
 the server for the namespaces with the project label and keeps the ones whose
-annotation names the project. `create resource` refuses `--project` for a
-Namespace manifest (use `create namespace --project`). `create secret --project
+annotation names the project; when the server refuses that list, it keeps the
+namespaces the Steve API lists whose annotation names the project. `create
+resource` refuses `--project` for a Namespace manifest (use `create namespace
+--project`). `create secret --project
 <p>` writes a project-scoped secret into the project's backing namespace and
 cannot be combined with `--namespace`. `usage` refuses `--project` with `--by
 node` (a node row mixing project-scoped requests with whole-node metrics would
@@ -874,8 +901,8 @@ Every kind that `rancher schema` lists gets its generated verbs by these rules:
   `--selector` and the CLI keeps only the objects in the project's namespaces.
   `get clusterregistrationtoken` reads through the Steve API and applies the
   selector itself to the list it gets back, as do `get` of clusters, projects,
-  provisioning clusters, etcd snapshots and management nodes when they read
-  through the Steve API.
+  provisioning clusters, etcd snapshots, management nodes and namespaces when
+  they read through the Steve API.
 - The catalog kinds `clusterrepo`, `app` and `operation` (catalog.cattle.io)
   are read with `get`; a chart is installed, upgraded and uninstalled with
   `app install`, `app upgrade` and `app uninstall` (see "Installing, upgrading

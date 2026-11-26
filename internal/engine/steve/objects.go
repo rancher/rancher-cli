@@ -109,12 +109,53 @@ func TypeObjects(ctx context.Context, get Getter, typ, namespace string) ([]unst
 	return objectsOf(r, rows)
 }
 
+// NamespacesType is the Steve type of a namespace.
+const NamespacesType = "namespaces"
+
+// namespaceRequest is the request for the namespace collection of cluster
+// clusterID.
+func namespaceRequest(clusterID string) Request {
+	return Request{Cluster: clusterID, Type: NamespacesType}
+}
+
+// readNamespaceCollection reads the namespace collection of cluster clusterID,
+// every page, and decodes each item with decode. NamespaceObjects and
+// ProjectNamespaceObjects read it through this function only.
+func readNamespaceCollection[T comparable](ctx context.Context, get Getter, clusterID string, decode Decoder[T]) ([]T, error) {
+	return ReadCollection(ctx, get, namespaceRequest(clusterID), decode)
+}
+
+// NamespaceObjects reads the namespaces of cluster clusterID that the caller
+// can see, each as Steve returns it (KubernetesObject converts one to the
+// Kubernetes shape). For a namespace the caller cannot get, Steve returns an
+// item with a few fields only (ReadableInFull). A non-2xx response is returned
+// as the getter's error, whose status clierr.HTTPStatus reads.
+func NamespaceObjects(ctx context.Context, get Getter, clusterID string) ([]unstructured.Unstructured, error) {
+	rows, err := readNamespaceCollection(ctx, get, clusterID, objectDecoder(typeItemDecoder(""), []string{"metadata", "name"}))
+	if err != nil {
+		return nil, err
+	}
+	return objectsOf(namespaceRequest(clusterID), rows)
+}
+
+// GetNamespaceObject reads namespace name of cluster clusterID as Steve
+// returns it. A non-2xx response is returned as the getter's error, whose
+// status clierr.HTTPStatus reads.
+func GetNamespaceObject(ctx context.Context, get Getter, clusterID, name string) (*unstructured.Unstructured, error) {
+	return getObject(ctx, get, Request{Cluster: clusterID, Type: NamespacesType, Name: name})
+}
+
 // GetTypeObject reads object name of Steve type typ in namespace and returns
 // it as Steve returns it, with whole numbers decoded as int64 as objectsOf
 // does. A non-2xx response is returned as the getter's error, whose status
 // clierr.HTTPStatus reads.
 func GetTypeObject(ctx context.Context, get Getter, typ, namespace, name string) (*unstructured.Unstructured, error) {
-	r := Request{Type: typ, Namespace: namespace, Name: name}
+	return getObject(ctx, get, Request{Type: typ, Namespace: namespace, Name: name})
+}
+
+// getObject reads the one object r names and checks that the response is
+// that object.
+func getObject(ctx context.Context, get Getter, r Request) (*unstructured.Unstructured, error) {
 	body, err := get(ctx, r)
 	if err != nil {
 		return nil, err
@@ -123,11 +164,11 @@ func GetTypeObject(ctx context.Context, get Getter, typ, namespace, name string)
 	if err := utiljson.Unmarshal(body, &obj.Object); err != nil || obj.Object == nil {
 		return nil, protocolError(r.Path(), "not a JSON object")
 	}
-	if got := obj.GetName(); got != name {
+	if got := obj.GetName(); got != r.Name {
 		return nil, protocolError(r.Path(), fmt.Sprintf("the response names %q, not the object requested", got))
 	}
-	if ns := obj.GetNamespace(); ns != namespace {
-		return nil, protocolError(r.Path(), fmt.Sprintf("the response is in namespace %q, not %q", ns, namespace))
+	if ns := obj.GetNamespace(); ns != r.Namespace {
+		return nil, protocolError(r.Path(), fmt.Sprintf("the response is in namespace %q, not %q", ns, r.Namespace))
 	}
 	return obj, nil
 }

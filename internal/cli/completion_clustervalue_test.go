@@ -53,11 +53,12 @@ type clusterValueSite struct {
 // request for the value succeeds and the guard cannot pass on a 404.
 // Every other path answers one empty body that carries both shapes a
 // source reads: items for a Kubernetes list, and data with a revision for
-// a steve collection.
+// a steve collection. A path for which forbidden returns true gets a 403 response.
 type clusterValueFixture struct {
-	srv  *httptest.Server
-	mu   sync.Mutex
-	uris []string
+	srv       *httptest.Server
+	forbidden func(path string) bool
+	mu        sync.Mutex
+	uris      []string
 }
 
 func newClusterValueFixture(t *testing.T) *clusterValueFixture {
@@ -68,6 +69,11 @@ func newClusterValueFixture(t *testing.T) *clusterValueFixture {
 		f.uris = append(f.uris, r.URL.RequestURI())
 		f.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
+		if f.forbidden != nil && f.forbidden(r.URL.Path) {
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"kind":"Status","apiVersion":"v1","status":"Failure","reason":"Forbidden","code":403}`))
+			return
+		}
 		switch r.URL.Path {
 		case steveClustersPath:
 			page, ok := steveClustersPages[r.URL.Query().Get("continue")]

@@ -23,7 +23,8 @@ func mustKind(t *testing.T, key string) kinds.Kind {
 }
 
 // TestRequirements asserts the declaration per kind class: downstream kinds
-// need the typed cluster resolved and accept any credential; management
+// need the typed cluster resolved and accept any credential, and make two
+// requests when they set SteveReadOnForbidden and one otherwise; management
 // kinds need a management token; a kind that does not complete declares
 // nothing, and neither does a cluster-namespaced kind (project), which its
 // own source serves.
@@ -31,12 +32,13 @@ func TestRequirements(t *testing.T) {
 	t.Parallel()
 	downstream := completion.Requirements{Cluster: completion.ClusterResolved, Credential: completion.CredentialAny, Allowance: completion.AllowanceOne}
 	management := completion.Requirements{Cluster: completion.ClusterNone, Credential: completion.CredentialManagement, Allowance: completion.AllowanceOne}
+	downstreamTwo := completion.Requirements{Cluster: completion.ClusterResolved, Credential: completion.CredentialAny, Allowance: completion.AllowanceTwo}
 	tests := []struct {
 		key  string
 		want completion.Requirements
 		ok   bool
 	}{
-		{key: "namespace", want: downstream, ok: true},
+		{key: "namespace", want: downstreamTwo, ok: true}, // the Kubernetes list, then the Steve list after a 403
 		{key: "node", want: downstream, ok: true},
 		{key: "pod", want: downstream, ok: true},
 		{key: "deployment", want: downstream, ok: true},
@@ -383,4 +385,99 @@ func TestListPathOffersNothingForARowThatSetsSteveReadOnForbiddenWithoutAWorkspa
 	k.Policy = kinds.NSPlain
 	_, ok = listPath(completion.Request{Tail: []string{"--namespace", "x"}}, k)
 	assert.False(t, ok)
+}
+
+// TestListPathOfADownstreamRowThatSetsSteveReadOnForbiddenIsTheKubernetesPath
+// asserts the namespace row, which sets SteveReadOnForbidden and is downstream,
+// is listed at the Kubernetes collection path of the typed cluster, as a
+// downstream row that does not set it is; the Steve read comes after a 403.
+func TestListPathOfADownstreamRowThatSetsSteveReadOnForbiddenIsTheKubernetesPath(t *testing.T) {
+	t.Parallel()
+	k := mustKind(t, "namespace")
+	require.True(t, k.SteveReadOnForbidden)
+	require.Equal(t, kinds.Downstream, k.Scope)
+	p, ok := listPath(completion.Request{ClusterID: "c-x"}, k)
+	require.True(t, ok)
+	assert.Equal(t, "/k8s/clusters/c-x/api/v1/namespaces", p.String())
+	_, ok = listPath(completion.Request{ClusterID: "c-x", Project: "p-1"}, k)
+	assert.False(t, ok, "a typed --project scopes the kind out, as it does for a downstream row without the flag")
+	_, ok = listPath(completion.Request{ClusterID: "prod cluster"}, k)
+	assert.False(t, ok, "a cluster id that cannot be a path segment lists nothing")
+}
+
+// steveNamespaces is the body of the Steve namespace collection of the
+// fixture of TestNamespaceCompletionReadsSteveOnlyAfterAForbiddenList.
+const steveNamespaces = `{"data":[{"id":"team-a","metadata":{"name":"team-a"}},{"id":"team-b","metadata":{"name":"team-b"}}],"revision":"1"}`
+
+// TestNamespaceCompletionReadsSteveOnlyAfterAForbiddenList asserts the
+// namespace source lists through the Kubernetes API and reads the Steve API of
+// the cluster only when the Kubernetes API responds with 403: a response of 200
+// is one request, a 401, 404 or 500 is one request with nothing offered, and a
+// 403 is two requests with the names of the Steve list; when Steve refuses
+// too, nothing is offered.
+func TestNamespaceCompletionReadsSteveOnlyAfterAForbiddenList(t *testing.T) {
+	t.Parallel()
+	const kubernetes, steve = "/k8s/clusters/c-x/api/v1/namespaces", "/k8s/clusters/c-x/v1/namespaces"
+	tests := []struct {
+		name       string
+		kubernetes int
+		steve      int
+		names      []string
+		requested  []string
+	}{
+		{name: "200", kubernetes: 200, names: []string{"b", "a"}, requested: []string{kubernetes}},
+		{name: "401", kubernetes: 401, requested: []string{kubernetes}},
+		{name: "403", kubernetes: 403, steve: 200, names: []string{"team-a", "team-b"}, requested: []string{kubernetes, steve}},
+		{name: "403 and Steve 403", kubernetes: 403, steve: 403, requested: []string{kubernetes, steve}},
+		{name: "403 and Steve 404", kubernetes: 403, steve: 404, requested: []string{kubernetes, steve}},
+		{name: "404", kubernetes: 404, requested: []string{kubernetes}},
+		{name: "500", kubernetes: 500, requested: []string{kubernetes}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ls := completiontest.NewByAccept(t, func(path, _ string) (string, int) {
+				switch path {
+				case kubernetes:
+					return listBody, tt.kubernetes
+				case steve:
+					return steveNamespaces, tt.steve
+				}
+				return "", 404
+			})
+			got := KindSource("namespace").Complete(t.Context(), ls.Conn(2), completion.Request{Flag: "namespace", ClusterID: "c-x"})
+			assert.Equal(t, tt.names, got.Names)
+			assert.Equal(t, tt.requested, ls.Requested())
+		})
+	}
+}
+
+// TestNamespaceCompletionWithOneRequestOffersNothingAfterAForbiddenList
+// asserts a connection that allows one request does not reach the Steve list.
+func TestNamespaceCompletionWithOneRequestOffersNothingAfterAForbiddenList(t *testing.T) {
+	t.Parallel()
+	ls := completiontest.NewStatus(t, 403)
+	conn := ls.Conn(1)
+	got := KindSource("namespace").Complete(t.Context(), conn, completion.Request{Flag: "namespace", ClusterID: "c-x"})
+	assert.Empty(t, got.Names)
+	assert.True(t, conn.Exceeded())
+	assert.Equal(t, []string{"/k8s/clusters/c-x/api/v1/namespaces"}, ls.Requested())
+}
+
+// TestAManagementRowThatSetsSteveReadOnForbiddenReadsSteveFirstAndOnly asserts
+// the kinds that set SteveReadOnForbidden on the local cluster are listed
+// through the Steve API in one request for every caller, with no Kubernetes
+// list before it, whatever the Steve API responds with.
+func TestAManagementRowThatSetsSteveReadOnForbiddenReadsSteveFirstAndOnly(t *testing.T) {
+	t.Parallel()
+	for key, typ := range map[string]string{
+		"provisioningcluster": "provisioning.cattle.io.clusters",
+		"etcdsnapshot":        "rke.cattle.io.etcdsnapshots",
+	} {
+		for _, status := range []int{200, 403, 500} {
+			ls := completiontest.NewByAccept(t, func(string, string) (string, int) { return listBody, status })
+			KindSource(key).Complete(t.Context(), ls.Conn(2), completion.Request{})
+			assert.Equal(t, []string{"/v1/" + typ + "/fleet-default"}, ls.Requested(), "%s with the Steve API responding with %d", key, status)
+		}
+	}
 }

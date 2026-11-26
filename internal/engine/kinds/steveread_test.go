@@ -53,7 +53,6 @@ var grantedByNameReadThroughKubernetes = map[string]string{
 	"vmwarevsphereconfig":   "the Steve API has not been checked against a real Rancher for a caller who may only get it by name",
 	"user":                  "the Steve API has not been checked against a real Rancher for a caller who may only get it by name",
 	"fleetworkspace":        "the Steve API has not been checked against a real Rancher for a caller who may only get it by name",
-	"namespace":             "a downstream kind: the Steve read reaches only the local cluster",
 
 	"etcdsnapshotsave":      "Rancher grants a Cluster Owner every verb on it, list included, in the cluster's namespace; its objects name no cluster that the by-name Role indexes",
 	"etcdsnapshotrestore":   "Rancher grants a Cluster Owner every verb on it, list included, in the cluster's namespace; its objects name no cluster that the by-name Role indexes",
@@ -107,7 +106,7 @@ func TestSteveReadRowsAreTheRowsRancherGrantsByName(t *testing.T) {
 		}
 	}
 	slices.Sort(readThroughSteve)
-	require.Equal(t, []string{"etcdsnapshot", "managementcluster", "managementnode", "project", "provisioningcluster"}, readThroughSteve)
+	require.Equal(t, []string{"etcdsnapshot", "managementcluster", "managementnode", "namespace", "project", "provisioningcluster"}, readThroughSteve)
 }
 
 // TestSteveTypeSpellsTheTypeAsSteveDoesInAPath asserts the type of a row with

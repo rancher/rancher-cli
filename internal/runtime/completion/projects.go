@@ -14,10 +14,13 @@ import (
 // zero Connection.
 var ErrNoLister = errors.New("completion: no lister")
 
-// StatusError is a non-2xx answer to GetBody.
+// StatusError is a non-2xx response to GetBody or GetJSON.
 type StatusError struct{ Status int }
 
 func (e *StatusError) Error() string { return "HTTP " + strconv.Itoa(e.Status) }
+
+// Forbidden reports whether the response was 403.
+func (e *StatusError) Forbidden() bool { return e.Status == http.StatusForbidden }
 
 // ProjectItem is one project a lister read: the bare id (metadata.name)
 // and the display name.

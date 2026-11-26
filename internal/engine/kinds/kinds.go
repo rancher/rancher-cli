@@ -229,7 +229,10 @@ type Kind struct {
 	// table and wide) come from the cluster's API server, as kubectl's do:
 	// get asks for the server's Table and shows its columns and cells, so
 	// the row carries no Columns, and the server's answer is shown as it
-	// is, so the row carries no SystemFilter or RedactPaths either.
+	// is, so the row carries no SystemFilter or RedactPaths either. A row
+	// that also sets SteveReadOnForbidden has a table builder (SteveTable):
+	// when the server refuses the Table request, it writes the same columns
+	// and cells from the objects the Steve API returns.
 	ServerTable bool
 	// RedactPaths lists dot-path field paths (each as a []string key sequence)
 	// hidden from every serialized representation - list/get JSON/YAML output,
@@ -303,20 +306,27 @@ type Kind struct {
 	// placeholder. validateKinds rejects the field on a row that is not
 	// Management with a plain or workspace namespace.
 	NamespaceDesc string
-	// SteveReadOnForbidden is set on a row whose generated get, when the local
-	// cluster's Kubernetes API responds to it (a list or one object) with 403,
-	// reads the same list or object through the Steve API as the caller, and
-	// whose name completion lists the objects through the Steve API. Rancher
-	// gives a member or owner permission to get some objects by name but not
-	// to list them (a cluster, a project, a provisioning cluster and the
-	// objects that belong to it, such as its etcd snapshots), and the
-	// Steve API lists what the caller has permission to get. A row may also
-	// set it when Rancher's proxy to the local cluster refuses the kind to a
-	// caller who cannot get the local cluster, while Rancher's RBAC allows list
-	// and get (the management nodes). Any other error is returned unchanged,
-	// and a refusal from Steve returns the Kubernetes API's error. Only a
-	// Management row with a Steve reader may set it; a test in this package
-	// lists both kinds of row and asserts which of them set it.
+	// SteveReadOnForbidden is set on a row whose generated get, when the
+	// Kubernetes API responds to it (a list or one object) with 403, reads the
+	// same list or object through the Steve API as the caller. Rancher gives a
+	// member or owner permission to get some objects by name but not to list
+	// them (a cluster, a project, a provisioning cluster and the objects that
+	// belong to it, such as its etcd snapshots, and the namespaces of a
+	// project), and the Steve API lists what the caller has permission to
+	// get. A row may also set it when Rancher's proxy to the local cluster
+	// refuses the kind to a caller who cannot get the local cluster, while
+	// Rancher's RBAC allows list and get (the management nodes). Any other
+	// error is returned unchanged, and a refusal from Steve returns the
+	// Kubernetes API's error.
+	//
+	// A Management row reads the Steve API of the local cluster, and its name
+	// completion lists the objects through the Steve API for every caller. The
+	// namespace row, the one downstream row that sets it, reads the Steve API
+	// of the typed cluster (/k8s/clusters/<id>/v1), and its name completion
+	// lists through the Kubernetes API first and reads Steve only after a 403.
+	// Only a Management row with a Steve reader, and the namespace row, may set
+	// it; a test in this package lists both kinds of row and asserts which of
+	// them set it.
 	SteveReadOnForbidden bool
 }
 
@@ -643,6 +653,10 @@ var table = []Kind{
 		Completable: true,
 		Binding:     safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 		ServerTable: true,
+		// Rancher gives a project owner or member permission to get the
+		// namespaces of their projects by name, and none to list the namespaces
+		// of the cluster.
+		SteveReadOnForbidden: true,
 	},
 	{
 		Key: "pod", Name: "pod", Aliases: []string{"pods", "po"},
@@ -1733,8 +1747,8 @@ func validateKinds(ts []Kind) error {
 		if k.ProjectBackingNamespace && (k.Policy != NSPlain || k.Scope != Management) {
 			return fmt.Errorf("kind %q sets ProjectBackingNamespace on a row that is not Management with a plain namespace", k.Key)
 		}
-		if k.SteveReadOnForbidden && k.Scope != Management {
-			return fmt.Errorf("kind %q sets SteveReadOnForbidden but is not a Management kind; the Steve read reaches only the local cluster", k.Key)
+		if k.SteveReadOnForbidden && k.Scope != Management && !slices.Contains(downstreamSteveReadKeys, k.Key) {
+			return fmt.Errorf("kind %q sets SteveReadOnForbidden but is a downstream kind with no Steve read; the downstream kinds with a Steve read are %v", k.Key, downstreamSteveReadKeys)
 		}
 		if k.NamespaceDesc != "" {
 			if k.Scope != Management || (k.Policy != NSPlain && k.Policy != NSWorkspace) {
@@ -1757,8 +1771,8 @@ func validateKinds(ts []Kind) error {
 			if k.RedactReferences {
 				return fmt.Errorf("kind %q sets ServerTable together with RedactReferences (the server's table is shown as it is)", k.Key)
 			}
-			if k.SteveReadOnForbidden {
-				return fmt.Errorf("kind %q sets ServerTable together with SteveReadOnForbidden (a table the server refuses is not read through the Steve API)", k.Key)
+			if _, ok := steveTableBuilders[k.Key]; k.SteveReadOnForbidden && !ok {
+				return fmt.Errorf("kind %q sets ServerTable together with SteveReadOnForbidden and has no table builder (the Steve API returns objects, and the text table is built from them when the server refuses the Table request)", k.Key)
 			}
 		}
 		if k.RedactReferences && (k.NoPatchReason == "" || k.NoCreateViaManifest == "") {

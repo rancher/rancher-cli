@@ -197,6 +197,12 @@ func callerScopeProbes() []Probe {
 					Captures: map[string]Capture{"userid": {Path: "status.userInfo.username"}}},
 				{Name: "downstream-read-with-the-cluster-token", Request: RequestSpec{Method: http.MethodGet, Path: "/k8s/clusters/{downstream}/api/v1/namespaces/default",
 					Identity: IdentityNone, Headers: map[string]string{"Authorization": "Bearer {bearer}"}}, WaitForStatus: http.StatusOK},
+				// The Steve namespace list with a token for this cluster only: the
+				// status, the count and the ids say whether `get namespaces` can
+				// read it with the credential of an exec plugin. The read above
+				// waits until the token is accepted; this one does not wait.
+				{Name: "steve-namespaces-with-the-cluster-token", Request: RequestSpec{Method: http.MethodGet, Path: steveNamespacesPath,
+					Identity: IdentityNone, Headers: map[string]string{"Authorization": "Bearer {bearer}"}}},
 				{Name: "create-for-local", Request: RequestSpec{Method: http.MethodPost, Path: token.ExtTokensPath, Body: extCreate("local"), Identity: IdentityMember}},
 				{Name: "create-for-a-missing-cluster", Request: RequestSpec{Method: http.MethodPost, Path: token.ExtTokensPath, Body: extCreate("c-nosuchcluster"), Identity: IdentityMember}},
 			},

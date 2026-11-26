@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -158,9 +159,11 @@ func TestCompletionNoStderr(t *testing.T) {
 	assert.Empty(t, stderr.String(), "no stderr on any failure path (unreadable creds or unreachable server)")
 }
 
-// At most two HTTP requests per full TAB dispatch when the clusters
-// collection is one page. Drives the actual two-request path: display-name
-// cluster at a --namespace site.
+// At most two HTTP requests of the source per full TAB dispatch, plus the
+// resolution of a typed display name (a read of the clusters collection,
+// counted apart from the source's allowance), when the clusters collection is
+// one page. Drives the actual two-request path: display-name cluster at a
+// --namespace site, where the source makes one request.
 // rawArgv=["get","pod","--cluster","prod","--namespace","kube-"] → dispatch:
 //
 //	request 1: the steve clusters collection to resolve display name "prod" → "c-abc"
@@ -222,6 +225,69 @@ func TestCompletionAtMostTwoRequestsPerTab(t *testing.T) {
 	assert.Equal(t, int32(2), hits.Load(), "exactly 2 HTTP requests for display-name resolution + namespace list")
 	assert.LessOrEqual(t, hits.Load(), int32(2), "at most 2 HTTP requests per TAB")
 	assert.Contains(t, out.String(), "kube-system", "namespace candidates must include kube-system")
+}
+
+// TestCompletionOfARefusedCallerWithADisplayNameClusterMakesThreeRequests
+// asserts the requests of one TAB at a --namespace site for a caller to whom
+// the Kubernetes API refuses the namespace list (403), with a cluster typed by
+// display name: the read of the clusters collection that resolves the name,
+// then the two requests of the source, the Kubernetes list and the Steve list
+// of the resolved cluster, in that order, and the names of the Steve list.
+func TestCompletionOfARefusedCallerWithADisplayNameClusterMakesThreeRequests(t *testing.T) {
+	// NOT parallel: mutates rawArgv, storedConfig, and env globals.
+	keyring.MockInit()
+	var mu sync.Mutex
+	var paths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		paths = append(paths, r.URL.Path)
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/k8s/clusters/c-abc/api/v1/namespaces":
+			w.WriteHeader(http.StatusForbidden)
+		case "/k8s/clusters/c-abc/v1/namespaces":
+			_, _ = w.Write([]byte(`{"count":1,"revision":"1","data":[{"id":"team-a","metadata":{"name":"team-a","labels":{"kubernetes.io/metadata.name":"team-a"}}}]}`))
+		default:
+			_, _ = w.Write([]byte(`{"count":1,"revision":"1","data":[{"id":"c-abc","metadata":{"name":"c-abc"},"spec":{"displayName":"prod"}}]}`))
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	dir := t.TempDir()
+	cfg := &config.Config{
+		CurrentServer: "srv",
+		Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
+		Completion:    config.CompletionConfig{Network: true},
+	}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+	t.Setenv(config.EnvConfigDir, dir)
+	cli.SetStoredConfigForTest(t, cfg, dir)
+	t.Setenv(config.EnvToken, "test-token")
+	cli.CaptureArgvForTest([]string{
+		"--rancher-completion-proto=2", "get", "pod", "--cluster", "prod", "--namespace",
+		"--rancher-completion-cur=team",
+		"--generate-shell-completion",
+	})
+
+	root, buildErr := cli.BuildRoot("test")
+	require.NoError(t, buildErr)
+	var out bytes.Buffer
+	root.Writer = &out
+	root.ErrWriter = io.Discard
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	_ = root.Run(ctx, []string{
+		"rancher", "--rancher-completion-proto=2", "get", "pod", "--cluster", "prod", "--namespace",
+		"--rancher-completion-cur=team",
+		"--generate-shell-completion",
+	})
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, []string{"/v1/management.cattle.io.clusters", "/k8s/clusters/c-abc/api/v1/namespaces", "/k8s/clusters/c-abc/v1/namespaces"}, paths)
+	assert.Contains(t, out.String(), "team-a")
 }
 
 // Secrets and cloud-credentials are never completable (deny-by-default).

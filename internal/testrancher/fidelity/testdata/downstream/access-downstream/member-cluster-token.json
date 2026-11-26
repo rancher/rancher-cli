@@ -23,6 +23,25 @@
       }
     },
     {
+      "name": "steve-namespaces-with-the-cluster-token",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "count": 1,
+        "data": [
+          {
+            "apiVersion": "v1",
+            "id": "default",
+            "kind": "Namespace",
+            "spec": "\u003cspec\u003e",
+            "type": "namespace"
+          }
+        ],
+        "revision": "\u003crevision\u003e",
+        "type": "collection"
+      }
+    },
+    {
       "name": "create-for-local",
       "status": 403,
       "contentType": "application/json",

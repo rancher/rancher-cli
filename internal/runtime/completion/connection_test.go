@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
@@ -176,7 +178,8 @@ func TestGetJSONEmptyPathIsRefusedUncounted(t *testing.T) {
 }
 
 // TestGetJSONErrors asserts a non-2xx status and an undecodable body are
-// errors, and that each counted as a sent request.
+// errors, that a non-2xx status is a *StatusError with the status, and that
+// each counted as a sent request.
 func TestGetJSONErrors(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -198,6 +201,11 @@ func TestGetJSONErrors(t *testing.T) {
 			p := must(ManagementPath("management.cattle.io", "v3", "users"))
 			err := conn.GetJSON(t.Context(), p, "", &list)
 			require.ErrorContains(t, err, tt.want)
+			if status, ok := strings.CutPrefix(tt.want, "HTTP "); ok {
+				statusErr, isStatus := errors.AsType[*StatusError](err)
+				require.True(t, isStatus, "a non-2xx response is a *StatusError")
+				assert.Equal(t, status, strconv.Itoa(statusErr.Status))
+			}
 			assert.Equal(t, 1, conn.Used())
 			assert.False(t, conn.Exceeded())
 		})

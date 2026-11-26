@@ -39,13 +39,16 @@ func steveRefused(err error) bool {
 // steveList reads through Steve, as the caller, the list that a Kubernetes
 // List refused with k8sErr. It reads only for a row that sets
 // SteveReadOnForbidden and only when k8sErr is a 403 from the Kubernetes API.
-// ns is the namespace of the list: the id of the cluster for projects and
-// management nodes ("" for the projects or management nodes of every cluster),
-// and the namespace of the objects for provisioning clusters and etcd
-// snapshots. sel, nil for none, is applied here because Steve ignores a label
-// selector. In every other case, and when Steve responds with 403 or 404, the
-// result is k8sErr.
-func (c getCmd) steveList(ctx context.Context, ns string, sel labels.Selector, k8sErr error) ([]unstructured.Unstructured, error) {
+// cluster is the id of the cluster the Kubernetes API list was sent to; only
+// the namespaces of that cluster are read. ns is the namespace of the list:
+// the id of the cluster for projects and management nodes ("" for the
+// projects or management nodes of every cluster), and the namespace of the
+// objects for provisioning clusters and etcd snapshots. sel, nil for none, is
+// applied here because Steve ignores a label selector, except for namespaces,
+// whose items with a few fields only have labels the selector cannot judge:
+// steveListAnswer applies it. In every other case, and when Steve
+// responds with 403 or 404, the result is k8sErr.
+func (c getCmd) steveList(ctx context.Context, cluster, ns string, sel labels.Selector, k8sErr error) ([]unstructured.Unstructured, error) {
 	if !c.k.SteveReadOnForbidden {
 		return nil, k8sErr
 	}
@@ -62,6 +65,8 @@ func (c getCmd) steveList(ctx context.Context, ns string, sel labels.Selector, k
 		items, err = steve.ProjectObjects(ctx, get, ns)
 	case "provisioningcluster", "etcdsnapshot", "managementnode":
 		items, err = steve.TypeObjects(ctx, get, c.k.SteveType(), ns)
+	case "namespace":
+		items, err = steve.NamespaceObjects(ctx, get, cluster)
 	default:
 		return nil, clierr.New(clierr.CodeGeneric, "internal error: the get command has no way to read a "+c.k.Name+" through the Steve API; report this as a defect in rancher-cli")
 	}
@@ -71,7 +76,7 @@ func (c getCmd) steveList(ctx context.Context, ns string, sel labels.Selector, k
 		}
 		return nil, err
 	}
-	if sel != nil {
+	if sel != nil && c.k.Key != "namespace" {
 		items = slices.DeleteFunc(items, func(item unstructured.Unstructured) bool {
 			return !sel.Matches(labels.Set(item.GetLabels()))
 		})
@@ -89,13 +94,14 @@ func (c getCmd) steveList(ctx context.Context, ns string, sel labels.Selector, k
 }
 
 // steveGet reads the object a Kubernetes Get refused with k8sErr through
-// Steve, as the caller, under the same conditions as steveList. ns is the
+// Steve, as the caller, under the same conditions as steveList. cluster is the
+// id of the cluster the Kubernetes API request was sent to. ns is the
 // namespace of the object: the id of its cluster for a project or a
-// management node, "" for a cluster, and the namespace of the object for a
-// provisioning cluster or an etcd snapshot. When Steve responds with 403 or
-// 404 the result is k8sErr, except while waiting: a Steve 404 there is
-// NOT_FOUND, the object is gone, and the wait ends.
-func (c getCmd) steveGet(ctx context.Context, ns, name string, waiting bool, k8sErr error) (*unstructured.Unstructured, error) {
+// management node, "" for a cluster or a namespace, and the namespace of the
+// object for a provisioning cluster or an etcd snapshot. When Steve responds
+// with 403 or 404 the result is k8sErr, except while waiting: a Steve 404
+// there is NOT_FOUND, the object is gone, and the wait ends.
+func (c getCmd) steveGet(ctx context.Context, cluster, ns, name string, waiting bool, k8sErr error) (*unstructured.Unstructured, error) {
 	if !c.k.SteveReadOnForbidden {
 		return nil, k8sErr
 	}
@@ -112,12 +118,14 @@ func (c getCmd) steveGet(ctx context.Context, ns, name string, waiting bool, k8s
 		obj, err = steve.GetProject(ctx, get, ns, name)
 	case "provisioningcluster", "etcdsnapshot", "managementnode":
 		obj, err = steve.GetTypeObject(ctx, get, c.k.SteveType(), ns, name)
+	case "namespace":
+		obj, err = steve.GetNamespaceObject(ctx, get, cluster, name)
 	default:
 		return nil, clierr.New(clierr.CodeGeneric, "internal error: the get command has no way to read a "+c.k.Name+" through the Steve API; report this as a defect in rancher-cli")
 	}
 	if err != nil {
 		if st, ok := clierr.HTTPStatus(err); ok && st == http.StatusNotFound && waiting {
-			return nil, c.steveNotFound(ns, name, err)
+			return nil, c.steveNotFound(cluster, ns, name, err)
 		}
 		if steveRefused(err) {
 			return nil, k8sErr
@@ -129,7 +137,7 @@ func (c getCmd) steveGet(ctx context.Context, ns, name string, waiting bool, k8s
 
 // steveNotFound is the NOT_FOUND error for an object when Steve responds with
 // 404 to the request for it.
-func (c getCmd) steveNotFound(ns, name string, cause error) error {
+func (c getCmd) steveNotFound(cluster, ns, name string, cause error) error {
 	hint := clierr.NewCommand("access clusters")
 	switch c.k.Key {
 	case "project":
@@ -140,6 +148,8 @@ func (c getCmd) steveNotFound(ns, name string, cause error) error {
 		hint = clierr.NewCommand("get etcd-snapshots").FlagValue("--namespace", ns)
 	case "managementnode":
 		hint = clierr.NewCommand("get management-nodes").FlagValue("--cluster", ns)
+	case "namespace":
+		hint = clierr.NewCommand("get namespaces").FlagValue("--cluster", cluster)
 	}
 	return clierr.New(clierr.CodeNotFound, c.k.Name+" not found: "+clierr.ShellQuote(name)).
 		WithHintCommand(hint).WithCause(cause)
@@ -149,12 +159,12 @@ func (c getCmd) steveNotFound(ns, name string, cause error) error {
 // SteveReadOnForbidden. For a row that does, it returns a client whose Get
 // calls steveGet once the Kubernetes Get has responded with 403. List and
 // watch go to client. The returned client implements engine.ObjectWatcher only
-// when client does.
-func wrapSteveWait(c getCmd, client engine.ClusterClient, ns string) engine.ClusterClient {
+// when client does. cluster is the id of the cluster client sends to.
+func wrapSteveWait(c getCmd, client engine.ClusterClient, cluster, ns string) engine.ClusterClient {
 	if !c.k.SteveReadOnForbidden {
 		return client
 	}
-	base := newSteveWaitClient(c, client, ns)
+	base := newSteveWaitClient(c, client, cluster, ns)
 	if w, ok := client.(engine.ObjectWatcher); ok {
 		return &steveWatchWaitClient{steveWaitClient: base, watcher: w}
 	}
@@ -172,10 +182,10 @@ type steveWaitClient struct {
 }
 
 // newSteveWaitClient is the wait client of the object in ns, the namespace
-// engine.WaitObject passes to every Get.
-func newSteveWaitClient(c getCmd, client engine.ClusterClient, ns string) *steveWaitClient {
+// engine.WaitObject passes to every Get, on cluster.
+func newSteveWaitClient(c getCmd, client engine.ClusterClient, cluster, ns string) *steveWaitClient {
 	return &steveWaitClient{ClusterClient: client, read: func(ctx context.Context, name string, k8sErr error) (*unstructured.Unstructured, error) {
-		return c.steveGet(ctx, ns, name, true, k8sErr)
+		return c.steveGet(ctx, cluster, ns, name, true, k8sErr)
 	}}
 }
 
@@ -189,6 +199,9 @@ func (w *steveWaitClient) Get(ctx context.Context, gvr schema.GroupVersionResour
 	}
 	return w.read(ctx, name, w.refused)
 }
+
+// readThroughSteve reports whether a Get has read its object through the Steve API.
+func (w *steveWaitClient) readThroughSteve() bool { return w.refused != nil }
 
 // steveWatchWaitClient is steveWaitClient over a client that lists and
 // watches one object.

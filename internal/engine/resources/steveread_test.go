@@ -96,6 +96,10 @@ type refusedClient struct {
 	getCalls  int
 }
 
+// listTableCalls is the number of table reads of the namespace list the client
+// refused.
+func (c *refusedClient) listTableCalls() int { return len(c.listTableNS) }
+
 func (c *refusedClient) List(context.Context, schema.GroupVersionResource, string, string) (*unstructured.UnstructuredList, error) {
 	c.listCalls++
 	return nil, c.listErr
@@ -666,13 +670,13 @@ func TestGetWaitSteve404EndsTheWait(t *testing.T) {
 func TestWrapSteveWaitImplementsObjectWatcherOnlyForAWatchingClient(t *testing.T) {
 	t.Parallel()
 	cluster := getCmd{k: mustKind(t, "managementcluster")}
-	_, watching := wrapSteveWait(cluster, &watchRefusedClient{}, "").(engine.ObjectWatcher)
+	_, watching := wrapSteveWait(cluster, &watchRefusedClient{}, "", "").(engine.ObjectWatcher)
 	assert.True(t, watching)
-	_, watching = wrapSteveWait(cluster, &refusedClient{}, "").(engine.ObjectWatcher)
+	_, watching = wrapSteveWait(cluster, &refusedClient{}, "", "").(engine.ObjectWatcher)
 	assert.False(t, watching)
 
 	plain := &refusedClient{}
-	assert.Same(t, plain, wrapSteveWait(getCmd{k: mustKind(t, "user")}, plain, ""))
+	assert.Same(t, plain, wrapSteveWait(getCmd{k: mustKind(t, "user")}, plain, "", ""))
 }
 
 // TestGetThroughSteveNeedsTheRootClient asserts a factory that cannot hand out
@@ -699,26 +703,28 @@ func rowReadFactory(client engine.ClusterClient) (*steveFactory, *steveRoot) {
 // steveWaitClient return a Kubernetes 403 unchanged and ask for no root
 // client, except on the rows that set SteveReadOnForbidden, which ask for it
 // in each, return Steve's error (never the internal error of a row with no
-// reader) and read only the collection or object of their own Steve type.
+// reader) and read only the collection or object of their own Steve type: a
+// path that starts with /v1/<type>, and for the namespace row, which reads the
+// cluster it is given, /k8s/clusters/<cluster>/v1/<type>.
 func TestNoOtherRowReadsThroughSteve(t *testing.T) {
 	t.Parallel()
 	denied := kubernetesStatus(http.StatusForbidden, true)
 	for _, k := range kinds.All() {
 		reads := map[string]func(c getCmd, client engine.ClusterClient) error{
 			"list": func(c getCmd, _ engine.ClusterClient) error {
-				_, err := c.steveList(t.Context(), "", nil, denied)
+				_, err := c.steveList(t.Context(), "c-x", "", nil, denied)
 				return err
 			},
 			"get": func(c getCmd, _ engine.ClusterClient) error {
-				_, err := c.steveGet(t.Context(), "c-a", "x", false, denied)
+				_, err := c.steveGet(t.Context(), "c-x", "c-a", "x", false, denied)
 				return err
 			},
 			"get in a wait": func(c getCmd, _ engine.ClusterClient) error {
-				_, err := c.steveGet(t.Context(), "c-a", "x", true, denied)
+				_, err := c.steveGet(t.Context(), "c-x", "c-a", "x", true, denied)
 				return err
 			},
 			"wait client": func(c getCmd, client engine.ClusterClient) error {
-				_, err := newSteveWaitClient(c, client, "c-a").Get(t.Context(), k.GVR, "c-a", "x")
+				_, err := newSteveWaitClient(c, client, "c-x", "c-a").Get(t.Context(), k.GVR, "c-a", "x")
 				return err
 			},
 		}
@@ -734,8 +740,12 @@ func TestNoOtherRowReadsThroughSteve(t *testing.T) {
 				st, ok := clierr.HTTPStatus(err)
 				assert.True(t, ok, "%s of %s returns the error of Steve's response", name, k.Key)
 				assert.Equal(t, http.StatusInternalServerError, st, "%s of %s", name, k.Key)
+				prefix := "/v1/" + k.SteveType()
+				if k.Scope == kinds.Downstream {
+					prefix = "/k8s/clusters/c-x" + prefix
+				}
 				for _, p := range root.requested() {
-					assert.True(t, strings.HasPrefix(p, "/v1/"+k.SteveType()), "%s of %s reads %s, not its own Steve type %s", name, k.Key, p, k.SteveType())
+					assert.True(t, strings.HasPrefix(p, prefix), "%s of %s reads %s, not its own Steve type %s", name, k.Key, p, prefix)
 				}
 				continue
 			}
@@ -1167,8 +1177,9 @@ func TestSteveNotFoundHintNamesTheListOfTheKind(t *testing.T) {
 		"provisioningcluster": clierr.Rancher + " get provisioning-clusters --namespace 'ns'",
 		"etcdsnapshot":        clierr.Rancher + " get etcd-snapshots --namespace 'ns'",
 		"managementnode":      clierr.Rancher + " get management-nodes --cluster 'ns'",
+		"namespace":           clierr.Rancher + " get namespaces --cluster 'c-x'",
 	} {
-		err := getCmd{k: mustKind(t, key)}.steveNotFound("ns", "x", nil)
+		err := getCmd{k: mustKind(t, key)}.steveNotFound("c-x", "ns", "x", nil)
 		assert.Equal(t, want, asClierr(t, err).Hint, key)
 		require.ErrorContains(t, err, "not found: 'x'")
 	}

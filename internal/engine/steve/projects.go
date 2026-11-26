@@ -230,8 +230,8 @@ func ProjectNamespaceObjects(ctx context.Context, downstream engine.ClusterClien
 	if ce, ok := errors.AsType[*clierr.Error](err); !ok || ce.Code != clierr.CodeRBAC {
 		return nil, false, err
 	}
-	r := Request{Cluster: clusterID, Type: "namespaces"}
-	rows, err := ReadCollection(ctx, get, r, func(path string, index int, raw json.RawMessage) (string, string, error) {
+	r := namespaceRequest(clusterID)
+	rows, err := readNamespaceCollection(ctx, get, clusterID, func(path string, index int, raw json.RawMessage) (string, string, error) {
 		var item unstructured.Unstructured
 		if err := json.Unmarshal(raw, &item.Object); err != nil {
 			return "", "", protocolError(path, fmt.Sprintf("item %d is not an object: %s", index, err))

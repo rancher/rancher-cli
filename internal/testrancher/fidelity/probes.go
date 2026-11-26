@@ -54,6 +54,7 @@ func All() []Probe {
 	probes = append(probes, catalogWriteProbes()...)
 	probes = append(probes, extensionProbes()...)
 	probes = append(probes, deleteCannotGetProbes()...)
+	probes = append(probes, namespaceProbes()...)
 	return probes
 }
 
@@ -1443,7 +1444,6 @@ func memberProbes() []Probe {
 		mgmtUserAttributes   = "/k8s/clusters/local/apis/management.cattle.io/v3/userattributes"
 		downstreamNamespaces = "/k8s/clusters/{downstream}/api/v1/namespaces"
 		steveProjects        = "/v1/management.cattle.io.projects"
-		steveNamespaces      = "/k8s/clusters/{downstream}/v1/namespaces"
 		downstreamSSAR       = "/k8s/clusters/{downstream}/apis/authorization.k8s.io/v1/selfsubjectaccessreviews"
 		getNamespaceBody     = `{"apiVersion":"authorization.k8s.io/v1","kind":"SelfSubjectAccessReview","spec":{"resourceAttributes":{"verb":"get","resource":"namespaces","version":"v1","name":"%[1]s","namespace":"%[1]s"}}}`
 		whoBody              = `{"apiVersion":"authentication.k8s.io/v1","kind":"SelfSubjectReview"}`
@@ -1530,7 +1530,7 @@ func memberProbes() []Probe {
 			Observations: []Observation{
 				{Name: "projects", Request: RequestSpec{Method: http.MethodGet, Path: steveProjects, Identity: IdentityMember},
 					Captures: map[string]Capture{"project": {Path: "data.0.metadata.name"}}},
-				{Name: "namespaces", Request: RequestSpec{Method: http.MethodGet, Path: steveNamespaces, Identity: IdentityMember}},
+				{Name: "namespaces", Request: RequestSpec{Method: http.MethodGet, Path: steveNamespacesPath, Identity: IdentityMember}},
 				{Name: "kube-namespaces", Request: RequestSpec{Method: http.MethodGet, Path: downstreamNamespaces, Identity: IdentityMember}},
 				{Name: "get-own-namespace", Request: RequestSpec{Method: http.MethodPost, Path: downstreamSSAR, Body: fmt.Sprintf(getNamespaceBody, "default"), Identity: IdentityMember}},
 				{Name: "get-other-namespace", Request: RequestSpec{Method: http.MethodPost, Path: downstreamSSAR, Body: fmt.Sprintf(getNamespaceBody, "kube-system"), Identity: IdentityMember}},

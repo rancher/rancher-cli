@@ -332,8 +332,9 @@ type Options struct {
 	ProjectVisibility func(ctx context.Context, bearer, cluster string) (projects []ProjectFixture, ok bool, err error)
 	// NamespaceVisibility says which namespaces a bearer sees on one
 	// cluster's steve namespace collection (/k8s/clusters/<id>/v1/namespaces);
-	// a bearer it does not know is answered 401. nil leaves the collection
-	// unserved (404).
+	// a bearer it does not know is answered 401. A read by name follows
+	// handleNamespaceGet: a namespace listed with a few fields is not served by
+	// name. nil leaves the collection unserved (404).
 	NamespaceVisibility func(bearer, cluster string) ([]NamespaceFixture, bool)
 
 	// DropLoginResponse creates the token and then closes the connection
@@ -834,6 +835,8 @@ func (f *Facade) dispatch(w http.ResponseWriter, r *http.Request) {
 		f.handleLocalProjectGet(w, r, strings.TrimPrefix(r.URL.Path, LocalProjectsPath+"/"))
 	case f.opts.NamespaceVisibility != nil && r.Method == http.MethodGet && steveNamespacesCluster(r.URL.Path) != "":
 		f.handleNamespacesCollection(w, r, steveNamespacesCluster(r.URL.Path))
+	case f.opts.NamespaceVisibility != nil && r.Method == http.MethodGet && steveNamespaceObjectCluster(r.URL.Path) != "":
+		f.handleNamespaceGet(w, r, steveNamespaceObjectCluster(r.URL.Path), steveNamespaceObjectName(r.URL.Path))
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, CRTCollectionPath+"/"):
 		f.handleCRTSingle(w, r, strings.TrimPrefix(r.URL.Path, CRTCollectionPath+"/"))
 	case r.Method == http.MethodGet && r.URL.Path == rke2ReleasePath:
@@ -2341,15 +2344,20 @@ type ProjectFixture struct {
 // item steve serves when the caller has no get on the namespace: the name,
 // the resourceVersion, the phase, the annotations field.cattle.io/projectId
 // and management.cattle.io/system-namespace and the label
-// fleet.cattle.io/managed; the deletionTimestamp is not served.
+// fleet.cattle.io/managed; the deletionTimestamp is not served. A read by
+// name follows handleNamespaceGet: a namespace listed with a few fields is not
+// served by name. A namespace served in full has CreationTimestamp (RFC 3339)
+// as its metadata.creationTimestamp, and none when it is empty; one served with a few
+// fields only never has it.
 type NamespaceFixture struct {
-	Name        string
-	Project     string
-	CreatorID   string
-	Terminating bool
-	WithoutGet  bool
-	Labels      map[string]string
-	Annotations map[string]string
+	Name              string
+	Project           string
+	CreatorID         string
+	CreationTimestamp string
+	Terminating       bool
+	WithoutGet        bool
+	Labels            map[string]string
+	Annotations       map[string]string
 }
 
 // builtinProjects are the projects Rancher creates on the local cluster,
@@ -2471,6 +2479,61 @@ func steveNamespacesCluster(path string) string {
 	return cluster
 }
 
+// steveNamespaceObjectCluster returns the cluster id of the steve path of one
+// namespace (/k8s/clusters/<id>/v1/namespaces/<name>), or "" for any other
+// path.
+func steveNamespaceObjectCluster(path string) string {
+	rest, ok := strings.CutPrefix(path, "/k8s/clusters/")
+	if !ok {
+		return ""
+	}
+	cluster, tail, ok := strings.Cut(rest, "/")
+	name, isObject := strings.CutPrefix(tail, "v1/namespaces/")
+	if !ok || cluster == "" || !isObject || name == "" || strings.Contains(name, "/") {
+		return ""
+	}
+	return cluster
+}
+
+// steveNamespaceObjectName returns the namespace name of the steve path
+// steveNamespaceObjectCluster accepts.
+func steveNamespaceObjectName(path string) string {
+	_, name, _ := strings.Cut(path, "/v1/namespaces/")
+	return name
+}
+
+// handleNamespaceGet serves one namespace the bearer may get as steve's item.
+// For any other name steve answers by caller: 404 NotFound for an
+// administrator, 403 PermissionDenied for a caller who sees no namespace, and
+// 403 Forbidden, as the Kubernetes API words it, for everyone else, whether
+// the namespace does not exist or the caller has no get on it (a namespace
+// listed with a few fields only is the second case).
+func (f *Facade) handleNamespaceGet(w http.ResponseWriter, r *http.Request, cluster, name string) {
+	bearer := bearerFromHeader(r)
+	visible, ok := f.opts.NamespaceVisibility(bearer, cluster)
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	for _, ns := range visible {
+		if ns.Name == name && !ns.WithoutGet {
+			writeJSON(w, http.StatusOK, steveNamespaceItem(cluster, ns))
+			return
+		}
+	}
+	user, _ := f.BearerOwner(bearer)
+	status, code, message := http.StatusForbidden, "Forbidden", fmt.Sprintf(
+		"namespaces %q is forbidden: User %q cannot get resource \"namespaces\" in API group \"\" in the namespace %q", name, user, name)
+	switch {
+	case f.admins[user]:
+		// Administrators see every namespace in full.
+		status, code, message = http.StatusNotFound, "NotFound", fmt.Sprintf("namespaces %q not found", name)
+	case len(visible) == 0:
+		code, message = "PermissionDenied", "Method GET not supported"
+	}
+	writeJSON(w, status, map[string]any{"type": "error", "links": map[string]any{}, "status": status, "code": code, "message": message})
+}
+
 func (f *Facade) handleNamespacesCollection(w http.ResponseWriter, r *http.Request, cluster string) {
 	visible, ok := f.opts.NamespaceVisibility(bearerFromHeader(r), cluster)
 	if !ok {
@@ -2530,6 +2593,9 @@ func steveNamespaceItem(cluster string, ns NamespaceFixture) map[string]any {
 		return item
 	}
 	meta := map[string]any{"name": ns.Name, "resourceVersion": "1", "labels": labels}
+	if ns.CreationTimestamp != "" {
+		meta["creationTimestamp"] = ns.CreationTimestamp
+	}
 	if len(annotations) > 0 {
 		meta["annotations"] = annotations
 	}

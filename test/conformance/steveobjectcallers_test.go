@@ -29,9 +29,9 @@ const steveObjectReaderFile = "internal/engine/resources/steveread.go"
 
 // steveObjectReaders are the functions of internal/engine/steve that read an
 // object and return it as Steve returns it (the readers of a cluster, a
-// project, and a collection or one object of any one Steve type), and the
-// conversion of what they return.
-var steveObjectReaders = []string{"ClusterObjects", "ProjectObjects", "GetProject", "GetClusterObject", "TypeObjects", "GetTypeObject", "KubernetesObject"}
+// project, a cluster's namespaces, and a collection or one object of any one
+// Steve type), and the conversion of what they return.
+var steveObjectReaders = []string{"ClusterObjects", "ProjectObjects", "GetProject", "GetClusterObject", "TypeObjects", "GetTypeObject", "NamespaceObjects", "GetNamespaceObject", "KubernetesObject"}
 
 // steveFirstReader is the entry of a function that reads through Steve with no
 // Kubernetes read before it: the files that may call it, each named in full,

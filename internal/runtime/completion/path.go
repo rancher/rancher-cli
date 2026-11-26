@@ -122,6 +122,13 @@ func SteveCollectionPath(resource string) (Path, error) {
 	return build([]string{"v1", resource})
 }
 
+// SteveClusterCollectionPath is a collection of Rancher's steve API of one
+// cluster: /k8s/clusters/<clusterID>/v1/<resource>, the resource named as
+// steve spells it ("namespaces"). Both segments go through ValidSegment.
+func SteveClusterCollectionPath(clusterID, resource string) (Path, error) {
+	return build([]string{"k8s", "clusters", clusterID, "v1", resource})
+}
+
 // SteveObjectPath is one object of a steve collection at the server root:
 // /v1/<resource>/<name>. Both segments go through ValidSegment.
 func SteveObjectPath(resource, name string) (Path, error) {

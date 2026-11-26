@@ -271,6 +271,9 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 		var ans engine.TableAnswer
 		var waitSummary string
 		var waitWarnings []string
+		// viaSteve is true when the object was read through the Steve API
+		// after the Kubernetes API refused the read.
+		var viaSteve bool
 		if wait {
 			expr := forExpr
 			if expr == "" {
@@ -285,8 +288,10 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 				return runtime.Result{}, terr
 			}
 			start := time.Now()
-			one, err = waitFor(ctx, wrapSteveWait(c, client, ns), c.k.GVR, ns, name, cond, timeout, stalledRule{fail: c.k.WaitFailsOnStalled, remedy: c.k.StalledRemedy, cluster: in.String(FlagCluster), failsOn: c.k.WaitFailsOn})
+			waited := wrapSteveWait(c, client, clusterID, ns)
+			one, err = waitFor(ctx, waited, c.k.GVR, ns, name, cond, timeout, stalledRule{fail: c.k.WaitFailsOnStalled, remedy: c.k.StalledRemedy, cluster: in.String(FlagCluster), failsOn: c.k.WaitFailsOn})
 			if err == nil {
+				viaSteve = readThroughSteve(waited)
 				waitSummary = fmt.Sprintf("wait: %s satisfied after %s", expr, waitElapsed(time.Since(start)))
 				if c.k.WaitFailsOnStalled && !cond.isStalledTarget() {
 					if w := freshSuccessWarning(one, c.k.Word(), name, ns); w != "" {
@@ -296,10 +301,17 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 			}
 		} else if tables != nil {
 			ans, err = tables.GetTable(ctx, c.k.GVR, ns, name)
+			if err != nil {
+				if one, err = c.steveGet(ctx, clusterID, ns, name, false, err); err == nil {
+					ans, viaSteve = c.steveTableAnswer([]unstructured.Unstructured{*one}), true
+				}
+			}
 		} else {
 			one, err = client.Get(ctx, c.k.GVR, ns, name)
 			if err != nil {
-				one, err = c.steveGet(ctx, ns, name, false, err)
+				if one, err = c.steveGet(ctx, clusterID, ns, name, false, err); err == nil {
+					viaSteve = true
+				}
 			}
 		}
 		if err != nil {
@@ -311,7 +323,9 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 			return runtime.Result{}, err
 		}
 		if tables != nil {
-			if wait {
+			if wait && viaSteve {
+				ans = c.steveTableAnswer([]unstructured.Unstructured{*one})
+			} else if wait {
 				var terr error
 				if ans, terr = tables.GetTable(ctx, c.k.GVR, ns, name); terr != nil {
 					return runtime.Result{Kind: title, Data: newTable(c.k, []unstructured.Unstructured{*one}, true),
@@ -335,24 +349,36 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 	}
 	if tables != nil {
 		ans, lerr := tables.ListTable(ctx, c.k.GVR, ns, selector)
+		var steveWarnings []string
 		if lerr != nil {
-			return runtime.Result{}, lerr
+			items, serr := c.steveList(ctx, clusterID, ns, listSelector, lerr)
+			if serr != nil {
+				return runtime.Result{}, serr
+			}
+			items, steveWarnings = c.steveListAnswer(inScopeItems(items, scope), listSelector, clusterID, scope)
+			ans, scope = c.steveTableAnswer(items), nil
 		}
 		data, tableWarnings, derr := tableData(c.k, ans, false, scope, ns == "" && c.k.Policy == kinds.NSPlain)
 		if derr != nil {
 			return runtime.Result{}, derr
 		}
-		return runtime.Result{Kind: title + "List", Data: data, Warnings: tableWarnings}, nil
+		return runtime.Result{Kind: title + "List", Data: data, Warnings: append(steveWarnings, tableWarnings...)}, nil
 	}
 	var listed []unstructured.Unstructured
+	viaSteve := false
 	list, lerr := client.List(ctx, c.k.GVR, ns, selector)
 	if lerr == nil {
 		listed = list.Items
-	} else if listed, lerr = c.steveList(ctx, ns, listSelector, lerr); lerr != nil {
+	} else if listed, lerr = c.steveList(ctx, clusterID, ns, listSelector, lerr); lerr != nil {
 		return runtime.Result{}, lerr
+	} else {
+		viaSteve = true
 	}
 	items := inScopeItems(listed, scope)
 	var warnings []string
+	if viaSteve {
+		items, warnings = c.steveListAnswer(items, listSelector, clusterID, scope)
+	}
 	if c.k.SystemFilter != nil && !in.Bool(flagIncludeSystem) {
 		var hidden int
 		items, hidden = hideSystemManaged(items, c.k.SystemFilter)
