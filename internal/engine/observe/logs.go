@@ -240,7 +240,9 @@ type logsResult struct {
 // selectPod narrows a target's resolved pods to the one named pod, for
 // reading the logs of a single replica (the HA-triage case: grep one replica's logs,
 // not the merged stream). An unknown name is a NOT_FOUND naming the target's
-// actual pod names as candidates, as engine.MatchOne's NOT_FOUND does.
+// actual pod names as candidates, the first 10 (the names that contain name
+// first, each part by id) and the number of pods, as engine.MatchOne's NOT_FOUND
+// does.
 func selectPod(pods []unstructured.Unstructured, name string) (unstructured.Unstructured, error) {
 	for i := range pods {
 		if pods[i].GetName() == name {
@@ -253,7 +255,7 @@ func selectPod(pods []unstructured.Unstructured, name string) (unstructured.Unst
 		cands[i] = clierr.Candidate{ID: n, Name: n}
 	}
 	return unstructured.Unstructured{}, clierr.New(clierr.CodeNotFound, fmt.Sprintf("pod %q not found", name)).
-		WithCandidates(cands)
+		WithCandidatesMatchesFirst(cands, name)
 }
 
 func podNames(pods []unstructured.Unstructured) []string {

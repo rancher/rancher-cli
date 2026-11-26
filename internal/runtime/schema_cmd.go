@@ -428,12 +428,6 @@ func lookupGroup(gs []SchemaGroup, want string) (SchemaGroup, bool) {
 	return SchemaGroup{}, false
 }
 
-// maxNearestMatches is how many of the nearest matches the error lists: a
-// short query can substring-match a large slice of the generated commands,
-// and past a screenful the list stops helping. A longer list is cut to its
-// first entries and the error records the full size.
-const maxNearestMatches = 10
-
 // commandListCmd and kindsArrayCmd are the two paste-valid pointers to the
 // full surface: -o name for the command list, -o json for the kind names.
 // unknownSelection names both in its message when the miss is genuinely
@@ -480,7 +474,7 @@ func unknownSelection(m Manifest, want string, kindOnly bool) error {
 	for i, name := range matches {
 		cands[i] = clierr.Candidate{ID: name, Name: name}
 	}
-	return ce.WithCandidatesCut(cands, maxNearestMatches)
+	return ce.WithCandidatesCut(cands, clierr.CandidateLimit)
 }
 
 // nearestSelectors finds every nearest match: a case-insensitive substring

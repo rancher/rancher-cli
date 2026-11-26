@@ -206,12 +206,12 @@ Exit codes: `0` ok · `2` usage/validation/confirmation · `3` auth ·
   Which errors are retryable is in the topic `errors`.
 - `AMBIGUOUS_SELECTION` returns a `candidates` list - pick with the user, don't
   guess.
-- `NOT_FOUND` may carry a `candidates` list of names that exist - offer
-  them, don't guess. When `candidatesTotal` is present the list was cut:
-  `candidates` holds the first names that match what was typed, or the
-  first of the full list when none matches, and `candidatesTotal` the size
-  of the full list. Ask the user for a closer name instead of offering the
-  list as complete.
+- `NOT_FOUND` for a project, cluster, cloud credential, pod, user or role lists
+  at most 10 `candidates` - offer them, don't guess. `candidatesTotal`, when
+  present, is the size of the list before the cut. The topic `errors` says
+  which 10 are listed, and the one case that lists all. Run the `hint`, when
+  there is one, for the full list; otherwise ask the user for a closer name.
+  Never offer a cut list as complete.
 - `PRIME_REQUIRED` (exit `9`) means the command needs a capability this
   server's edition does not have - Rancher Prime. Do not retry and do not
   look for a workaround; tell the user what was refused and pass along the

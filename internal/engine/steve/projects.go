@@ -132,13 +132,14 @@ func ResolveProjectArgument(ctx context.Context, get Getter, local engine.Cluste
 // projectRefusedByID returns the RBAC error returned when Rancher refuses
 // (HTTP 403) the get of project v on clusterID by its id. Rancher refuses it
 // for a project the caller cannot read and for an id no project has. The
-// message therefore does not say whether the project exists. The hint is the
-// command that lists the projects on the cluster, whether the caller can read
-// any or none; it is left out for a cluster id the shell would misread.
-func projectRefusedByID(clusterID, v string, getterErr error, candidates []clierr.Candidate) *clierr.Error {
+// message therefore does not say whether the project exists. The candidates and
+// their total are those of notFound, the NOT_FOUND error of the lookup. The hint
+// is the command that lists the projects on the cluster, whether the caller can
+// read any or none; it is left out for a cluster id the shell would misread.
+func projectRefusedByID(clusterID, v string, getterErr error, notFound *clierr.Error) *clierr.Error {
 	return clierr.New(clierr.CodeRBAC, fmt.Sprintf("you cannot read project %s on cluster %s", clierr.ShellQuote(v), clierr.ShellQuote(clusterID))).
 		WithHintCommand(clierr.NewCommand("access projects").FlagValue("--cluster", clusterID)).
-		WithCause(getterErr).WithCandidates(candidates)
+		WithCause(getterErr).WithCandidatesOf(notFound)
 }
 
 func resolveProject(ctx context.Context, get Getter, local engine.ClusterClient, clusterID, v string, flag clierr.CommandWord) (p Project, warning string, err error) {
@@ -180,7 +181,7 @@ func resolveProject(ctx context.Context, get Getter, local engine.ClusterClient,
 			case clierr.CodeNotFound:
 				return Project{}, "", err
 			case clierr.CodeRBAC:
-				return Project{}, "", projectRefusedByID(clusterID, v, gerr, ce.Candidates)
+				return Project{}, "", projectRefusedByID(clusterID, v, gerr, ce)
 			}
 		}
 		return Project{}, "", gerr

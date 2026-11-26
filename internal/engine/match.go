@@ -25,7 +25,9 @@ type MatchText struct {
 // names them and the flag value that selects each. With no id match, one
 // display-name match resolves and two or more are AMBIGUOUS_SELECTION with
 // the candidates narrowed to the matches, sorted by id. No match is
-// NOT_FOUND with t.NotFound, t.NotFoundHint and every candidate.
+// NOT_FOUND with t.NotFound, t.NotFoundHint and the first clierr.CandidateLimit
+// candidates, those that contain v first and each part by id, with the size of
+// the full list when it is longer.
 func MatchOne(v string, ids []string, displayOf func(id string) string,
 	cands []clierr.Candidate, t MatchText) (id, warning string, err error) {
 	var byDisplay []string
@@ -47,7 +49,7 @@ func MatchOne(v string, ids []string, displayOf func(id string) string,
 		return byDisplay[0], "", nil
 	case len(byDisplay) == 0:
 		return "", "", clierr.New(clierr.CodeNotFound, t.NotFound).
-			WithCandidates(cands).WithHintCommand(t.NotFoundHint)
+			WithCandidatesMatchesFirst(cands, v).WithHintCommand(t.NotFoundHint)
 	default:
 		narrowed := make([]clierr.Candidate, 0, len(byDisplay))
 		for _, c := range cands {

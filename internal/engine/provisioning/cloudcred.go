@@ -189,11 +189,11 @@ func selectCredentialByID(ctx context.Context, client engine.ClusterClient, type
 	}
 	if byID == nil {
 		notFound := clierr.New(clierr.CodeNotFound, t.NotFound).
-			WithCandidates(prefixedCandidates(candidates)).WithHintCommand(t.NotFoundHint)
+			WithCandidatesMatchesFirst(prefixedCandidates(candidates), name).WithHintCommand(t.NotFoundHint)
 		if len(sameDisplay) > 0 {
 			isDisplayName := name + " is a display name"
 			notFound = clierr.New(clierr.CodeNotFound, t.NotFound+"; the command takes the credential id, and "+isDisplayName).
-				WithCandidates(prefixedCandidates(sameDisplay)).WithHintCommand(t.NotFoundHint)
+				WithCandidatesMatchesFirst(prefixedCandidates(sameDisplay), name).WithHintCommand(t.NotFoundHint)
 		}
 		if len(validation.IsDNS1123Subdomain(name)) > 0 {
 			return nil, notFound

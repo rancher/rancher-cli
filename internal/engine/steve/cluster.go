@@ -104,7 +104,7 @@ func ResolveCluster(ctx context.Context, get Getter, list []Cluster, v string, t
 			if len(list) == 0 {
 				suffix, hint = "; "+noReadableCluster, clierr.Command{}
 			}
-			return "", "", clusterRefusedByID(r, v, gerr, hint, suffix).WithCandidates(ce.Candidates)
+			return "", "", clusterRefusedByID(r, v, gerr, hint, suffix).WithCandidatesOf(ce)
 		case ok && st == http.StatusNotFound:
 			return "", "", err
 		}

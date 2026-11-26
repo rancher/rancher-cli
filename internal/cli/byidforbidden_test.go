@@ -171,7 +171,7 @@ func TestResolveProjectRefusedByIDIsRBAC(t *testing.T) {
 	f := s.factory(t)
 	r := projectResolver{f}
 	in := flagInput{cluster: "c-a"}
-	candidates := []clierr.Candidate{{ID: "p-2", Name: "Two"}, {ID: "p-1", Name: "One"}}
+	candidates := []clierr.Candidate{{ID: "p-1", Name: "One"}, {ID: "p-2", Name: "Two"}}
 
 	_, _, err := r.ResolveProject(t.Context(), in, "p-hidden")
 	requireByIDRBAC(t, err, "you cannot read project 'p-hidden' on cluster 'c-a'",

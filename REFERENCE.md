@@ -734,17 +734,20 @@ cluster; two clusters with the same display name give `AMBIGUOUS_SELECTION`
 (pass the id). If a cluster was created moments ago and the list does not show
 it yet, the CLI gets it by its id. If Rancher refuses that request (HTTP 403),
 the command fails with `RBAC` (exit 6), the hint `rancher access clusters` and
-the clusters you can read as candidates (if you can read no cluster, neither the
-hint nor candidates); a value that cannot be a cluster id,
+the clusters you can read as candidates, the first 10, those that contain the
+typed value first (if you can read no cluster, neither the hint nor candidates);
+a value that cannot be a cluster id,
 or that Rancher responds to with 404, is `NOT_FOUND`. Every command that takes
 `--cluster` works this way except `rancher access projects --cluster`, which
 only matches the clusters it lists and reports `NOT_FOUND` for any other value.
 `local` is always the local cluster, and where a command allows it, leaving out
 `--cluster` means the local cluster. kubectl's exec plugin resolves its
 `--cluster` the same way when it has no cached credential and creates one, with
-the warning on stderr; its `NOT_FOUND` error lists the clusters you can read,
-and so does its `RBAC` error when Rancher refuses the get by id; neither error
-names a command to run.
+the warning on stderr. The message of its `NOT_FOUND` error, and of its `RBAC`
+error when Rancher refuses the get by id, names up to 10 clusters you can read,
+in the order Rancher lists them. The `candidates` of either error list up to
+10 clusters: those whose id or name contains the typed value, then the others,
+each part by id. Neither error names a command to run.
 
 `get` of the `cluster` kind and `get projects` read through the local
 cluster's Kubernetes API. When Rancher refuses that read (a cluster or project
@@ -818,11 +821,12 @@ project; two projects with the same display name give `AMBIGUOUS_SELECTION`
 (pass the id). If a project was created moments ago and the list does not show
 it yet, the CLI gets it by its id. If Rancher refuses that request (HTTP 403),
 the command fails with `RBAC` (exit 6), the hint `rancher access projects
---cluster <id>` and the projects you can read on that cluster as candidates; a
-value that cannot be a project id, or that Rancher responds to with 404, is
-`NOT_FOUND`.
-Without `--cluster` the command refuses and
-names the clusters a project with that id or display name is on; it never
+--cluster <id>` and the projects you can read on that cluster as candidates, the
+first 10, those that contain the typed value first; a value that cannot be a
+project id, or that Rancher responds to with 404, is `NOT_FOUND`. Without
+`--cluster` the command refuses and names the clusters a project with that id or
+display name is on: in the message when there are 10 or fewer, and with more,
+the message gives the number and `candidates` lists the first 10 by id; it never
 picks one.
 
 What `--project` does: a list shows only objects in the project's namespaces,
@@ -1186,11 +1190,12 @@ Every kind that `rancher schema` lists gets its generated verbs by these rules:
   for the project or its backing namespace ends with an error,
   `data.error.details` has `committed`, `resourceKind`, `resourceName` and
   `recovery` of that object beside `objects`.
-- `user`, `project`, `roletemplate`, `globalrole` and `nodedriver` take the
-  object's id as the argument, named `id` in help and the schema: the NAME
-  column of `get`, not the username or display name. When `get`, `patch` or
-  `delete` finds no object with the id you typed, and the text you typed is
-  exactly the username or display name of an object, the error message says
+- `user`, `project`, `roletemplate`, `globalrole`, `nodedriver`, `authconfig`
+  and `management-node` take the object's id as the argument, named `id` in help
+  and the schema: the NAME column of `get`, not the username, display name or
+  node name. When `get`, `patch` or `delete` finds no object with the id you
+  typed, and the text you typed is exactly the username, display name or node
+  name of an object, the error message says
   which id that is, the object is listed in `data.error.candidates`, and the
   hint is `rancher get <kind> '<id>'`; several objects with that text stay
   `NOT_FOUND` with every candidate listed. The lookup is one more read, made
@@ -3760,8 +3765,23 @@ envelope's `retryable` field; the `hint`, when present, is the remedy.
 | `GENERIC` | 1 | an error with no more specific code, including a server or transport failure |
 <!-- /conformance:error-codes -->
 
-When a candidate list is cut to its first entries,
-`data.error.candidatesTotal` gives the size of the full list.
+The `NOT_FOUND` error of a project, cluster, cloud credential, pod, user or role
+lists at most 10 candidates. The one exception is `get`, `patch` or `delete` of
+a user, project, role template, global role, node driver, auth config or
+management node, when several objects have the username, display name or node
+name you typed: the error lists every one of them. The lookup of a project, a
+cluster, a cloud credential or a pod lists the first 10: the entries whose id or
+name contains the typed text come first and the others follow, each part by id
+(ids sort as text: `p-10` comes before `p-2`). The `VALIDATION` error of
+`--project` without `--cluster` lists the first 10 clusters that have the
+project, by id. The lookup of a user or a role lists the first 10 that contain
+the typed text, or the first 10 of all when none does. When a list is longer
+than 10, `data.error.candidatesTotal` gives the size of the full list, and the
+text output reads `candidates (10 of 77)`. The `hint`, when there is one, is the
+command that lists them all; when the `--project` error tells you which clusters
+to pass, its hint lists every cluster you can read, and when several projects on
+one cluster have that display name, its hint lists the projects on that
+cluster. `AMBIGUOUS_SELECTION` lists every match.
 
 The `--dry-run` preview of a command that changes the server names every flag
 its `--apply` run needs: the text ends with `dry-run preview - re-run with

@@ -878,8 +878,8 @@ func TestGrantNoNearMatchRoleWholePoolIsCutInListOrder(t *testing.T) {
 // exactly 10 roles is listed whole with no total.
 func TestGrantNoNearMatchRoleWholePoolAtTheLimitHasNoTotal(t *testing.T) {
 	t.Parallel()
-	ce := grantRoleNotFound(t, CandidateLimit, func(i int) string { return fmt.Sprintf("role-%02d", i) }, "lx-no-such-role")
-	assert.Len(t, ce.Candidates, CandidateLimit)
+	ce := grantRoleNotFound(t, clierr.CandidateLimit, func(i int) string { return fmt.Sprintf("role-%02d", i) }, "lx-no-such-role")
+	assert.Len(t, ce.Candidates, clierr.CandidateLimit)
 	assert.Zero(t, ce.CandidatesTotal)
 }
 
@@ -898,8 +898,8 @@ func TestGrantRoleNearMatchesAboveTheLimitAreCutAndCounted(t *testing.T) {
 // matches are listed whole with no total.
 func TestGrantRoleNearMatchesAtTheLimitHaveNoTotal(t *testing.T) {
 	t.Parallel()
-	ce := grantRoleNotFound(t, CandidateLimit, func(i int) string { return fmt.Sprintf("team-role-%02d", i) }, "role")
-	assert.Len(t, ce.Candidates, CandidateLimit)
+	ce := grantRoleNotFound(t, clierr.CandidateLimit, func(i int) string { return fmt.Sprintf("team-role-%02d", i) }, "role")
+	assert.Len(t, ce.Candidates, clierr.CandidateLimit)
 	assert.Zero(t, ce.CandidatesTotal)
 }
 

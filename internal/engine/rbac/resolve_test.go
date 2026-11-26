@@ -365,7 +365,7 @@ func TestResolveSubjectBareNotFoundNearMatchCandidates(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
-	assert.Len(t, ce.Candidates, CandidateLimit, "the first 10 of the near matches")
+	assert.Len(t, ce.Candidates, clierr.CandidateLimit, "the first 10 of the near matches")
 	assert.Equal(t, 15, ce.CandidatesTotal, "every near match is counted")
 	for _, cand := range ce.Candidates {
 		assert.NotEqual(t, "u-zzz", cand.ID, "non-matching users excluded from candidates")
@@ -378,7 +378,7 @@ func TestResolveSubjectBareNotFoundNearMatchCandidates(t *testing.T) {
 func TestResolveSubjectBareNotFoundNearMatchesAtTheLimitHaveNoTotal(t *testing.T) {
 	t.Parallel()
 	var users []map[string]any
-	for i := range CandidateLimit {
+	for i := range clierr.CandidateLimit {
 		users = append(users, userObj(fmt.Sprintf("u-jan%02d", i), fmt.Sprintf("Jan %d", i), fmt.Sprintf("jan%d", i), fmt.Sprintf("okta_user://%d", i)))
 	}
 	users = append(users, userObj("u-zzz", "Zed", "zed", "okta_user://z"))
@@ -387,7 +387,7 @@ func TestResolveSubjectBareNotFoundNearMatchesAtTheLimitHaveNoTotal(t *testing.T
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok, "want a *clierr.Error, got %v", err)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
-	assert.Len(t, ce.Candidates, CandidateLimit)
+	assert.Len(t, ce.Candidates, clierr.CandidateLimit)
 	assert.Zero(t, ce.CandidatesTotal)
 }
 
@@ -757,7 +757,7 @@ func TestResolveSubjectBareNotFoundWholePoolIsCutInListOrder(t *testing.T) {
 func TestResolveSubjectBareNotFoundWholePoolAtTheLimitHasNoTotal(t *testing.T) {
 	t.Parallel()
 	var users []map[string]any
-	for i := range CandidateLimit {
+	for i := range clierr.CandidateLimit {
 		id := fmt.Sprintf("u-%02d", i)
 		users = append(users, userObj(id, "", "member", "local://"+id))
 	}
@@ -765,7 +765,7 @@ func TestResolveSubjectBareNotFoundWholePoolAtTheLimitHasNoTotal(t *testing.T) {
 		Subject{Kind: SubjectUser, Bare: "lx-no-such-user"})
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok, "want a *clierr.Error, got %v", err)
-	assert.Len(t, ce.Candidates, CandidateLimit)
+	assert.Len(t, ce.Candidates, clierr.CandidateLimit)
 	assert.Zero(t, ce.CandidatesTotal)
 }
 

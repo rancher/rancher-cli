@@ -1798,7 +1798,7 @@ func unknownSelectionError(t *testing.T, m Manifest, want string) *clierr.Error 
 func TestUnknownSelectionNearMatchesAboveTheLimitAreCutAndCounted(t *testing.T) {
 	t.Parallel()
 	ce := unknownSelectionError(t, manifestWithCommands(12), "thing")
-	require.Len(t, ce.Candidates, maxNearestMatches)
+	require.Len(t, ce.Candidates, clierr.CandidateLimit)
 	for i, c := range ce.Candidates {
 		assert.Equal(t, fmt.Sprintf("get thing%02d", i+1), c.ID)
 		assert.Equal(t, c.ID, c.Name)
@@ -1810,8 +1810,8 @@ func TestUnknownSelectionNearMatchesAboveTheLimitAreCutAndCounted(t *testing.T) 
 // matches are listed whole with no total.
 func TestUnknownSelectionNearMatchesAtTheLimitHaveNoTotal(t *testing.T) {
 	t.Parallel()
-	ce := unknownSelectionError(t, manifestWithCommands(maxNearestMatches), "thing")
-	assert.Len(t, ce.Candidates, maxNearestMatches)
+	ce := unknownSelectionError(t, manifestWithCommands(clierr.CandidateLimit), "thing")
+	assert.Len(t, ce.Candidates, clierr.CandidateLimit)
 	assert.Zero(t, ce.CandidatesTotal)
 }
 

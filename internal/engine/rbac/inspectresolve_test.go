@@ -215,7 +215,7 @@ func TestResolveInspectUserBareNotFoundNearMatchesAreCutAndCounted(t *testing.T)
 	}
 	users = append(users, userObj("u-zzz", "Zed", "zed", "local://u-zzz"))
 	ce := inspectUserNotFound(t, users, "jan")
-	require.Len(t, ce.Candidates, CandidateLimit)
+	require.Len(t, ce.Candidates, clierr.CandidateLimit)
 	assert.Equal(t, "u-jan01", ce.Candidates[0].ID)
 	assert.Equal(t, 15, ce.CandidatesTotal)
 }
@@ -224,11 +224,11 @@ func TestResolveInspectUserBareNotFoundNearMatchesAreCutAndCounted(t *testing.T)
 // exactly 10 users is listed whole with no total.
 func TestResolveInspectUserBareNotFoundAtTheLimitHasNoTotal(t *testing.T) {
 	var users []map[string]any
-	for i := range CandidateLimit {
+	for i := range clierr.CandidateLimit {
 		id := fmt.Sprintf("u-%02d", i)
 		users = append(users, userObj(id, "", "member", "local://"+id))
 	}
 	ce := inspectUserNotFound(t, users, "lx-no-such-user")
-	assert.Len(t, ce.Candidates, CandidateLimit)
+	assert.Len(t, ce.Candidates, clierr.CandidateLimit)
 	assert.Zero(t, ce.CandidatesTotal)
 }

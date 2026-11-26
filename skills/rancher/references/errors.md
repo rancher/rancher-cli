@@ -66,3 +66,20 @@
   or approve the prompt). That remedy needs the person at the keyboard: tell
   the user, and run the command again only after they have acted. It is
   never a reason to try another server entry, store or `--config`.
+- A `NOT_FOUND` list that was cut (`candidatesTotal` is present): `candidates`
+  has the first 10 for a project, cluster, cloud credential or pod (the entries
+  that contain what was typed first, each part by id), and the first 10 that
+  contain what was typed (or the first 10 of all when none does) for a user or
+  role, and `candidatesTotal` is the size of the full list. A `--project` typed
+  without `--cluster` is a `VALIDATION` error that lists the first 10 clusters
+  that have the project, by id; when it tells you which clusters to pass, its
+  `hint` lists every cluster you can read, not only those that have the
+  project (when several projects on one cluster have that display name, it
+  lists the projects on that cluster). When the error has a `hint`, run it to
+  see the full list (for example `rancher access projects --cluster <id>`); a
+  pod has no `hint`; ask the user for a closer name.
+- When you type a username, display name or node name that several objects have,
+  `get`, `patch` and `delete` of a user, project, role template, global role,
+  node driver, auth config or management node return a `NOT_FOUND` that lists
+  every one of them, with no `candidatesTotal`. A project member gets `RBAC`
+  with the same list.

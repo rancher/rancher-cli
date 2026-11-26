@@ -2,6 +2,8 @@ package engine
 
 import (
 	"errors"
+	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -132,10 +134,10 @@ func TestMatchOneDuplicateDisplayNamesAreAmbiguousAndSortedByID(t *testing.T) {
 	assert.Equal(t, []clierr.Candidate{{ID: "p-1", Name: "web"}, {ID: "p-2", Name: "web"}, {ID: "p-3", Name: "web"}}, ce.Candidates)
 }
 
-// TestMatchOneNotFoundCarriesTheTextAndEveryCandidate asserts no match is
-// NOT_FOUND with the caller's message and hint and every candidate in the
-// order given.
-func TestMatchOneNotFoundCarriesTheTextAndEveryCandidate(t *testing.T) {
+// TestMatchOneNotFoundCarriesTheTextAndTheCandidatesByID asserts no match is
+// NOT_FOUND with the caller's message and hint and the candidates sorted by
+// id, whatever order they were given in, with no total for a short list.
+func TestMatchOneNotFoundCarriesTheTextAndTheCandidatesByID(t *testing.T) {
 	t.Parallel()
 	f := newMatchFixture("p-2", "db", "p-1", "api")
 	_, _, err := f.match("web", projectText)
@@ -144,5 +146,81 @@ func TestMatchOneNotFoundCarriesTheTextAndEveryCandidate(t *testing.T) {
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, "project not found", ce.Message)
 	assert.Equal(t, clierr.NewCommand("access projects").Field(), ce.Hint)
-	assert.Equal(t, f.cands, ce.Candidates)
+	assert.Equal(t, []clierr.Candidate{{ID: "p-1", Name: "api"}, {ID: "p-2", Name: "db"}}, ce.Candidates)
+	assert.Zero(t, ce.CandidatesTotal)
+}
+
+// TestMatchOneNotFoundCutsALongCandidateList asserts a NOT_FOUND for a list
+// of more than clierr.CandidateLimit objects has the first
+// clierr.CandidateLimit by id and the size of the full list as candidates and
+// total, and a list of exactly clierr.CandidateLimit has all of them and no
+// total.
+func TestMatchOneNotFoundCutsALongCandidateList(t *testing.T) {
+	t.Parallel()
+	for _, n := range []int{clierr.CandidateLimit, clierr.CandidateLimit + 1, 300} {
+		t.Run(strconv.Itoa(n), func(t *testing.T) {
+			t.Parallel()
+			var pairs []string
+			for i := n - 1; i >= 0; i-- {
+				pairs = append(pairs, fmt.Sprintf("p-%03d", i), fmt.Sprintf("name-%03d", i))
+			}
+			f := newMatchFixture(pairs...)
+			_, _, err := f.match("web", projectText)
+			ce, ok := errors.AsType[*clierr.Error](err)
+			require.True(t, ok)
+			assert.Equal(t, clierr.CodeNotFound, ce.Code)
+			require.Len(t, ce.Candidates, min(n, clierr.CandidateLimit))
+			for i, c := range ce.Candidates {
+				assert.Equal(t, fmt.Sprintf("p-%03d", i), c.ID)
+			}
+			if n > clierr.CandidateLimit {
+				assert.Equal(t, n, ce.CandidatesTotal)
+			} else {
+				assert.Zero(t, ce.CandidatesTotal)
+			}
+		})
+	}
+}
+
+// TestMatchOneAmbiguousSelectionListsEveryMatch asserts the candidates of
+// AMBIGUOUS_SELECTION are never cut: the caller must choose among all of them.
+func TestMatchOneAmbiguousSelectionListsEveryMatch(t *testing.T) {
+	t.Parallel()
+	var pairs []string
+	for i := range clierr.CandidateLimit + 5 {
+		pairs = append(pairs, fmt.Sprintf("p-%03d", i), "web")
+	}
+	_, _, err := newMatchFixture(pairs...).match("web", projectText)
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
+	assert.Len(t, ce.Candidates, clierr.CandidateLimit+5)
+	assert.Zero(t, ce.CandidatesTotal)
+}
+
+// TestMatchOneNotFoundListsTheMatchesFirst asserts a NOT_FOUND lists the
+// entries whose id or name contains the typed value, whatever the case, before
+// the others, each part by id, and the total counts every entry.
+func TestMatchOneNotFoundListsTheMatchesFirst(t *testing.T) {
+	t.Parallel()
+	var pairs []string
+	for i := 299; i >= 0; i-- {
+		name := fmt.Sprintf("name-%03d", i)
+		switch i {
+		case 250:
+			name = "my-WEB"
+		case 100:
+			name = "webapp"
+		}
+		pairs = append(pairs, fmt.Sprintf("p-%03d", i), name)
+	}
+	_, _, err := newMatchFixture(pairs...).match("web", projectText)
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	var got []string
+	for _, c := range ce.Candidates {
+		got = append(got, c.ID)
+	}
+	assert.Equal(t, []string{"p-100", "p-250", "p-000", "p-001", "p-002", "p-003", "p-004", "p-005", "p-006", "p-007"}, got)
+	assert.Equal(t, 300, ce.CandidatesTotal)
 }

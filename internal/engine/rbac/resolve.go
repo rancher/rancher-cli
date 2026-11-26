@@ -86,10 +86,6 @@ func unreadableUserError(err error, subject string) error {
 		clierr.Lead(" with: "), clierr.NewCommand("get users")))
 }
 
-// CandidateLimit is how many candidates a NOT_FOUND error lists; a longer
-// list is cut to its first entries and the error records the full size.
-const CandidateLimit = 10
-
 // IsSystemUser reports whether u is a system user. It mirrors rancher's
 // User.IsSystem: any principalIds entry matching the shared system-principal
 // predicate (engine.IsSystemPrincipal).
@@ -271,7 +267,7 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 			"no user has the user id or username %q (system users are not matched); %s this display name, and grant and revoke do not match a display name: pass the user id")
 	default:
 		return ResolvedSubject{}, clierr.New(clierr.CodeNotFound, "user not found: "+sub.Bare).
-			WithCandidatesCut(SubjectCandidates(all, sub.Bare), CandidateLimit).
+			WithCandidatesCut(SubjectCandidates(all, sub.Bare), clierr.CandidateLimit).
 			WithHintCommand(clierr.NewCommand("get users"))
 	}
 }
@@ -303,7 +299,7 @@ func displayNameOnlyError(users []*unstructured.Unstructured, value, format stri
 	}
 	return clierr.New(clierr.CodeNotFound,
 		fmt.Sprintf(format, value, have)).
-		WithCandidatesCut(cands, CandidateLimit).
+		WithCandidatesCut(cands, clierr.CandidateLimit).
 		WithHintCommand(clierr.NewCommand("get users"))
 }
 
@@ -354,7 +350,7 @@ func principalOwned(pids []string, principal string) bool {
 // SubjectCandidates builds the candidate slice for a user not-found error:
 // every user whose id, display name or username contains needle, else all
 // of the users. The list is not cut; the caller attaches it with
-// WithCandidatesCut and CandidateLimit. Each user's fields are extracted
+// WithCandidatesCut and clierr.CandidateLimit. Each user's fields are extracted
 // once: username for the haystack and UserCandidate() for the
 // display-name-fallback Candidate. The haystack is id + candidate.Name +
 // username; the display-name-fallback rule is owned by UserCandidate(), so

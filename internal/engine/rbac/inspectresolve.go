@@ -137,7 +137,7 @@ func resolveInspectUserBare(ctx context.Context, client engine.ClusterClient, us
 			"no user has the user id or username %q; %s this display name, and inspect user does not match a display name: pass the user id")
 	default:
 		return ResolvedSubject{}, clierr.New(clierr.CodeNotFound, "user not found: "+bare).
-			WithCandidatesCut(SubjectCandidates(toPointerSlice(list.Items), bare), CandidateLimit).
+			WithCandidatesCut(SubjectCandidates(toPointerSlice(list.Items), bare), clierr.CandidateLimit).
 			WithHintCommand(clierr.NewCommand("get users"))
 	}
 }

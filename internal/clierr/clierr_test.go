@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"slices"
 	"strings"
 	"testing"
 
@@ -383,6 +384,84 @@ func TestWithCandidatesCutSetsTheTotalOnlyWhenEntriesWereDropped(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestCandidateLimitIsTen asserts a NOT_FOUND error lists 10 candidates: the
+// documented limit that every other test of a cut list states in terms of
+// CandidateLimit.
+func TestCandidateLimitIsTen(t *testing.T) {
+	assert.Equal(t, 10, CandidateLimit)
+}
+
+// TestWithCandidatesMatchesFirstCuts asserts the first CandidateLimit entries
+// are listed whatever order the full list came in, the size of the full list is
+// recorded only when it is longer, and the caller's list keeps its order. The
+// typed value matches no entry here; every part is in the order of the ids.
+func TestWithCandidatesMatchesFirstCuts(t *testing.T) {
+	for _, n := range []int{0, 3, CandidateLimit, CandidateLimit + 1, 300} {
+		t.Run(fmt.Sprint(n), func(t *testing.T) {
+			full := candidateRange(n)
+			slices.Reverse(full)
+			given := slices.Clone(full)
+			e := New(CodeNotFound, "x").WithCandidatesMatchesFirst(full, "zzz")
+			assert.Equal(t, given, full, "the caller's list is not reordered")
+			require.Len(t, e.Candidates, min(n, CandidateLimit))
+			assert.True(t, slices.IsSortedFunc(e.Candidates, func(a, b Candidate) int { return strings.Compare(a.ID, b.ID) }))
+			if n > CandidateLimit {
+				assert.Equal(t, n, e.CandidatesTotal)
+			} else {
+				assert.Zero(t, e.CandidatesTotal)
+			}
+		})
+	}
+	// ids sort as text: id-0, id-1, id-10, id-11, id-2
+	e := New(CodeNotFound, "x").WithCandidatesMatchesFirst(candidateRange(30), "zzz")
+	assert.Equal(t, "id-0", e.Candidates[0].ID)
+	assert.Equal(t, "id-10", e.Candidates[2].ID)
+}
+
+// TestWithCandidatesMatchesFirstOrdersTheMatchesBeforeTheOthers asserts the
+// entries whose id or name contains the typed value, whatever the case, are
+// listed before the others, each part in the order of the ids; an empty typed
+// value matches every entry; and the total counts every entry.
+func TestWithCandidatesMatchesFirstOrdersTheMatchesBeforeTheOthers(t *testing.T) {
+	full := candidateRange(30)
+	slices.Reverse(full)
+	ids := func(e *Error) []string {
+		var out []string
+		for _, c := range e.Candidates {
+			out = append(out, c.ID)
+		}
+		return out
+	}
+
+	e := New(CodeNotFound, "x").WithCandidatesMatchesFirst(full, "Id-2")
+	assert.Equal(t, []string{"id-2", "id-20", "id-21", "id-22", "id-23", "id-24", "id-25", "id-26", "id-27", "id-28"}, ids(e))
+	assert.Equal(t, 30, e.CandidatesTotal)
+
+	e = New(CodeNotFound, "x").WithCandidatesMatchesFirst(full, "name-29")
+	assert.Equal(t, []string{"id-29", "id-0", "id-1", "id-10", "id-11", "id-12", "id-13", "id-14", "id-15", "id-16"}, ids(e), "a name match counts, and the others follow by id")
+
+	e = New(CodeNotFound, "x").WithCandidatesMatchesFirst(full, "")
+	assert.Equal(t, []string{"id-0", "id-1", "id-10", "id-11", "id-12", "id-13", "id-14", "id-15", "id-16", "id-17"}, ids(e))
+
+	e = New(CodeNotFound, "x").WithCandidatesMatchesFirst(candidateRange(3), "id-2")
+	assert.Equal(t, []string{"id-2", "id-0", "id-1"}, ids(e), "a short list is ordered too")
+	assert.Zero(t, e.CandidatesTotal)
+}
+
+// TestWithCandidatesOfCarriesTheListAndItsTotal asserts an error that takes
+// the candidates of another keeps the other's total, and clears its own.
+func TestWithCandidatesOfCarriesTheListAndItsTotal(t *testing.T) {
+	cut := New(CodeNotFound, "x").WithCandidatesCut(candidateRange(12), CandidateLimit)
+	got := New(CodeRBAC, "y").WithCandidates(candidateRange(2)).WithCandidatesOf(cut)
+	assert.Equal(t, cut.Candidates, got.Candidates)
+	assert.Equal(t, 12, got.CandidatesTotal)
+
+	full := New(CodeNotFound, "x").WithCandidates(candidateRange(3))
+	got = New(CodeRBAC, "y").WithCandidatesCut(candidateRange(12), CandidateLimit).WithCandidatesOf(full)
+	assert.Len(t, got.Candidates, 3)
+	assert.Zero(t, got.CandidatesTotal)
 }
 
 // TestWithCandidatesCutLeavesTheFullListAlone asserts appending to the cut

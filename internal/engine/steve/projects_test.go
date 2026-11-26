@@ -309,7 +309,7 @@ func TestResolveProjectDuplicateDisplayNameIsAmbiguous(t *testing.T) {
 	assert.Empty(t, local.gets)
 }
 
-func TestResolveProjectNotFoundNamesEveryCandidate(t *testing.T) {
+func TestResolveProjectNotFoundNamesTheCandidatesByID(t *testing.T) {
 	t.Parallel()
 	_, get := projectFixture(t, steveProject("c-abc", "p-2", "db"), steveProject("c-abc", "p-1", "api"))
 	local := &fakeCluster{getErr: clierr.New(clierr.CodeNotFound, "gone")}
@@ -318,7 +318,7 @@ func TestResolveProjectNotFoundNamesEveryCandidate(t *testing.T) {
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, "project not found: 'web'; it is not among the projects you can read on cluster 'c-abc'; pass a project id or display name", ce.Message)
 	assert.Equal(t, clierr.Rancher+" access projects --cluster 'c-abc'", ce.Hint)
-	assert.Equal(t, []clierr.Candidate{{ID: "p-2", Name: "db"}, {ID: "p-1", Name: "api"}}, ce.Candidates)
+	assert.Equal(t, []clierr.Candidate{{ID: "p-1", Name: "api"}, {ID: "p-2", Name: "db"}}, ce.Candidates)
 }
 
 func TestResolveProjectEmptyCollectionSaysYouCanReadNone(t *testing.T) {

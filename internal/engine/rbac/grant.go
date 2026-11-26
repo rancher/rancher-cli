@@ -266,7 +266,7 @@ const bindingListRefusedWarning = "cannot list the existing bindings (Rancher re
 // candidatesWithFallback returns every item whose hay(i) contains needle
 // (case-insensitive substring, in list order) as candidates, or, when none
 // does, the whole pool. An empty needle matches every item, so the whole
-// pool is returned. The caller cuts the list to CandidateLimit with
+// pool is returned. The caller cuts the list to clierr.CandidateLimit with
 // WithCandidatesCut, which records how many entries it left out.
 func candidatesWithFallback(n int, hay func(i int) string, cand func(i int) clierr.Candidate, needle string) []clierr.Candidate {
 	lneedle := strings.ToLower(needle)
@@ -332,7 +332,7 @@ func checkRole(ctx context.Context, client engine.ClusterClient, role string, sc
 					msg = fmt.Sprintf("role %s has no context; Rancher binds only roletemplates whose context is %s", role, scope)
 				}
 				return false, clierr.New(clierr.CodeNotFound, msg).
-					WithCandidatesCut(roleCandidates(pool, ""), CandidateLimit).
+					WithCandidatesCut(roleCandidates(pool, ""), clierr.CandidateLimit).
 					WithHintCommand(clierr.NewCommand("get roletemplates"))
 			}
 			return kinds.RoleTemplateHidden(obj.Object), nil
@@ -358,7 +358,7 @@ func checkRole(ctx context.Context, client engine.ClusterClient, role string, sc
 		return false, perr
 	}
 	return false, clierr.New(clierr.CodeNotFound, "role not found: "+role).
-		WithCandidatesCut(roleCandidates(pool, role), CandidateLimit).
+		WithCandidatesCut(roleCandidates(pool, role), clierr.CandidateLimit).
 		WithHintCommand(hint)
 }
 

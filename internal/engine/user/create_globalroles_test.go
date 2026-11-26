@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
-	"github.com/rancher/rancher-cli/internal/engine/rbac"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -509,14 +508,6 @@ func TestCreateResultReportsBindings(t *testing.T) {
 		assert.JSONEq(t, "[]", string(data["globalRoleBindings"]))
 		assert.NotContains(t, res.Text, "global role:")
 	})
-}
-
-// TestCandidateLimitMatchesGrant asserts the number of global roles a
-// NOT_FOUND error lists is the number grant lists: checkGlobalRole follows
-// grant's role check and keeps its own copy of the limit.
-func TestCandidateLimitMatchesGrant(t *testing.T) {
-	t.Parallel()
-	assert.Equal(t, rbac.CandidateLimit, candidateLimit)
 }
 
 // TestCreateTypedAndDefaultRolesAreNotFilteredByInheritedTemplates asserts

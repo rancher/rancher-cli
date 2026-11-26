@@ -326,6 +326,43 @@ func (e *Error) WithCandidates(c []Candidate) *Error {
 	return e
 }
 
+// CandidateLimit is how many candidates an error lists. A longer list is cut
+// to this many and the size of the full list goes in CandidatesTotal; past a
+// screenful the list stops helping.
+const CandidateLimit = 10
+
+// WithCandidatesMatchesFirst sets the candidates to the first CandidateLimit
+// entries of full, and records the size of full when it is longer. The entries
+// whose id or name contains typed, whatever the case, come first and the others
+// after them, each part in the order of the ids; an empty typed matches every
+// entry. An error whose list is one the server returns, a NOT_FOUND or the
+// VALIDATION error of --project without --cluster, uses it: the server's order
+// is not stable, and the list says how much it left out.
+func (e *Error) WithCandidatesMatchesFirst(full []Candidate, typed string) *Error {
+	needle := strings.ToLower(typed)
+	var matches, others []Candidate
+	for _, c := range full {
+		if strings.Contains(strings.ToLower(c.ID+" "+c.Name), needle) {
+			matches = append(matches, c)
+		} else {
+			others = append(others, c)
+		}
+	}
+	byID := func(a, b Candidate) int { return strings.Compare(a.ID, b.ID) }
+	slices.SortStableFunc(matches, byID)
+	slices.SortStableFunc(others, byID)
+	return e.WithCandidatesCut(append(matches, others...), CandidateLimit)
+}
+
+// WithCandidatesOf sets the candidates and their total to those of from. An
+// error that replaces another error uses it to keep the other's cut list and
+// its total.
+func (e *Error) WithCandidatesOf(from *Error) *Error {
+	e.Candidates = from.Candidates
+	e.CandidatesTotal = from.CandidatesTotal
+	return e
+}
+
 // WithCandidatesCut sets the candidates to the first limit entries of full.
 // When full is longer than limit it also sets CandidatesTotal to len(full);
 // otherwise the total is cleared. A negative limit counts as 0. The

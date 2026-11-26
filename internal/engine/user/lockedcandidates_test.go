@@ -137,7 +137,7 @@ func TestCreateUserGlobalRoleErrorCandidatesLeaveOutLockedRoles(t *testing.T) {
 			client := &fakeUserClient{roles: lockedCandidateGlobalRoles(), roleTemplates: lockedCandidateTemplates()}
 			ce := planNotFound(t, client, tt.needle)
 			assert.Equal(t, tt.want, lockedCandidateIDs(ce))
-			assert.Zero(t, ce.CandidatesTotal, "a list of at most candidateLimit roles records no total")
+			assert.Zero(t, ce.CandidatesTotal, "a list of at most clierr.CandidateLimit roles records no total")
 			assert.Equal(t, clierr.Rancher+" get globalroles", ce.Hint)
 			for _, id := range lockedCandidateIDs(ce) {
 				assert.NotContains(t, leftOut, id)
@@ -215,8 +215,8 @@ func TestCreateUserGlobalRoleErrorCandidatesListTheRoleTemplatesOnlyWhenNeeded(t
 }
 
 // TestCreateUserGlobalRoleErrorCandidatesTotalCountsWhatRemains asserts that
-// when the global roles Rancher accepts outnumber candidateLimit, the error
-// lists the first candidateLimit of them in list order and its total counts
+// when the global roles Rancher accepts outnumber clierr.CandidateLimit, the error
+// lists the first clierr.CandidateLimit of them in list order and its total counts
 // the accepted roles alone.
 func TestCreateUserGlobalRoleErrorCandidatesTotalCountsWhatRemains(t *testing.T) {
 	t.Parallel()
@@ -236,7 +236,7 @@ func TestCreateUserGlobalRoleErrorCandidatesTotalCountsWhatRemains(t *testing.T)
 	}
 	client := &fakeUserClient{roles: globals, roleTemplates: templates}
 	ce := planNotFound(t, client, "zzz-none")
-	assert.Equal(t, want[:candidateLimit], lockedCandidateIDs(ce))
+	assert.Equal(t, want[:clierr.CandidateLimit], lockedCandidateIDs(ce))
 	assert.Equal(t, 12, ce.CandidatesTotal)
 }
 

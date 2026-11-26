@@ -178,7 +178,7 @@ func findRancherUser(ctx context.Context, local engine.ClusterClient, raw string
 					nonSystem = append(nonSystem, &list.Items[i])
 				}
 			}
-			e = e.WithCandidatesCut(rbac.SubjectCandidates(nonSystem, raw), rbac.CandidateLimit)
+			e = e.WithCandidatesCut(rbac.SubjectCandidates(nonSystem, raw), clierr.CandidateLimit)
 		}
 		return nil, e
 	default:

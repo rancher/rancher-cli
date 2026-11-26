@@ -18,8 +18,6 @@ const (
 	// bindingGenerateName is the prefix Rancher's own code and its UI give
 	// the GlobalRoleBindings they create for a new user.
 	bindingGenerateName = "grb-"
-	// candidateLimit is how many global roles a NOT_FOUND error lists.
-	candidateLimit = 10
 )
 
 // mustKind returns the kind row for key. A missing row is a programmer
@@ -142,7 +140,7 @@ func checkGlobalRole(ctx context.Context, client engine.ClusterClient, k kinds.K
 	if len(near) == 0 {
 		near = all
 	}
-	return nil, e.WithCandidatesCut(near, candidateLimit)
+	return nil, e.WithCandidatesCut(near, clierr.CandidateLimit)
 }
 
 // listRoleTemplateObjects lists every roletemplate, whatever its context:

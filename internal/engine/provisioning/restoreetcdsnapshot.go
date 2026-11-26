@@ -24,10 +24,6 @@ import (
 const (
 	restoreSnapshotFlag = "snapshot"
 	restoreModeFlag     = "restore-mode"
-
-	// maxRestoreCandidates is the most etcd snapshot objects that the refusal for
-	// an unknown snapshot name lists.
-	maxRestoreCandidates = 10
 )
 
 // etcdSnapshotRestoreOperation is the etcd snapshot restore as Rancher runs
@@ -229,7 +225,7 @@ func (c *restoreEtcdSnapshotCmd) noSnapshotError(ctx context.Context, t *day2Tar
 	if t.ns != clusterNamespace {
 		hint = hint.FlagValue("--namespace", t.ns)
 	}
-	return out.WithCandidatesCut(candidates, maxRestoreCandidates).
+	return out.WithCandidatesCut(candidates, clierr.CandidateLimit).
 		WithHintCommand(hint.FlagValue("--snapshot", candidates[0].ID).Flag("--dry-run"))
 }
 

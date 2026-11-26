@@ -64,7 +64,8 @@ func decodeCluster(path string, index int, raw json.RawMessage) (string, Cluster
 // ResolveProjectFlag resolves a typed --project v on the cluster that
 // cluster, the typed --cluster, names. With no --cluster it never picks a
 // cluster: it refuses, naming as candidates the clusters on which a
-// project the caller can read has v as its id or display name.
+// project the caller can read has v as its id or display name, the first
+// clierr.CandidateLimit of them by id when there are more.
 func ResolveProjectFlag(ctx context.Context, get Getter, clients engine.ClusterClientFactory, cluster, v string) (p Project, warning string, err error) {
 	if cluster == "" {
 		return Project{}, "", clusterRequired(ctx, get, v)
@@ -131,8 +132,15 @@ func clusterRequired(ctx context.Context, get Getter, v string) error {
 	}
 	switch {
 	case len(on) > 1:
-		msg = fmt.Sprintf("--cluster is required with --project; projects with the id or display name %s are on clusters %s - pass --cluster with one of them",
-			q, strings.Join(quoted, ", "))
+		// A long list stays out of the message: the error lists the first
+		// clierr.CandidateLimit clusters as candidates and records the number of
+		// clusters in the total.
+		where := "clusters " + strings.Join(quoted, ", ")
+		if len(on) > clierr.CandidateLimit {
+			where = fmt.Sprintf("%d clusters (the first %d by id are in candidates)", len(on), clierr.CandidateLimit)
+		}
+		msg = fmt.Sprintf("--cluster is required with --project; projects with the id or display name %s are on %s - pass --cluster with one of them",
+			q, where)
 	case !byID && byDisplay > 1:
 		// On the one cluster the display name still names several projects,
 		// so --cluster alone is not enough: the caller needs an id, which
@@ -147,5 +155,5 @@ func clusterRequired(ctx context.Context, get Getter, v string) error {
 	if !passOK && len(on) == 1 {
 		msg = clierr.WithLeftOutNote(msg)
 	}
-	return clierr.New(clierr.CodeValidation, msg).WithCandidates(cands).WithHintCommand(hint)
+	return clierr.New(clierr.CodeValidation, msg).WithCandidatesMatchesFirst(cands, "").WithHintCommand(hint)
 }

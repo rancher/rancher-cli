@@ -148,7 +148,7 @@ func TestGrantRoleErrorCandidatesLeaveOutLockedAndHiddenRoles(t *testing.T) {
 			assert.Equal(t, clierr.CodeNotFound, ce.Code)
 			assert.Contains(t, ce.Message, tt.wantMsg)
 			assert.Equal(t, tt.want, candidateIDs(ce))
-			assert.Zero(t, ce.CandidatesTotal, "a list of at most CandidateLimit roles records no total")
+			assert.Zero(t, ce.CandidatesTotal, "a list of at most clierr.CandidateLimit roles records no total")
 			for _, id := range candidateIDs(ce) {
 				assert.NotContains(t, leftOut, id)
 			}
@@ -232,8 +232,8 @@ func TestGrantRoleErrorCandidatesListTheRoleTemplatesOnlyWhenNeeded(t *testing.T
 }
 
 // TestGrantRoleErrorCandidatesTotalCountsWhatRemains asserts that when the
-// roles the role flag offers outnumber CandidateLimit, the error lists the first
-// CandidateLimit of them in list order and its total counts the offered
+// roles the role flag offers outnumber clierr.CandidateLimit, the error lists the first
+// clierr.CandidateLimit of them in list order and its total counts the offered
 // roles alone, at cluster scope with locked and hidden role templates among
 // the listed ones and at global scope with global roles that inherit a
 // locked role template.
@@ -260,8 +260,8 @@ func TestGrantRoleErrorCandidatesTotalCountsWhatRemains(t *testing.T) {
 		want  []string
 		total int
 	}{
-		{name: "cluster", in: stubInput{strings: map[string]string{"cluster": "c-x", "role": "zzz-none"}, args: []string{"u-abc"}}, want: clusterWant[:CandidateLimit], total: 12},
-		{name: "global", in: stubInput{bools: map[string]bool{"global": true}, strings: map[string]string{"role": "zzz-none"}, args: []string{"u-abc"}}, want: globalWant[:CandidateLimit], total: 12},
+		{name: "cluster", in: stubInput{strings: map[string]string{"cluster": "c-x", "role": "zzz-none"}, args: []string{"u-abc"}}, want: clusterWant[:clierr.CandidateLimit], total: 12},
+		{name: "global", in: stubInput{bools: map[string]bool{"global": true}, strings: map[string]string{"role": "zzz-none"}, args: []string{"u-abc"}}, want: globalWant[:clierr.CandidateLimit], total: 12},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

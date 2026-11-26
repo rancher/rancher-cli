@@ -220,7 +220,7 @@ func TestProjectLookupsRefusedByIDAreRBAC(t *testing.T) {
 		"no project":    nil,
 	}
 	wantCandidates := map[string][]clierr.Candidate{
-		"some projects": {{ID: "p-2", Name: "db"}, {ID: "p-1", Name: "api"}},
+		"some projects": {{ID: "p-1", Name: "api"}, {ID: "p-2", Name: "db"}},
 		"no project":    nil,
 	}
 	wantNotFoundHint := map[string]string{

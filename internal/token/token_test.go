@@ -2813,6 +2813,54 @@ func TestPluginClusterTextRBACSuffix(t *testing.T) {
 	assert.Equal(t, clierr.Command{}, pluginClusterText("web", list).NotFoundHint)
 }
 
+// TestPluginClusterCandidatesAreCut asserts the exec plugin's NOT_FOUND error,
+// and its RBAC error for a refused (HTTP 403) get of the cluster by its id, list
+// the first clierr.CandidateLimit clusters as candidates, those whose id or name
+// contains the typed value first and then the others by id, with the number of
+// clusters as the total, while the message names the clusters in the order
+// Rancher returns them.
+func TestPluginClusterCandidatesAreCut(t *testing.T) {
+	t.Parallel()
+	var pairs [][2]string
+	for i := 299; i >= 0; i-- {
+		display := fmt.Sprintf("name-%03d", i)
+		if i == 100 || i == 250 {
+			display = fmt.Sprintf("my-web-%03d", i)
+		}
+		pairs = append(pairs, [2]string{fmt.Sprintf("c-%03d", i), display})
+	}
+	body := steveClustersBody(pairs...)
+	for _, status := range []int{http.StatusNotFound, http.StatusForbidden} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			t.Parallel()
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == steveClustersPath {
+					w.Header().Set("Content-Type", "application/json")
+					_, _ = w.Write(body)
+					return
+				}
+				w.WriteHeader(status)
+			}))
+			t.Cleanup(srv.Close)
+			_, _, err := resolveClusterIDForCreate(t.Context(), srv.Client(), srv.URL, "bearer", "web")
+			ce, ok := errors.AsType[*clierr.Error](err)
+			require.True(t, ok, "got %v", err)
+			wantCode := clierr.CodeNotFound
+			if status == http.StatusForbidden {
+				wantCode = clierr.CodeRBAC
+			}
+			assert.Equal(t, wantCode, ce.Code)
+			var ids []string
+			for _, c := range ce.Candidates {
+				ids = append(ids, c.ID)
+			}
+			assert.Equal(t, []string{"c-100", "c-250", "c-000", "c-001", "c-002", "c-003", "c-004", "c-005", "c-006", "c-007"}, ids)
+			assert.Equal(t, 300, ce.CandidatesTotal)
+			assert.Contains(t, ce.Message, "the clusters you can read: 'c-299' (name-299), 'c-298' (name-298)")
+		})
+	}
+}
+
 // TestThePluginReadsTheClusterCollectionOnlyWhenItSignsIn asserts that with a
 // cached credential the exec plugin sends no request to the clusters
 // collection or by id. At a sign-in with a value that matches a cluster it
