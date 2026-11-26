@@ -20,6 +20,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/output/style"
 	rt "github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/secret"
 )
 
 // leakingStreams names the streams of a run that hold a character of the
@@ -176,11 +177,12 @@ func TestStructuredOutputOfTheCommandsThatMustSucceedIsChecked(t *testing.T) {
 // plainInput is the Input of a command that takes no flags and no arguments.
 type plainInput struct{}
 
-func (plainInput) String(string) string    { return "" }
-func (plainInput) Bool(string) bool        { return false }
-func (plainInput) Strings(string) []string { return nil }
-func (plainInput) IsSet(string) bool       { return false }
-func (plainInput) Args() []string          { return nil }
+func (plainInput) String(string) string          { return "" }
+func (plainInput) Bool(string) bool              { return false }
+func (plainInput) Strings(string) []string       { return nil }
+func (plainInput) IsSet(string) bool             { return false }
+func (plainInput) Secrets(string) []secret.Value { return nil }
+func (plainInput) Args() []string                { return nil }
 
 // textCommand prints a text that holds a marked command.
 type textCommand struct{}

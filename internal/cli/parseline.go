@@ -29,6 +29,9 @@ type lineFlag struct {
 	values []string
 }
 
+// secret reports whether the flag is marked Secret in the command tree.
+func (f *lineFlag) secret() bool { return f.def != nil && f.def.Secret }
+
 // lineWord is one argument on the command line as a command reads it, with
 // the state of the command's help and version flags before it.
 type lineWord struct {

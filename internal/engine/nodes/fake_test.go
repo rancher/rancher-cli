@@ -21,6 +21,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/secret"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/rest"
@@ -40,8 +41,9 @@ func (i input) Strings(name string) []string {
 	}
 	return nil
 }
-func (i input) IsSet(name string) bool { _, ok := i.flags[name]; return ok }
-func (i input) Args() []string         { return i.args }
+func (i input) IsSet(name string) bool        { _, ok := i.flags[name]; return ok }
+func (i input) Secrets(string) []secret.Value { return nil }
+func (i input) Args() []string                { return i.args }
 
 var _ runtime.Input = input{}
 

@@ -68,6 +68,9 @@ const (
 	stdinDocRuleDecl     = "a declaration of a method with the signature (string) ([]byte, error) and no allowlist entry"
 	stdinDocRuleDrop     = "a function that reads a document and does not use the result of engine.DropLeadingByteOrderMarks"
 	stdinDocRuleStale    = "an allowlist entry that matches nothing"
+	stdinDocRuleValue    = "an entry that keeps the bytes as a secret.Value with a use of the method Read that is not the first argument of secret.Read"
+	stdinDocValue        = "secret.Value"
+	stdinDocSecretPath   = modulePrefix + "internal/secret"
 	stdinDocTableTest    = "internal/cli:TestEveryStdinDocumentDropsLeadingByteOrderMarks"
 	stdinDocSecretTest   = "internal/cli:TestEveryStdinSecretDropsLeadingByteOrderMarks"
 	stdinDocNotStdinText = "a file under the telemetry directory, not stdin"
@@ -87,6 +90,11 @@ type stdinDocUseEntry struct {
 	// result. It is the function of the entry or another function of its
 	// package; the scan does not check that the reader calls it.
 	drops string
+	// form is stdinDocValue when the bytes go straight into a secret.Value, or
+	// the reason they stay a string. Every use of an entry that keeps the bytes
+	// as a secret.Value is the method value passed as the first argument of
+	// secret.Read.
+	form string
 }
 
 // stdinDocUseAllowlist maps "<file>:<function>" (or "<file>:<Type>.<Method>")
@@ -94,17 +102,17 @@ type stdinDocUseEntry struct {
 // error) in that function.
 var stdinDocUseAllowlist = map[string]stdinDocUseEntry{
 	"internal/engine/password.go:ReadPasswordStdin": {1, "reads the password a command takes on stdin", stdinDocSecretTest,
-		"internal/engine/password.go:ReadPasswordStdin"},
+		"internal/engine/password.go:ReadPasswordStdin", "stays a string: the password goes into the object the command builds"},
 	"internal/engine/password.go:ReadCurrentAndNewPasswordStdin": {1, "reads the two passwords a command takes on stdin", stdinDocSecretTest,
-		"internal/engine/password.go:ReadCurrentAndNewPasswordStdin"},
+		"internal/engine/password.go:ReadCurrentAndNewPasswordStdin", "stays a string: the passwords go into the object the command builds"},
 	"internal/engine/catalog/values.go:ReadValues": {1, "reads every --values file, stdin included", stdinDocTableTest,
-		"internal/engine/catalog/values.go:decodeValuesFile"},
+		"internal/engine/catalog/values.go:decodeValuesFile", "the bytes go into catalog.Values, which prints <hidden>"},
 	"internal/engine/resources/patch.go:patchCmd.decodePatch": {1, "reads --patch-file, stdin included", stdinDocTableTest,
-		"internal/engine/resources/patch.go:patchCmd.decodePatch"},
+		"internal/engine/resources/patch.go:patchCmd.decodePatch", "a patch document; the kind's redaction hides secret fields"},
 	"internal/engine/resources/create.go:createCmd.readAndResolve": {1, "reads --filename, stdin included", stdinDocTableTest,
-		"internal/engine/resources/create.go:createCmd.readAndResolve"},
+		"internal/engine/resources/create.go:createCmd.readAndResolve", "a manifest; a Secret's data is hidden by the kind's redaction"},
 	"internal/engine/provisioning/cloudcredwrite.go:readWords": {1, "reads every --from-file file of create cloud-credential and patch cloud-credential, stdin included", stdinDocTableTest,
-		"internal/engine/provisioning/cloudcredwrite.go:readWords"},
+		"internal/engine/provisioning/cloudcredwrite.go:cleanValue", stdinDocValue},
 }
 
 // stdinDocDeclAllowlist maps "<file>:<Type>.<Method>" to why a declaration of
@@ -121,6 +129,9 @@ var stdinDocDeclAllowlist = map[string]string{
 // and the text that names it.
 type stdinDocFinding struct {
 	key, text string
+	// viaSecret is true for a use that is the method value passed as the first
+	// argument of secret.Read.
+	viaSecret bool
 }
 
 // stdinDocResult is what a scan of one or more loads found. The maps are keyed
@@ -153,6 +164,31 @@ func stdinDocReadSignature(sig *types.Signature) bool {
 	return types.Identical(sig.Params().At(0).Type().Underlying(), types.Typ[types.String]) &&
 		types.Identical(sig.Results().At(0).Type(), types.NewSlice(types.Typ[types.Byte])) &&
 		types.Identical(sig.Results().At(1).Type(), types.Universe.Lookup("error").Type())
+}
+
+// stdinDocPassedToSecretRead reports whether the identifier at the top of stack
+// is the method of a method value that is the first argument of a call of
+// secret.Read.
+func stdinDocPassedToSecretRead(info *types.Info, stack []ast.Node) bool {
+	if len(stack) < 3 {
+		return false
+	}
+	sel, ok := stack[len(stack)-2].(*ast.SelectorExpr)
+	if !ok || sel.Sel != stack[len(stack)-1] {
+		return false
+	}
+	call, ok := stack[len(stack)-3].(*ast.CallExpr)
+	if !ok || len(call.Args) == 0 || ast.Unparen(call.Args[0]) != ast.Expr(sel) {
+		return false
+	}
+	var fn *types.Func
+	switch fun := ast.Unparen(call.Fun).(type) {
+	case *ast.Ident:
+		fn, _ = info.Uses[fun].(*types.Func)
+	case *ast.SelectorExpr:
+		fn, _ = info.Uses[fun.Sel].(*types.Func)
+	}
+	return fn != nil && fn.Name() == "Read" && fn.Pkg() != nil && fn.Pkg().Path() == stdinDocSecretPath
 }
 
 // stdinDocFunctionName names a top-level declaration the way the allowlists
@@ -284,14 +320,14 @@ func stdinDocScan(pkg *packages.Package, wd string) stdinDocResult {
 					if fn, ok := info.Uses[n].(*types.Func); ok && fn.Name() == stdinDocMethodName {
 						if sig, _ := fn.Type().(*types.Signature); stdinDocReadSignature(sig) {
 							at, _ := position(n.Pos())
-							res.uses[at] = stdinDocFinding{key, at + ": a use of the method Read(string) ([]byte, error) in " + key}
+							res.uses[at] = stdinDocFinding{key, at + ": a use of the method Read(string) ([]byte, error) in " + key, stdinDocPassedToSecretRead(info, stack)}
 						}
 					}
 					if fn, ok := info.Defs[n].(*types.Func); ok {
 						if sig, _ := fn.Type().(*types.Signature); stdinDocReadSignature(sig) {
 							at, _ := position(n.Pos())
 							declKey := rel + ":" + stdinDocReceiverName(fn) + "." + fn.Name()
-							res.decls[at] = stdinDocFinding{declKey, at + ": a declaration of the method " + fn.Name() + " with the signature (string) ([]byte, error) on " + stdinDocReceiverName(fn)}
+							res.decls[at] = stdinDocFinding{declKey, at + ": a declaration of the method " + fn.Name() + " with the signature (string) ([]byte, error) on " + stdinDocReceiverName(fn), false}
 						}
 					}
 				case *ast.CallExpr:
@@ -338,9 +374,13 @@ var stdinDocLoads = sync.OnceValues(func() (stdinDocResult, error) {
 func stdinDocCheck(res stdinDocResult, uses map[string]stdinDocUseEntry, decls map[string]string) []string {
 	var problems []string
 	byKey := map[string][]string{}
+	direct := map[string][]string{}
 	for _, at := range slices.Sorted(maps.Keys(res.uses)) {
 		f := res.uses[at]
 		byKey[f.key] = append(byKey[f.key], f.text)
+		if !f.viaSecret {
+			direct[f.key] = append(direct[f.key], f.text)
+		}
 	}
 	for _, key := range slices.Sorted(maps.Keys(byKey)) {
 		entry, ok := uses[key]
@@ -358,6 +398,9 @@ func stdinDocCheck(res stdinDocResult, uses map[string]stdinDocUseEntry, decls m
 		if len(byKey[key]) == 0 {
 			problems = append(problems, fmt.Sprintf("%s: %s matched nothing: remove it", stdinDocRuleStale, key))
 			continue
+		}
+		if entry.form == stdinDocValue && len(direct[key]) > 0 {
+			problems = append(problems, fmt.Sprintf("%s: %s: %s; read through secret.Read(<the method value>, path), or change form to the reason the bytes stay a string", stdinDocRuleValue, key, strings.Join(direct[key], "; ")))
 		}
 		if !res.drops[entry.drops] {
 			problems = append(problems, fmt.Sprintf("%s: %s names %q as the function that drops, which does not call engine.DropLeadingByteOrderMarks and use the result (assign it, pass it to a call or return it)", stdinDocRuleDrop, key, entry.drops))
@@ -404,6 +447,7 @@ func TestStdinDocumentAllowlistEntriesAreComplete(t *testing.T) {
 	t.Parallel()
 	for key, entry := range stdinDocUseAllowlist {
 		assert.NotEmpty(t, entry.why, key)
+		assert.NotEmpty(t, entry.form, key)
 		assert.Positive(t, entry.count, key)
 		assert.NotEmpty(t, entry.drops, key)
 		dir, name, ok := strings.Cut(entry.row, ":")
@@ -444,8 +488,19 @@ func stdinDocFixtureEntry(fixture, function, drops string) map[string]stdinDocUs
 		drops = function
 	}
 	return map[string]stdinDocUseEntry{
-		stdinDocFixtureKey(fixture, function): {1, "fixture", "", stdinDocFixtureKey(fixture, drops)},
+		stdinDocFixtureKey(fixture, function): {1, "fixture", "", stdinDocFixtureKey(fixture, drops), "stays a string: fixture"},
 	}
+}
+
+// stdinDocFixtureValueEntry is stdinDocFixtureEntry for a reader whose bytes go
+// straight into a secret.Value.
+func stdinDocFixtureValueEntry(fixture, function, drops string) map[string]stdinDocUseEntry {
+	entries := stdinDocFixtureEntry(fixture, function, drops)
+	key := stdinDocFixtureKey(fixture, function)
+	entry := entries[key]
+	entry.form = stdinDocValue
+	entries[key] = entry
+	return entries
 }
 
 // stdinDocFixtureCases lists every fixture package, the allowlists it is
@@ -474,6 +529,8 @@ var stdinDocFixtureCases = []struct {
 	{"plainfunction", nil, nil, nil},
 	{"countdiffers", stdinDocFixtureEntry("countdiffers", "Load", ""), nil, []string{stdinDocRuleCount}},
 	{"stale", stdinDocFixtureEntry("stale", "Gone", ""), nil, []string{stdinDocRuleStale}},
+	{"heldvalue", stdinDocFixtureValueEntry("heldvalue", "Load", "decode"), nil, nil},
+	{"heldraw", stdinDocFixtureValueEntry("heldraw", "Load", ""), nil, []string{stdinDocRuleValue}},
 }
 
 // TestStdinDocumentScanFixtures asserts each rule on type-checked fixture

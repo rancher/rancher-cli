@@ -1,10 +1,12 @@
 // cloudcredwrite.go implements `create cloud-credential <driver>
 // <display-name>`: the one command that writes a cloud credential. Rancher
 // serves no API but Norman that runs its credential checks, so the write goes
-// through engine.CloudCredentialClient. The command keeps the secret values it
-// sends only in engine.CloudCredentialBody, in the list the error filter
-// builds and, while Plan reads them, in credentialValue; no preview, result,
-// warning or error shows one.
+// through engine.CloudCredentialClient. Every --set and --from-file argument
+// and every value the command reads is a secret.Value, which prints <hidden> in
+// every format; no preview, result, warning or error shows one. Only the
+// functions that call secret.Reveal get the text of a Value: cleanValue,
+// decodesAsKubeconfig, shownValue, fileWordPath and typedFieldName here, and the
+// request body and the server-text filter in internal/engine.
 
 package provisioning
 
@@ -27,6 +29,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/resources"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/secret"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/yaml"
@@ -144,8 +147,8 @@ func (createCloudCredentialCmd) Describe() runtime.Descriptor {
 			{Name: "display-name", Type: "string", Required: true},
 		},
 		Flags: []runtime.ArgSpec{
-			{Name: flagSet, Type: "stringSlice", Desc: setFlagDesc},
-			{Name: flagFromFile, Type: "stringSlice", Desc: fromFileFlagDesc},
+			{Name: flagSet, Type: "stringSlice", Desc: setFlagDesc, Secret: true},
+			{Name: flagFromFile, Type: "stringSlice", Desc: fromFileFlagDesc, Secret: true},
 			{Name: flagDescription, Type: "string", Desc: "the credential's `description`"},
 			{Name: flagWait, Type: "bool", Desc: "wait until you can read the new credential (default true; --wait=false returns as soon as Rancher accepts the request)"},
 		},
@@ -185,8 +188,9 @@ func (r createdCredentialRows) Rows() [][]string {
 
 // fieldWord is one --set or --from-file argument split at its first "=".
 type fieldWord struct {
-	flag, field, value string
-	position           int
+	flag         string
+	field, value secret.Value
+	position     int
 }
 
 // named builds the text that names the argument by its flag and position,
@@ -216,20 +220,20 @@ func ordinal(n int) string {
 // splitFieldWords splits the occurrences of a flag into field and value. A
 // refusal names the flag and the occurrence's position, never the argument: it
 // may be a pasted secret.
-func splitFieldWords(flag string, words []string) ([]fieldWord, error) {
+func splitFieldWords(flag string, words []secret.Value) ([]fieldWord, error) {
 	out := make([]fieldWord, 0, len(words))
 	valuePart := "value"
 	if flag == flagFromFile {
 		valuePart = "path"
 	}
 	for i, w := range words {
-		field, value, ok := strings.Cut(w, "=")
+		field, value, ok := w.Cut("=")
 		switch {
 		case !ok:
 			return nil, clierr.New(clierr.CodeValidation, fmt.Sprintf("the %s --%s must be <field>=<%s>", ordinal(i+1), flag, valuePart))
-		case field == "":
+		case field.IsZero():
 			return nil, clierr.New(clierr.CodeValidation, fmt.Sprintf("the %s --%s has an empty field name", ordinal(i+1), flag))
-		case value == "":
+		case value.IsZero():
 			return nil, clierr.New(clierr.CodeValidation, fmt.Sprintf("the %s --%s has an empty %s", ordinal(i+1), flag, valuePart))
 		}
 		out = append(out, fieldWord{flag: flag, field: field, value: value, position: i + 1})
@@ -241,6 +245,31 @@ func splitFieldWords(flag string, words []string) ([]fieldWord, error) {
 // field of the driver, or to equal one without regard to case.
 func quoteField(field string) string { return strconv.Quote(field) }
 
+// fieldNamed matches the field whose name is exactly name.
+func fieldNamed(name secret.Value) func(cloudcredfields.Field) bool {
+	return func(f cloudcredfields.Field) bool { return name.EqualString(f.Name) }
+}
+
+// typedFieldName returns a field name as the user typed it, when it equals a
+// field of the driver without regard to case; a refusal can quote it. Any other
+// name may be a pasted secret and is never revealed.
+func typedFieldName(field secret.Value, d cloudcredfields.Driver) (string, bool) {
+	if _, ok := d.Match(func(f cloudcredfields.Field) bool { return field.EqualFoldString(f.Name) }); !ok {
+		return "", false
+	}
+	return secret.Reveal(field), true
+}
+
+// fileWordPath returns the path of a --from-file argument. A path is not
+// secret: refusals name it as typed. The argument of any other flag may be a
+// secret value, and the function returns "" for it.
+func fileWordPath(w fieldWord) string {
+	if w.flag != flagFromFile {
+		return ""
+	}
+	return secret.Reveal(w.value)
+}
+
 func stdinIsTerminal(in runtime.Input) bool {
 	si, ok := in.(runtime.StdinInput)
 	return ok && si.StdinTerminal()
@@ -249,7 +278,7 @@ func stdinIsTerminal(in runtime.Input) bool {
 // credentialValue is one config field to send.
 type credentialValue struct {
 	field  cloudcredfields.Field
-	value  string
+	value  secret.Value
 	secret bool
 }
 
@@ -257,14 +286,9 @@ func (c *createCloudCredentialCmd) Plan(ctx context.Context, in runtime.Input) (
 	args := in.Args()
 	driverName, displayName := args[0], args[1]
 
-	// Every error of readFieldFlags, checkFieldFlags and readWords leaves
-	// through read.refuse, which hides the --set values and the values read so
-	// far; until readWords runs, only the --set values are known.
-	var read readTexts
-	read.recordSetWords(in.Strings(flagSet))
 	sets, files, err := readFieldFlags(in)
 	if err != nil {
-		return safety.Effect{}, nil, read.refuse(err)
+		return safety.Effect{}, nil, err
 	}
 	if displayName == "" {
 		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, "the display name is empty; give the name the credential shows in Rancher")
@@ -279,16 +303,16 @@ func (c *createCloudCredentialCmd) Plan(ctx context.Context, in runtime.Input) (
 		return safety.Effect{}, nil, err
 	}
 	if err := checkFieldFlags(driver, sets, files); err != nil {
-		return safety.Effect{}, nil, read.refuse(err)
+		return safety.Effect{}, nil, err
 	}
 
 	if err := checkRequired(driver, sets, files); err != nil {
 		return safety.Effect{}, nil, err
 	}
 
-	values, warnings, err := readWords(c.src, driver, sets, files, read.record)
+	values, warnings, err := readWords(c.src, driver, sets, files)
 	if err != nil {
-		return safety.Effect{}, nil, read.refuse(err)
+		return safety.Effect{}, nil, err
 	}
 
 	nameWarning, err := checkDisplayName(ctx, client, displayName, "")
@@ -339,17 +363,17 @@ func (c *createCloudCredentialCmd) Plan(ctx context.Context, in runtime.Input) (
 // readFieldFlags reads --set and --from-file and refuses the shapes the command
 // line cannot carry, before any request and before stdin or a file is read.
 func readFieldFlags(in runtime.Input) (sets, files []fieldWord, err error) {
-	sets, err = splitFieldWords(flagSet, in.Strings(flagSet))
+	sets, err = splitFieldWords(flagSet, in.Secrets(flagSet))
 	if err != nil {
 		return nil, nil, err
 	}
-	files, err = splitFieldWords(flagFromFile, in.Strings(flagFromFile))
+	files, err = splitFieldWords(flagFromFile, in.Secrets(flagFromFile))
 	if err != nil {
 		return nil, nil, err
 	}
 	stdinWords := 0
 	for _, f := range files {
-		if f.value == "-" {
+		if f.value.EqualString("-") {
 			stdinWords++
 		}
 	}
@@ -359,14 +383,15 @@ func readFieldFlags(in runtime.Input) (sets, files []fieldWord, err error) {
 	case stdinWords == 1 && stdinIsTerminal(in):
 		return nil, nil, clierr.New(clierr.CodeValidation, "--from-file - reads stdin, which is a terminal; pipe the value on stdin or give a file")
 	}
-	seen := map[string]fieldWord{}
-	for _, w := range slices.Concat(sets, files) {
-		if first, ok := seen[w.field]; ok {
-			return nil, nil, clierr.New(clierr.CodeValidation, fmt.Sprintf(
-				"the %s --%s and the %s --%s give the same field; give each field once",
-				ordinal(first.position), first.flag, ordinal(w.position), w.flag))
+	words := slices.Concat(sets, files)
+	for i, w := range words {
+		for _, first := range words[:i] {
+			if first.field.Equal(w.field) {
+				return nil, nil, clierr.New(clierr.CodeValidation, fmt.Sprintf(
+					"the %s --%s and the %s --%s give the same field; give each field once",
+					ordinal(first.position), first.flag, ordinal(w.position), w.flag))
+			}
 		}
-		seen[w.field] = w
 	}
 	return sets, files, nil
 }
@@ -448,19 +473,20 @@ func alibabaOperatorActive(ctx context.Context, client engine.ClusterClient) (bo
 // --set, and a public field in --from-file unless it has several lines.
 func checkFieldFlags(d cloudcredfields.Driver, sets, files []fieldWord) error {
 	for _, w := range sets {
-		f, ok := d.Field(w.field)
+		f, ok := d.Match(fieldNamed(w.field))
 		switch {
 		case !ok:
-			if secret, folded := d.SecretFolded(w.field); folded {
-				return secretInSetError(w.field, secret.Name)
+			if folded, ok := d.Match(func(f cloudcredfields.Field) bool { return f.Secret && w.field.EqualFoldString(f.Name) }); ok {
+				typed, _ := typedFieldName(w.field, d)
+				return secretInSetError(typed, folded.Name)
 			}
 			return unknownFieldError(d, w)
 		case f.Secret:
-			return secretInSetError(w.field, f.Name)
+			return secretInSetError(f.Name, f.Name)
 		}
 	}
 	for _, w := range files {
-		f, ok := d.Field(w.field)
+		f, ok := d.Match(fieldNamed(w.field))
 		switch {
 		case !ok:
 			return unknownFieldError(d, w)
@@ -486,94 +512,21 @@ func secretInSetError(typed, canonical string) error {
 // its flag and position.
 func unknownFieldError(d cloudcredfields.Driver, w fieldWord) error {
 	subject := w.named()
-	if _, ok := d.FieldFolded(w.field); ok {
-		subject = quoteField(w.field) + " after --" + w.flag
+	if typed, ok := typedFieldName(w.field, d); ok {
+		subject = quoteField(typed) + " after --" + w.flag
 	}
 	return clierr.New(clierr.CodeValidation, fmt.Sprintf("%s is not a field of %s; its fields are %s",
 		subject, d.Prefix, strings.Join(d.Names(func(cloudcredfields.Field) bool { return true }), ", ")))
 }
 
-// readTexts has the texts of the command line that no refusal may show: the
-// value part of each --set argument as typed, and every form of the values
-// readWords has read.
-type readTexts struct{ forms []string }
-
-// record adds the redaction forms of each text.
-func (r *readTexts) record(texts ...string) { r.forms = append(r.forms, redactionTexts(texts)...) }
-
-// recordSetWords records the part after the first "=" of each --set argument as
-// typed. The part before it is not recorded: it can equal a field name, which
-// the refusals list.
-func (r *readTexts) recordSetWords(words []string) {
-	for _, w := range words {
-		if _, value, ok := strings.Cut(w, "="); ok {
-			r.record(value)
-		}
-	}
-}
-
-// refuse returns err with every recorded text hidden in its message and hint,
-// in the forms the filter covers: the text as recorded, each of its lines, its
-// JSON-escaped form, its base64 form and its Go-quoted forms (the text between
-// the quotes of strconv.Quote, QuoteToASCII and QuoteToGraphic). A form under 4
-// characters is not hidden, and a text shown in any other form is not covered.
-func (r *readTexts) refuse(err error) error { return engine.FilterError(err, r.filter()) }
-
-// filter returns the function that replaces every recorded form with <hidden>.
-func (r *readTexts) filter() func(string) string { return engine.NewTextFilter(r.forms, true) }
-
-// redactionTexts is redactionForms of every value.
-func redactionTexts(values []string) []string {
-	var out []string
-	for _, v := range values {
-		out = append(out, redactionForms(v)...)
-	}
-	return out
-}
-
-// redactionForms lists the texts a filter hides for one value: the value, each
-// of its lines (cut at a line feed or a carriage return, empty lines dropped)
-// and, for the value and for each line, the text between the quotes of
-// strconv.Quote, QuoteToASCII and QuoteToGraphic. Both filters of the command
-// take their forms from it: the one that hides a value in a refusal of the
-// command and the one that hides it in a response of the server.
-func redactionForms(value string) []string {
-	forms := []string{value}
-	texts := []string{value}
-	for line := range strings.FieldsFuncSeq(value, func(r rune) bool { return r == '\n' || r == '\r' }) {
-		forms = append(forms, line)
-		texts = append(texts, line)
-	}
-	for _, text := range texts {
-		for _, quoted := range []string{strconv.Quote(text), strconv.QuoteToASCII(text), strconv.QuoteToGraphic(text)} {
-			inner := strings.TrimSuffix(strings.TrimPrefix(quoted, `"`), `"`)
-			if !slices.Contains(forms, inner) {
-				forms = append(forms, inner)
-			}
-		}
-	}
-	return forms
-}
-
 // readWords reads each --from-file value and checks every value against the
-// white space rules. warnings names a value the command trimmed. It calls
-// record with each form of a value of a secret or multi-line field as soon as
-// the form exists, before any check that can refuse the value: the bytes as
-// read, the text after the byte order marks are dropped, and the cleaned
-// value.
-func readWords(src engine.FileSource, d cloudcredfields.Driver, sets, files []fieldWord, record func(texts ...string)) ([]credentialValue, []string, error) {
+// white space rules. warnings names a value the command trimmed.
+func readWords(src engine.FileSource, d cloudcredfields.Driver, sets, files []fieldWord) ([]credentialValue, []string, error) {
 	var out []credentialValue
 	var warnings []string
 	for _, w := range sets {
-		f, _ := d.Field(w.field)
-		hidden := f.Secret || f.Multiline
-		if hidden {
-			record(w.value)
-		}
-		cleaned, problem, trimmed := cloudcredfields.Clean(f, w.value, false)
-		if hidden {
-			record(cleaned)
-		}
+		f, _ := d.Match(fieldNamed(w.field))
+		cleaned, problem, trimmed := cleanValue(f, w.value, false)
 		if err := valueProblemError(problem, f, "--"+flagSet, ""); err != nil {
 			return nil, nil, err
 		}
@@ -583,27 +536,13 @@ func readWords(src engine.FileSource, d cloudcredfields.Driver, sets, files []fi
 		out = append(out, credentialValue{field: f, value: cleaned})
 	}
 	for _, w := range files {
-		f, _ := d.Field(w.field)
-		hidden := f.Secret || f.Multiline
-		path := w.value
-		raw, err := src.Read(path)
+		f, _ := d.Match(fieldNamed(w.field))
+		path := fileWordPath(w)
+		value, err := secret.Read(src.Read, path)
 		if err != nil {
 			return nil, nil, clierr.New(clierr.CodeValidation, "cannot read the --from-file file "+path)
 		}
-		if hidden {
-			record(string(raw))
-		}
-		if cloudcredfields.RawEncodingProblem(raw) != cloudcredfields.ProblemNone {
-			return nil, nil, valueProblemError(cloudcredfields.ProblemEncoding, f, "--"+flagFromFile, path)
-		}
-		text := string(engine.DropLeadingByteOrderMarks(raw))
-		if hidden {
-			record(text)
-		}
-		cleaned, problem, trimmed := cloudcredfields.Clean(f, text, true)
-		if hidden {
-			record(cleaned)
-		}
+		cleaned, problem, trimmed := cleanValue(f, value, true)
 		if err := valueProblemError(problem, f, "--"+flagFromFile, path); err != nil {
 			return nil, nil, err
 		}
@@ -617,6 +556,22 @@ func readWords(src engine.FileSource, d cloudcredfields.Driver, sets, files []fi
 	}
 	slices.SortFunc(out, func(a, b credentialValue) int { return strings.Compare(a.field.Name, b.field.Name) })
 	return out, warnings, nil
+}
+
+// cleanValue checks a value against the white space rules of its field and
+// returns the cleaned value, the problem found and whether it trimmed the ends.
+// A value read from a file or stdin first gets the encoding check and loses the
+// byte order marks at its start; a typed --set value gets the rules only.
+func cleanValue(f cloudcredfields.Field, v secret.Value, fromFile bool) (secret.Value, cloudcredfields.Problem, bool) {
+	text := secret.Reveal(v)
+	if fromFile {
+		if cloudcredfields.RawEncodingProblem([]byte(text)) != cloudcredfields.ProblemNone {
+			return secret.Value{}, cloudcredfields.ProblemEncoding, false
+		}
+		text = string(engine.DropLeadingByteOrderMarks([]byte(text)))
+	}
+	cleaned, problem, trimmed := cloudcredfields.Clean(f, text, fromFile)
+	return secret.New(cleaned), problem, trimmed
 }
 
 // valueProblemError writes the refusal of a value: it names the field, the flag
@@ -643,15 +598,15 @@ func valueProblemError(p cloudcredfields.Problem, f cloudcredfields.Field, flag,
 	return nil
 }
 
-// decodesAsKubeconfig reports whether text is a YAML or JSON document with a
+// decodesAsKubeconfig reports whether v is a YAML or JSON document with a
 // cluster, a user or a context, the shape of a kubeconfig.
-func decodesAsKubeconfig(text string) bool {
+func decodesAsKubeconfig(v secret.Value) bool {
 	var doc struct {
 		Clusters []any `json:"clusters"`
 		Users    []any `json:"users"`
 		Contexts []any `json:"contexts"`
 	}
-	if err := yaml.Unmarshal([]byte(text), &doc); err != nil {
+	if err := yaml.Unmarshal([]byte(secret.Reveal(v)), &doc); err != nil {
 		return false
 	}
 	return len(doc.Clusters)+len(doc.Users)+len(doc.Contexts) > 0
@@ -662,7 +617,7 @@ func decodesAsKubeconfig(text string) bool {
 func checkRequired(d cloudcredfields.Driver, sets, files []fieldWord) error {
 	var missing []string
 	for _, f := range d.Fields {
-		if f.Required && !slices.ContainsFunc(slices.Concat(sets, files), func(w fieldWord) bool { return w.field == f.Name }) {
+		if f.Required && !slices.ContainsFunc(slices.Concat(sets, files), func(w fieldWord) bool { return w.field.EqualString(f.Name) }) {
 			flag := "--set " + f.Name + "=<value>"
 			if f.Secret {
 				flag = "--from-file " + f.Name + "=<path>"
@@ -688,11 +643,7 @@ func requestDocument(d cloudcredfields.Driver, displayName, description string, 
 	configKey := d.Prefix + "credentialConfig"
 	for _, v := range values {
 		config[v.field.Name] = v.value
-		shown := any(v.value)
-		if v.field.Secret {
-			shown = engine.Redacted
-		}
-		diff = append(diff, safety.DiffEntry{Path: engine.PointerFor([]string{configKey, v.field.Name}), To: shown})
+		diff = append(diff, safety.DiffEntry{Path: engine.PointerFor([]string{configKey, v.field.Name}), To: shownValue(v)})
 	}
 	doc := map[string]any{
 		"type":        "cloudCredential",
@@ -706,21 +657,25 @@ func requestDocument(d cloudcredfields.Driver, displayName, description string, 
 	return doc, diff
 }
 
+// shownValue is what the preview's diff shows for a value: a public field's
+// value as typed, and engine.Redacted for a secret field's.
+func shownValue(v credentialValue) any {
+	if v.field.Secret {
+		return engine.Redacted
+	}
+	return secret.Reveal(v.value)
+}
+
 // responseFilter returns the function that hides the secret values the request
 // carried, and the extra texts it sent along, in a text of the server.
 func responseFilter(values []credentialValue, extra ...string) func(string) string {
-	return engine.NewTextFilter(redactionTexts(append(secretTexts(values), extra...)), true)
-}
-
-// secretTexts lists the values the error filter hides: every secret field's.
-func secretTexts(values []credentialValue) []string {
-	var out []string
+	var secrets []secret.Value
 	for _, v := range values {
 		if v.field.Secret {
-			out = append(out, v.value)
+			secrets = append(secrets, v.value)
 		}
 	}
-	return out
+	return engine.NewSecretFilter(secrets, extra...)
 }
 
 // CredentialName is the id and display name of one stored cloud credential.
@@ -971,8 +926,8 @@ func (patchCloudCredentialCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "credential", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
-			{Name: flagSet, Type: "stringSlice", Desc: setFlagDesc},
-			{Name: flagFromFile, Type: "stringSlice", Desc: fromFileFlagDesc},
+			{Name: flagSet, Type: "stringSlice", Desc: setFlagDesc, Secret: true},
+			{Name: flagFromFile, Type: "stringSlice", Desc: fromFileFlagDesc, Secret: true},
 			{Name: flagDisplayName, Type: "string", Desc: "the credential's new display `name`"},
 			{Name: flagDescription, Type: "string", Desc: "the credential's new `description`"},
 		},
@@ -1002,14 +957,9 @@ type patchRun struct {
 func (c *patchCloudCredentialCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
 	typed := in.Args()[0]
 
-	// Every error of readFieldFlags, checkFieldFlags and readWords leaves
-	// through read.refuse, which hides the --set values and the values read so
-	// far; until readWords runs, only the --set values are known.
-	var read readTexts
-	read.recordSetWords(in.Strings(flagSet))
 	sets, files, err := readFieldFlags(in)
 	if err != nil {
-		return safety.Effect{}, nil, read.refuse(err)
+		return safety.Effect{}, nil, err
 	}
 	displayGiven, descriptionGiven := in.IsSet(flagDisplayName), in.IsSet(flagDescription)
 	displayName, description := in.String(flagDisplayName), in.String(flagDescription)
@@ -1039,12 +989,12 @@ func (c *patchCloudCredentialCmd) Plan(ctx context.Context, in runtime.Input) (s
 		return safety.Effect{}, nil, err
 	}
 	if err := checkFieldFlags(driver, sets, files); err != nil {
-		return safety.Effect{}, nil, read.refuse(err)
+		return safety.Effect{}, nil, err
 	}
 
-	values, valueWarnings, err := readWords(c.src, driver, sets, files, read.record)
+	values, valueWarnings, err := readWords(c.src, driver, sets, files)
 	if err != nil {
-		return safety.Effect{}, nil, read.refuse(err)
+		return safety.Effect{}, nil, err
 	}
 	if displayGiven {
 		nameWarning, err := checkDisplayName(ctx, client, displayName, stored.ref.SecretName)
@@ -1072,10 +1022,12 @@ func (c *patchCloudCredentialCmd) Plan(ctx context.Context, in runtime.Input) (s
 		}
 	}
 	replacesSecret := slices.ContainsFunc(files, func(w fieldWord) bool {
-		f, _ := driver.Field(w.field)
+		f, _ := driver.Match(fieldNamed(w.field))
 		return f.Secret
 	})
-	resends := slices.ContainsFunc(files, func(w fieldWord) bool { return driver.Prefix == "harvester" && w.field == "kubeconfigContent" })
+	resends := slices.ContainsFunc(files, func(w fieldWord) bool {
+		return driver.Prefix == "harvester" && w.field.EqualString("kubeconfigContent")
+	})
 
 	warnings := []string{serverReadsWarning, "fields not given keep their values", readsAgainWarning}
 	warnings = append(warnings, valueWarnings...)
@@ -1142,11 +1094,7 @@ func updateDocument(d cloudcredfields.Driver, stored storedCredential, values []
 	}
 	for _, v := range values {
 		config[v.field.Name] = v.value
-		shown := any(v.value)
-		if v.field.Secret {
-			shown = engine.Redacted
-		}
-		diff = append(diff, safety.DiffEntry{Path: engine.PointerFor([]string{configKey, v.field.Name}), To: shown, FromUnread: true})
+		diff = append(diff, safety.DiffEntry{Path: engine.PointerFor([]string{configKey, v.field.Name}), To: shownValue(v), FromUnread: true})
 	}
 	return doc, diff
 }

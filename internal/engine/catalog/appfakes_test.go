@@ -18,6 +18,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/secret"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -55,6 +56,7 @@ func (i appInput) IsSet(k string) bool {
 	_, l := i.strs[k]
 	return s || b || l
 }
+func (i appInput) Secrets(string) []secret.Value { return nil }
 
 var _ runtime.StdinInput = appInput{}
 

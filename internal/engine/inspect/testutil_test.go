@@ -12,6 +12,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/steve"
+	"github.com/rancher/rancher-cli/internal/secret"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -26,11 +27,12 @@ type input struct {
 	set map[string]bool
 }
 
-func (i input) String(k string) string    { return i.s[k] }
-func (i input) Bool(k string) bool        { return i.b[k] }
-func (i input) Strings(k string) []string { return i.ss[k] }
-func (i input) IsSet(k string) bool       { return i.set[k] }
-func (i input) Args() []string            { return i.args }
+func (i input) String(k string) string        { return i.s[k] }
+func (i input) Bool(k string) bool            { return i.b[k] }
+func (i input) Strings(k string) []string     { return i.ss[k] }
+func (i input) IsSet(k string) bool           { return i.set[k] }
+func (i input) Secrets(string) []secret.Value { return nil }
+func (i input) Args() []string                { return i.args }
 
 // registrationInput returns an input for a named cluster with --registration set.
 func registrationInput(name string) input {

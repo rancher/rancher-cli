@@ -13,6 +13,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/secret"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -131,11 +132,12 @@ type oidcInput struct {
 	flags map[string]string
 }
 
-func (i oidcInput) String(k string) string  { return i.flags[k] }
-func (i oidcInput) Bool(string) bool        { return false }
-func (i oidcInput) Strings(string) []string { return nil }
-func (i oidcInput) IsSet(string) bool       { return false }
-func (i oidcInput) Args() []string          { return i.args }
+func (i oidcInput) String(k string) string        { return i.flags[k] }
+func (i oidcInput) Bool(string) bool              { return false }
+func (i oidcInput) Strings(string) []string       { return nil }
+func (i oidcInput) IsSet(string) bool             { return false }
+func (i oidcInput) Secrets(string) []secret.Value { return nil }
+func (i oidcInput) Args() []string                { return i.args }
 
 func withFastPoll(t *testing.T) {
 	t.Helper()

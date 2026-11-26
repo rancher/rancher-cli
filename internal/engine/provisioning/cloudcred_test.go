@@ -11,6 +11,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/secret"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -108,11 +109,12 @@ type in struct {
 	args []string
 }
 
-func (i in) String(string) string    { return "" }
-func (i in) Bool(string) bool        { return false }
-func (i in) Strings(string) []string { return nil }
-func (i in) IsSet(string) bool       { return false }
-func (i in) Args() []string          { return i.args }
+func (i in) String(string) string          { return "" }
+func (i in) Bool(string) bool              { return false }
+func (i in) Strings(string) []string       { return nil }
+func (i in) IsSet(string) bool             { return false }
+func (i in) Secrets(string) []secret.Value { return nil }
+func (i in) Args() []string                { return i.args }
 
 var _ runtime.Input = in{}
 

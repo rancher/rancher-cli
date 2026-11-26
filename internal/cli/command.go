@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/secret"
 )
 
 // flagKind is the kind of value a flag takes.
@@ -38,6 +39,10 @@ type Flag struct {
 	// Local marks the help and version flags, which a subcommand does not
 	// inherit.
 	Local bool
+	// Secret marks a slice flag whose values the command reads only through
+	// Input.Secrets, as secret.Value: Strings and String of the flag return
+	// nothing.
+	Secret bool
 	// EnvVar names the environment variable a flag not typed reads. Only
 	// --config has one.
 	EnvVar string
@@ -278,7 +283,7 @@ func (in *Input) String(name string) string {
 	if v, ok := in.envValue(name); ok {
 		return v
 	}
-	if f := in.flag(name); f != nil {
+	if f := in.flag(name); f != nil && !f.secret() {
 		return f.text
 	}
 	return ""
@@ -295,10 +300,24 @@ func (in *Input) Bool(name string) bool {
 // Strings returns one value for each time the slice flag called name was
 // typed.
 func (in *Input) Strings(name string) []string {
-	if f := in.flag(name); f != nil {
+	if f := in.flag(name); f != nil && !f.secret() {
 		return slices.Clone(f.values)
 	}
 	return nil
+}
+
+// Secrets returns one secret value for each time the slice flag called name
+// was typed, when the flag is marked Secret; any other flag has none.
+func (in *Input) Secrets(name string) []secret.Value {
+	f := in.flag(name)
+	if f == nil || !f.secret() {
+		return nil
+	}
+	out := make([]secret.Value, len(f.values))
+	for i, v := range f.values {
+		out[i] = secret.New(v)
+	}
+	return out
 }
 
 // IsSet reports whether the flag called name was typed. A value from the

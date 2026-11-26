@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/secret"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -17,21 +18,23 @@ func (s stdinSrc) Read(string) ([]byte, error) { return s.body, nil }
 
 type stdinInput struct{ set bool }
 
-func (i stdinInput) String(string) string    { return "" }
-func (i stdinInput) Bool(string) bool        { return i.set }
-func (i stdinInput) IsSet(string) bool       { return i.set }
-func (i stdinInput) Strings(string) []string { return nil }
-func (i stdinInput) Args() []string          { return nil }
+func (i stdinInput) String(string) string          { return "" }
+func (i stdinInput) Bool(string) bool              { return i.set }
+func (i stdinInput) IsSet(string) bool             { return i.set }
+func (i stdinInput) Secrets(string) []secret.Value { return nil }
+func (i stdinInput) Strings(string) []string       { return nil }
+func (i stdinInput) Args() []string                { return nil }
 
 // passwordFlagInput returns Bool per flag name: a flag is set when its name is in the
 // map with true.
 type passwordFlagInput map[string]bool
 
-func (i passwordFlagInput) String(string) string    { return "" }
-func (i passwordFlagInput) Bool(name string) bool   { return i[name] }
-func (i passwordFlagInput) IsSet(name string) bool  { return i[name] }
-func (i passwordFlagInput) Strings(string) []string { return nil }
-func (i passwordFlagInput) Args() []string          { return nil }
+func (i passwordFlagInput) String(string) string          { return "" }
+func (i passwordFlagInput) Bool(name string) bool         { return i[name] }
+func (i passwordFlagInput) IsSet(name string) bool        { return i[name] }
+func (i passwordFlagInput) Secrets(string) []secret.Value { return nil }
+func (i passwordFlagInput) Strings(string) []string       { return nil }
+func (i passwordFlagInput) Args() []string                { return nil }
 
 // bothFlags sets --current-password-stdin and --password-stdin.
 var bothFlags = passwordFlagInput{"current-password-stdin": true, "password-stdin": true}

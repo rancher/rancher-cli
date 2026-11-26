@@ -143,7 +143,7 @@ func snapshotOf(c *Command, in *Input) (commandSnapshot, error) {
 			case stringFlag:
 				value = in.String(names[0])
 			case sliceFlag:
-				value = slices.Clone(in.Strings(names[0]))
+				value = sliceFlagTexts(in, names[0])
 			default:
 				return snap, fmt.Errorf("flag %s has the kind %d, which a parse row cannot hold", names[0], f.Kind)
 			}

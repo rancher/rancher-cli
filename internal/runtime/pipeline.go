@@ -17,6 +17,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/secret"
 	"github.com/rancher/rancher-cli/internal/ui"
 )
 
@@ -345,9 +346,9 @@ func runRead(ctx context.Context, c ReadCommand, in Input, streams IO, b safety.
 // the duplicate parse is cheap and intentional (Render keeps it as defense in
 // depth for non-pipeline callers). A flag typed with no value takes
 // the next word as its value, a secret among them: for a command that
-// takes a secret input (secret) no text holds the value or the parser's
+// takes a secret input (hideInput) no text has the value or the parser's
 // message, which quotes parts of the source.
-func validateFormat(format string, secret bool) *clierr.Error {
+func validateFormat(format string, hideInput bool) *clierr.Error {
 	if format == "" {
 		return nil
 	}
@@ -360,7 +361,7 @@ func validateFormat(format string, secret bool) *clierr.Error {
 				"--output template is empty; pass -o template='{{ .field }}'")
 		}
 		if _, err := template.New("out").Parse(src); err != nil {
-			if secret {
+			if hideInput {
 				return clierr.New(clierr.CodeValidation,
 					"--output template does not parse; must be valid Go text/template syntax")
 			}
@@ -369,7 +370,7 @@ func validateFormat(format string, secret bool) *clierr.Error {
 		}
 		return nil
 	}
-	if secret {
+	if hideInput {
 		return clierr.New(clierr.CodeValidation,
 			fmt.Sprintf("--output value is not one of %s|template=<go-template>", strings.Join(OutputFormats, "|")))
 	}
@@ -380,13 +381,13 @@ func validateFormat(format string, secret bool) *clierr.Error {
 // validateColor closes the --color value set: "" (the flag omitted, same as
 // "auto") and the ColorModes literals. Run calls it before dispatch so an
 // unrecognized value is a structured VALIDATION error rather than a silent
-// fall-through to auto. For a command that takes a secret input (secret) the
+// fall-through to auto. For a command that takes a secret input (hideInput) the
 // text leaves the value out.
-func validateColor(color string, secret bool) *clierr.Error {
+func validateColor(color string, hideInput bool) *clierr.Error {
 	if color == "" || slices.Contains(ColorModes, color) {
 		return nil
 	}
-	if secret {
+	if hideInput {
 		return clierr.New(clierr.CodeValidation,
 			fmt.Sprintf("--color value is not one of %s", strings.Join(ColorModes, "|")))
 	}
@@ -446,6 +447,12 @@ func validateInput(d Descriptor, in Input, deferCluster bool) *clierr.Error {
 	for _, f := range d.Flags {
 		if ce := emptyValueError(f, in); ce != nil {
 			return ce
+		}
+		if f.Type == "stringSlice" && f.Secret {
+			if f.Required && len(in.Secrets(f.Name)) == 0 {
+				return missingFlagError(f)
+			}
+			continue
 		}
 		if f.Type == "stringSlice" {
 			entries := in.Strings(f.Name)
@@ -1606,7 +1613,11 @@ func emptyValueError(f ArgSpec, in Input) *clierr.Error {
 		return nil
 	}
 	empty := blank(in.String(f.Name))
-	if f.Type == "stringSlice" {
+	switch {
+	case f.Type == "stringSlice" && f.Secret:
+		entries := in.Secrets(f.Name)
+		empty = len(entries) == 0 || slices.ContainsFunc(entries, secret.Value.IsBlank)
+	case f.Type == "stringSlice":
 		entries := in.Strings(f.Name)
 		empty = len(entries) == 0 || slices.ContainsFunc(entries, blank)
 	}

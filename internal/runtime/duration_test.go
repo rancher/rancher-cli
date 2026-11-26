@@ -10,15 +10,17 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/secret"
 )
 
 type durationInput map[string]string
 
-func (d durationInput) String(name string) string { return d[name] }
-func (durationInput) Bool(string) bool            { return false }
-func (durationInput) Strings(string) []string     { return nil }
-func (d durationInput) IsSet(name string) bool    { _, ok := d[name]; return ok }
-func (durationInput) Args() []string              { return nil }
+func (d durationInput) String(name string) string     { return d[name] }
+func (durationInput) Bool(string) bool                { return false }
+func (durationInput) Strings(string) []string         { return nil }
+func (d durationInput) IsSet(name string) bool        { _, ok := d[name]; return ok }
+func (d durationInput) Secrets(string) []secret.Value { return nil }
+func (durationInput) Args() []string                  { return nil }
 
 // TestDurationFlag asserts the shared duration-flag contract: omitted is
 // the default, a positive duration is taken as written, anything else is a

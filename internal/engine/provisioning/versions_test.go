@@ -12,6 +12,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/secret"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -641,10 +642,11 @@ func TestFetchVersionsNewestNotMarkedWhenAllVersionsUnparseable(t *testing.T) {
 // args/flags at all.
 type noArgsInput struct{}
 
-func (noArgsInput) String(string) string    { return "" }
-func (noArgsInput) Bool(string) bool        { return false }
-func (noArgsInput) Strings(string) []string { return nil }
-func (noArgsInput) IsSet(string) bool       { return false }
-func (noArgsInput) Args() []string          { return nil }
+func (noArgsInput) String(string) string          { return "" }
+func (noArgsInput) Bool(string) bool              { return false }
+func (noArgsInput) Strings(string) []string       { return nil }
+func (noArgsInput) IsSet(string) bool             { return false }
+func (noArgsInput) Secrets(string) []secret.Value { return nil }
+func (noArgsInput) Args() []string                { return nil }
 
 var _ runtime.Input = noArgsInput{}

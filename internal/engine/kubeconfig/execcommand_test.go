@@ -12,17 +12,19 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/secret"
 )
 
 // execInput is a runtime.Input whose IsSet reports the flags given, so an
 // explicitly empty value is told from an absent one.
 type execInput struct{ s map[string]string }
 
-func (e execInput) String(k string) string  { return e.s[k] }
-func (e execInput) Bool(string) bool        { return false }
-func (e execInput) Strings(string) []string { return nil }
-func (e execInput) IsSet(k string) bool     { _, ok := e.s[k]; return ok }
-func (e execInput) Args() []string          { return nil }
+func (e execInput) String(k string) string        { return e.s[k] }
+func (e execInput) Bool(string) bool              { return false }
+func (e execInput) Strings(string) []string       { return nil }
+func (e execInput) IsSet(k string) bool           { _, ok := e.s[k]; return ok }
+func (e execInput) Secrets(string) []secret.Value { return nil }
+func (e execInput) Args() []string                { return nil }
 
 // TestExecCommandForms asserts what each form of --exec-command records:
 // the default and a bare name as given (kubectl looks them up on PATH), an

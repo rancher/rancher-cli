@@ -12,6 +12,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/secret"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -129,6 +130,24 @@ func TestCloudCredentialClientSendsOneRequestPerCall(t *testing.T) {
 	}
 	assert.False(t, got[2].hasBody)
 	assert.Empty(t, got[2].header.Get("Content-Type"))
+}
+
+// TestCloudCredentialClientSendsNothingForAValueItCannotReveal asserts a
+// create and an update whose body has a secret.Value at a position the body
+// does not reveal fail with an internal error that names no value and send no
+// request.
+func TestCloudCredentialClientSendsNothingForAValueItCannotReveal(t *testing.T) {
+	n := newNorman(t)
+	client := credentialClientFor(t, n)
+	body := engine.NewCloudCredentialBody(map[string]any{
+		"type":                      "cloudCredential",
+		"amazonec2credentialConfig": map[string]any{"secretKey": []secret.Value{secret.New(requestSecret)}},
+	})
+	_, err := client.Create(t.Context(), body)
+	require.ErrorContains(t, err, "internal error: the cloud credential request body cannot be encoded")
+	require.Error(t, client.Update(t.Context(), "cattle-global-data:cc-abcde", body))
+	assert.NotContains(t, err.Error(), requestSecret)
+	assert.Empty(t, n.seen())
 }
 
 // TestCloudCredentialClientResponseClasses asserts a 500, 502 and 504 are an

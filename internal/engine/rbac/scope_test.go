@@ -8,6 +8,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/secret"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -19,11 +20,12 @@ type stubInput struct {
 	args    []string
 }
 
-func (s stubInput) String(name string) string { return s.strings[name] }
-func (s stubInput) Bool(name string) bool     { return s.bools[name] }
-func (s stubInput) Strings(string) []string   { return nil }
-func (s stubInput) IsSet(string) bool         { return false }
-func (s stubInput) Args() []string            { return s.args }
+func (s stubInput) String(name string) string     { return s.strings[name] }
+func (s stubInput) Bool(name string) bool         { return s.bools[name] }
+func (s stubInput) Strings(string) []string       { return nil }
+func (s stubInput) IsSet(string) bool             { return false }
+func (s stubInput) Secrets(string) []secret.Value { return nil }
+func (s stubInput) Args() []string                { return s.args }
 
 // typedProjectContext is the context the pipeline gives a command whose
 // --project is typed: the project resolved by id on the typed --cluster.

@@ -77,7 +77,7 @@ func flagsFor(d runtime.Descriptor) []*Flag {
 		case "stringSlice":
 			kind = sliceFlag
 		}
-		out = append(out, &Flag{Name: f.Name, Aliases: f.Aliases, Usage: f.Desc, Kind: kind, Once: f.Once})
+		out = append(out, &Flag{Name: f.Name, Aliases: f.Aliases, Usage: f.Desc, Kind: kind, Once: f.Once, Secret: f.Secret})
 	}
 	return out
 }

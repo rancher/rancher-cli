@@ -12,6 +12,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/secret"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"sigs.k8s.io/yaml"
@@ -29,9 +30,10 @@ func (t tin) String(name string) string { return t.strs[name] }
 func (t tin) Bool(name string) bool {
 	return t.flags[name]
 }
-func (t tin) Strings(string) []string { return nil }
-func (t tin) IsSet(string) bool       { return false }
-func (t tin) Args() []string          { return t.a }
+func (t tin) Strings(string) []string       { return nil }
+func (t tin) IsSet(string) bool             { return false }
+func (t tin) Secrets(string) []secret.Value { return nil }
+func (t tin) Args() []string                { return t.a }
 
 // viewTOC decodes the tocView a bare or filtered schema Result carries as Data
 // into a plain map for field-level assertions against the TOC JSON shape.

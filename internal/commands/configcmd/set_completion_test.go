@@ -11,6 +11,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/commands/configcmd"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/secret"
 )
 
 // setCompletionInput is the test input type for set_completion_test.go.
@@ -21,11 +22,12 @@ type setCompletionInput struct {
 	flags map[string]string
 }
 
-func (f setCompletionInput) String(name string) string { return f.flags[name] }
-func (f setCompletionInput) Bool(string) bool          { return false }
-func (f setCompletionInput) Strings(string) []string   { return nil }
-func (f setCompletionInput) IsSet(string) bool         { return false }
-func (f setCompletionInput) Args() []string            { return f.args }
+func (f setCompletionInput) String(name string) string     { return f.flags[name] }
+func (f setCompletionInput) Bool(string) bool              { return false }
+func (f setCompletionInput) Strings(string) []string       { return nil }
+func (f setCompletionInput) IsSet(string) bool             { return false }
+func (f setCompletionInput) Secrets(string) []secret.Value { return nil }
+func (f setCompletionInput) Args() []string                { return f.args }
 
 func TestSetCompletionNetwork(t *testing.T) {
 	t.Parallel()

@@ -19,6 +19,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine/inspect"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/secret"
 	"github.com/rancher/rancher-cli/internal/testtransport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -218,11 +219,12 @@ type argsInput struct {
 	bools map[string]bool
 }
 
-func (i argsInput) String(string) string    { return "" }
-func (i argsInput) Bool(k string) bool      { return i.bools[k] }
-func (i argsInput) Strings(string) []string { return nil }
-func (i argsInput) IsSet(string) bool       { return false }
-func (i argsInput) Args() []string          { return i.args }
+func (i argsInput) String(string) string          { return "" }
+func (i argsInput) Bool(k string) bool            { return i.bools[k] }
+func (i argsInput) Strings(string) []string       { return nil }
+func (i argsInput) IsSet(string) bool             { return false }
+func (i argsInput) Secrets(string) []secret.Value { return nil }
+func (i argsInput) Args() []string                { return i.args }
 
 // TestInspectClusterCancellationThroughProductionAdapters drives inspect
 // cluster's Execute through the REAL per-invocation clientFactory - the real

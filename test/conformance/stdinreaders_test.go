@@ -6,6 +6,7 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -32,17 +33,36 @@ const (
 	stdinReaderReason = "a secret reader; TestEveryStdinSecretDropsLeadingByteOrderMarks covers it"
 )
 
+// stdinReaderAllowance is one function of stdinReaderAllowlist: how many stdin
+// reads it has, why it needs no row in the table, and, for a secret reader, why
+// the text it reads stays a string.
+type stdinReaderAllowance struct {
+	count int
+	why   string
+	// stays is the reason a secret reader keeps its text as a string and not as
+	// a secret.Value; empty for a function that reads no secret.
+	stays string
+}
+
+// stdinSecretReaders are the functions of stdinReaderAllowlist that read a
+// secret: each says in stays why the text stays a string.
+var stdinSecretReaders = []string{
+	"internal/engine/password.go:ReadPasswordStdin",
+	"internal/engine/password.go:ReadCurrentAndNewPasswordStdin",
+	"internal/commands/auth/login.go:resolveLoginToken",
+}
+
 // stdinReaderAllowlist maps "<file>:<func>" to the number of stdin reads in
 // that function and why the function is not a secret reader that needs a row
 // in the table. A different number of matches fails the test.
-var stdinReaderAllowlist = map[string]requestAllowance{
-	"internal/engine/password.go:ReadPasswordStdin":              {1, stdinReaderReason},
-	"internal/engine/password.go:ReadCurrentAndNewPasswordStdin": {1, stdinReaderReason},
-	"internal/commands/auth/login.go:resolveLoginToken":          {1, stdinReaderReason},
-	"internal/cli/adapter.go:buildIO":                            {1, "the root Reader every command reads through; the secret readers are ReadPasswordStdin, ReadCurrentAndNewPasswordStdin and resolveLoginToken"},
-	"internal/cli/run.go:runArgv":                                {1, "gives a command tree with no Reader the process's standard input, where a run starts; buildIO reads the root's Reader and nothing reads it here"},
-	"internal/commands/configcmd/config_edit.go:execEditor":      {1, "wires the editor's terminal"},
-	"credhelper/serve.go:Serve":                                  {1, "the credential helper protocol: requests are JSON and no flag takes a secret"},
+var stdinReaderAllowlist = map[string]stdinReaderAllowance{
+	"internal/engine/password.go:ReadPasswordStdin":              {1, stdinReaderReason, "stays a string: the password goes into the object the command builds"},
+	"internal/engine/password.go:ReadCurrentAndNewPasswordStdin": {1, stdinReaderReason, "stays a string: the passwords go into the object the command builds"},
+	"internal/commands/auth/login.go:resolveLoginToken":          {1, stdinReaderReason, "stays a string: the token goes into the login credential the command stores"},
+	"internal/cli/adapter.go:buildIO":                            {1, "the root Reader every command reads through; the secret readers are ReadPasswordStdin, ReadCurrentAndNewPasswordStdin and resolveLoginToken", ""},
+	"internal/cli/run.go:runArgv":                                {1, "gives a command tree with no Reader the process's standard input, where a run starts; buildIO reads the root's Reader and nothing reads it here", ""},
+	"internal/commands/configcmd/config_edit.go:execEditor":      {1, "wires the editor's terminal", ""},
+	"credhelper/serve.go:Serve":                                  {1, "the credential helper protocol: requests are JSON and no flag takes a secret", ""},
 }
 
 // scanStdinReaders returns one match for every call of a method Read whose
@@ -105,7 +125,7 @@ func scanStdinReaders(fset *token.FileSet, filePath string, f *ast.File) []reque
 
 // checkStdinReaders parses every source in sources (path to content) and
 // returns the problems checkRequestMatches finds against allow.
-func checkStdinReaders(sources map[string]string, allow map[string]requestAllowance) ([]string, error) {
+func checkStdinReaders(sources map[string]string, allow map[string]stdinReaderAllowance) ([]string, error) {
 	fset := token.NewFileSet()
 	var matches []requestMatch
 	for path, src := range sources {
@@ -115,7 +135,11 @@ func checkStdinReaders(sources map[string]string, allow map[string]requestAllowa
 		}
 		matches = append(matches, scanStdinReaders(fset, path, f)...)
 	}
-	return checkRequestMatches(matches, allow), nil
+	counts := make(map[string]requestAllowance, len(allow))
+	for key, a := range allow {
+		counts[key] = requestAllowance{a.count, a.why}
+	}
+	return checkRequestMatches(matches, counts), nil
 }
 
 // TestEveryStdinReaderHasAnAllowlistEntry asserts that every production
@@ -146,6 +170,10 @@ func TestEveryStdinReaderHasAnAllowlistEntry(t *testing.T) {
 	for key, a := range stdinReaderAllowlist {
 		assert.NotEmpty(t, a.why, key)
 		assert.Positive(t, a.count, key)
+		assert.Equal(t, slices.Contains(stdinSecretReaders, key), a.stays != "", "%s: stays is the reason a secret reader keeps its text as a string, and only a secret reader has one", key)
+	}
+	for _, key := range stdinSecretReaders {
+		assert.Contains(t, stdinReaderAllowlist, key)
 	}
 }
 
@@ -242,20 +270,20 @@ func Two(src Source) {
 	require.NoError(t, err)
 	assert.Empty(t, problems, "a definition of ReadLine, a Read of a path variable, a string and a comment are not readers")
 
-	allow := map[string]requestAllowance{"two.go:Two": {2, "reason"}}
+	allow := map[string]stdinReaderAllowance{"two.go:Two": {2, "reason", ""}}
 	problems, err = checkStdinReaders(map[string]string{"two.go": allowed}, allow)
 	require.NoError(t, err)
 	assert.Empty(t, problems, "an allowlisted function with its exact count passes")
 
-	allow["two.go:Two"] = requestAllowance{1, "reason"}
+	allow["two.go:Two"] = stdinReaderAllowance{1, "reason", ""}
 	problems, err = checkStdinReaders(map[string]string{"two.go": allowed}, allow)
 	require.NoError(t, err)
 	require.Len(t, problems, 1)
 	assert.Contains(t, problems[0], "the allowlist covers 1 match(es)")
 
-	problems, err = checkStdinReaders(map[string]string{"two.go": allowed}, map[string]requestAllowance{
-		"two.go:Two":  {2, "reason"},
-		"gone.go:Old": {1, "reason"},
+	problems, err = checkStdinReaders(map[string]string{"two.go": allowed}, map[string]stdinReaderAllowance{
+		"two.go:Two":  {2, "reason", ""},
+		"gone.go:Old": {1, "reason", ""},
 	})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"allowlist entry gone.go:Old matched nothing: remove it"}, problems)

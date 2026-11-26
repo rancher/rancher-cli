@@ -16,6 +16,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/secret"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -122,11 +123,12 @@ type input struct {
 	isSet map[string]bool
 }
 
-func (i input) String(k string) string  { return i.s[k] }
-func (i input) Bool(k string) bool      { return i.b[k] }
-func (i input) Strings(string) []string { return nil }
-func (i input) IsSet(k string) bool     { return i.isSet[k] }
-func (i input) Args() []string          { return i.args }
+func (i input) String(k string) string        { return i.s[k] }
+func (i input) Bool(k string) bool            { return i.b[k] }
+func (i input) Strings(string) []string       { return nil }
+func (i input) IsSet(k string) bool           { return i.isSet[k] }
+func (i input) Secrets(string) []secret.Value { return nil }
+func (i input) Args() []string                { return i.args }
 
 func clusterObj(name, display, state string) unstructured.Unstructured {
 	return unstructured.Unstructured{Object: map[string]any{

@@ -10,6 +10,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/secret"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -20,11 +21,12 @@ type input struct {
 	b map[string]bool
 }
 
-func (i input) String(k string) string  { return i.s[k] }
-func (i input) Bool(k string) bool      { return i.b[k] }
-func (i input) Strings(string) []string { return nil }
-func (i input) IsSet(string) bool       { return false }
-func (i input) Args() []string          { return nil }
+func (i input) String(k string) string        { return i.s[k] }
+func (i input) Bool(k string) bool            { return i.b[k] }
+func (i input) Strings(string) []string       { return nil }
+func (i input) IsSet(string) bool             { return false }
+func (i input) Secrets(string) []secret.Value { return nil }
+func (i input) Args() []string                { return nil }
 
 // rootAnswer is one path's answer: a status and a body.
 type rootAnswer struct {

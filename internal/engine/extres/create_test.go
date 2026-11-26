@@ -10,6 +10,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/secret"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -102,11 +103,12 @@ type in struct {
 	s map[string]string
 }
 
-func (i in) String(k string) string  { return i.s[k] }
-func (i in) Bool(string) bool        { return false }
-func (i in) Strings(string) []string { return nil }
-func (i in) IsSet(string) bool       { return false }
-func (i in) Args() []string          { return nil }
+func (i in) String(k string) string        { return i.s[k] }
+func (i in) Bool(string) bool              { return false }
+func (i in) Strings(string) []string       { return nil }
+func (i in) IsSet(string) bool             { return false }
+func (i in) Secrets(string) []secret.Value { return nil }
+func (i in) Args() []string                { return nil }
 
 func planToken(t *testing.T, cmd runtime.Command, input runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
 	t.Helper()

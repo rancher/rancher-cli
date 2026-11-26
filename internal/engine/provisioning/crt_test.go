@@ -15,6 +15,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/resources"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/secret"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -37,10 +38,11 @@ func (i crtInput) String(name string) string {
 	}
 	return ""
 }
-func (i crtInput) Bool(string) bool        { return false }
-func (i crtInput) Strings(string) []string { return nil }
-func (i crtInput) IsSet(string) bool       { return false }
-func (i crtInput) Args() []string          { return i.args }
+func (i crtInput) Bool(string) bool              { return false }
+func (i crtInput) Strings(string) []string       { return nil }
+func (i crtInput) IsSet(string) bool             { return false }
+func (i crtInput) Secrets(string) []secret.Value { return nil }
+func (i crtInput) Args() []string                { return i.args }
 
 var _ runtime.Input = crtInput{}
 

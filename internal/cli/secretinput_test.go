@@ -20,6 +20,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/secret"
 	"github.com/rancher/rancher-cli/internal/testrancher"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -568,25 +569,36 @@ var secretArgExempt = map[string]string{
 	"secret-name": "the name of an oidc-client secret, never its value",
 }
 
+// secretKindPublic is the kind of a flag whose value is public data.
+const secretKindPublic = "public data"
+
+// secretValueFlag is one flag of secretValueFlags: the reason it may take a
+// value, and, when its value is public data, kind says so. A flag whose kind is
+// empty may carry a secret and is Secret on its command, or has an entry in
+// secretStringFlags.
+type secretValueFlag struct {
+	reason, kind string
+}
+
 // secretValueFlags lists each flag that has a row in secretRows and is not a
 // bool ending in -stdin, with the reason it may take a value. A reason does
 // not say the value is never a secret. It says what the value is: the form
 // kubectl uses, public data (a path, a name, an id), or a value the command
 // refuses without printing it.
-var secretValueFlags = map[string]string{
-	"from-file":        "a field=path pair; the path is read as a file or as stdin and the secret never appears on the command line; a malformed argument is refused without echoing it",
-	"from-literal":     "key=value pairs of Secret data in the form kubectl create secret --from-literal uses; a malformed value is refused without echoing it; to keep the data off the command line, use create resource -f - and send the Secret on stdin",
-	"patch":            "a JSON patch given inline, as kubectl does; to keep it off the command line, use --patch-file - and send the patch on stdin",
-	"set":              "a field=value pair; a credential field is refused",
-	"url":              "a server URL; one that holds a user name or password is refused",
-	"server":           "a server URL; one that holds a user name or password is refused",
-	"cacert":           "the path or PEM text of a CA certificate, public data",
-	"cacerts":          "the path or PEM text of CA certificates, public data",
-	"filename":         "a path, or - for stdin",
-	"patch-file":       "a path, or - for stdin",
-	"credential-store": "the name of a credential store, or exec:<name>",
-	"user-id":          "a Rancher user id",
-	"auth-provider":    "an auth config name, or an auth provider type",
+var secretValueFlags = map[string]secretValueFlag{
+	"from-file":        {reason: "a field=path pair; the path is read as a file or as stdin and the secret never appears on the command line; a malformed argument is refused without echoing it"},
+	"from-literal":     {reason: "key=value pairs of Secret data in the form kubectl create secret --from-literal uses; a malformed value is refused without echoing it; to keep the data off the command line, use create resource -f - and send the Secret on stdin"},
+	"patch":            {reason: "a JSON patch given inline, as kubectl does; to keep it off the command line, use --patch-file - and send the patch on stdin"},
+	"set":              {reason: "a field=value pair; a credential field is refused"},
+	"url":              {reason: "a server URL; one that has a user name or password is refused", kind: secretKindPublic},
+	"server":           {reason: "a server URL; one that has a user name or password is refused", kind: secretKindPublic},
+	"cacert":           {reason: "the path or PEM text of a CA certificate, public data", kind: secretKindPublic},
+	"cacerts":          {reason: "the path or PEM text of CA certificates, public data", kind: secretKindPublic},
+	"filename":         {reason: "a path, or - for stdin", kind: secretKindPublic},
+	"patch-file":       {reason: "a path, or - for stdin", kind: secretKindPublic},
+	"credential-store": {reason: "the name of a credential store, or exec:<name>", kind: secretKindPublic},
+	"user-id":          {reason: "a Rancher user id", kind: secretKindPublic},
+	"auth-provider":    {reason: "an auth config name, or an auth provider type", kind: secretKindPublic},
 }
 
 // secretNameGaps returns one problem per name in uses that pattern matches
@@ -675,7 +687,7 @@ func secretFlagGaps(m runtime.Manifest, rows map[string]bool, exempt map[string]
 // name and type. Items (1) and (3) to (6) give a name one problem, the first
 // that applies; (1) names the first command that has the flag (or the global
 // flags), and (3) to (6) name no command.
-func secretValueFlagGaps(m runtime.Manifest, rows map[string]bool, valueFlags, exempt map[string]string) []string {
+func secretValueFlagGaps(m runtime.Manifest, rows map[string]bool, valueFlags map[string]secretValueFlag, exempt map[string]string) []string {
 	uses, problems := secretFlagUses(m)
 	seen := map[string]bool{}
 	stdinBool := map[string]bool{}
@@ -705,12 +717,12 @@ func secretValueFlagGaps(m runtime.Manifest, rows map[string]bool, valueFlags, e
 		reported[u.name] = true
 		problems = append(problems, "flag --"+u.name+" of "+u.owner+" (a "+u.typ+") has a row in secretRows and no entry in secretValueFlags; add an entry with a reason, or make it a bool ending in -stdin")
 	}
-	for name, reason := range valueFlags {
+	for name, entry := range valueFlags {
 		_, exempted := exempt[name]
 		switch {
 		case !seen[name] || !rows[name]:
 			problems = append(problems, "secretValueFlags has an entry for --"+name+", but no flag with a row has that name")
-		case reason == "":
+		case entry.reason == "":
 			problems = append(problems, "the entry for --"+name+" in secretValueFlags has no reason")
 		case exempted:
 			problems = append(problems, "flag --"+name+" has an entry in secretValueFlags and in secretExempt")
@@ -980,6 +992,13 @@ func globalTypeOf(t *testing.T, m runtime.Manifest, name string) string {
 	return ""
 }
 
+// withValueFlag returns a copy of m with the entry key set to a reason.
+func withValueFlag(m map[string]secretValueFlag, key, reason string) map[string]secretValueFlag {
+	out := maps.Clone(m)
+	out[key] = secretValueFlag{reason: reason}
+	return out
+}
+
 // withEntry returns a copy of m with the entry key set to value.
 func withEntry(m map[string]string, key, value string) map[string]string {
 	out := maps.Clone(m)
@@ -1058,7 +1077,7 @@ func TestSecretValueFlagScanFailsOnEachMistake(t *testing.T) {
 		name        string
 		m           runtime.Manifest
 		rows        map[string]bool
-		valueFlags  map[string]string
+		valueFlags  map[string]secretValueFlag
 		exempt      map[string]string
 		wantProblem string
 		// wantProblems, when set, lists every expected problem; wantProblem is
@@ -1108,12 +1127,12 @@ func TestSecretValueFlagScanFailsOnEachMistake(t *testing.T) {
 		},
 		{
 			name: "an entry that no flag with a row matches",
-			m:    m, rows: rows, valueFlags: withEntry(secretValueFlags, "gone-flag", "a flag that no longer exists"), exempt: secretExempt,
+			m:    m, rows: rows, valueFlags: withValueFlag(secretValueFlags, "gone-flag", "a flag that no longer exists"), exempt: secretExempt,
 			wantProblem: "secretValueFlags has an entry for --gone-flag, but no flag with a row has that name",
 		},
 		{
 			name: "an entry with an empty reason",
-			m:    m, rows: rows, valueFlags: withEntry(secretValueFlags, "server", ""), exempt: secretExempt,
+			m:    m, rows: rows, valueFlags: withValueFlag(secretValueFlags, "server", ""), exempt: secretExempt,
 			wantProblem: "the entry for --server in secretValueFlags has no reason",
 		},
 		{
@@ -1128,7 +1147,7 @@ func TestSecretValueFlagScanFailsOnEachMistake(t *testing.T) {
 		},
 		{
 			name: "an entry for a bool ending in -stdin",
-			m:    m, rows: rows, valueFlags: withEntry(secretValueFlags, "password-stdin", "an unneeded entry"), exempt: secretExempt,
+			m:    m, rows: rows, valueFlags: withValueFlag(secretValueFlags, "password-stdin", "an unneeded entry"), exempt: secretExempt,
 			wantProblem: "secretValueFlags has an entry for --password-stdin, a bool ending in -stdin, which takes no value",
 		},
 	}
@@ -1842,4 +1861,195 @@ func TestNoCommandThatTakesASecretShowsAFlagWithEqualsTakenAsAValue(t *testing.T
 		}
 	}
 	assert.NotZero(t, ownFlags, "a value-taking flag of a command that takes a secret input, besides the global ones, was found")
+}
+
+// secretStringFlags lists the flags that may carry a secret and are still
+// strings, by "<command pattern> --<flag>", where * in a pattern matches one
+// part of the command name, with the reason the text is a string there.
+var secretStringFlags = map[string]string{
+	"create machine-config --set":  "machine config fields; a credential field is refused; stays a string: the values go into the machine config object, which the kind's redaction hides",
+	"create secret --from-literal": "key=value pairs of Secret data; stays a string: the values go into the Secret object, which the kind's redaction hides",
+	"patch * --patch":              "a JSON patch decoded into the object; the kind's redaction hides secret fields",
+}
+
+// secretStringFlagMatches reports whether the entry key of secretStringFlags
+// covers the flag of the command: the pattern has the parts of the command's
+// name, with * for any one part.
+func secretStringFlagMatches(key, command, flag string) bool {
+	pattern, name, ok := strings.Cut(key, " --")
+	if !ok || name != flag {
+		return false
+	}
+	patternWords, commandWords := strings.Fields(pattern), strings.Fields(command)
+	if len(patternWords) != len(commandWords) {
+		return false
+	}
+	for i, w := range patternWords {
+		if w != "*" && w != commandWords[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// secretStringFlagGaps reports each flag of a command in m's registry that
+// has a row in rows and is none of: Secret on its command; a bool ending in
+// -stdin, whose value comes through stdin; a flag whose value is public data
+// (the kind field of its entry in valueFlags); a flag with an entry in
+// stringFlags. It also reports a flag marked Secret that has no row, one
+// that is not a stringSlice, one with an Enum, an entry of stringFlags that
+// covers no flag of any command, and an entry with no reason.
+func secretStringFlagGaps(cmds []runtime.Command, rows map[string]bool, valueFlags map[string]secretValueFlag, stringFlags map[string]string) []string {
+	var problems []string
+	used := map[string]bool{}
+	for _, c := range cmds {
+		d := c.Describe()
+		for _, f := range d.Flags {
+			listed := ""
+			for key := range stringFlags {
+				if secretStringFlagMatches(key, d.Name, f.Name) {
+					used[key] = true
+					listed = key
+				}
+			}
+			switch {
+			case f.Secret && !rows[f.Name]:
+				problems = append(problems, "flag --"+f.Name+" of "+d.Name+" is marked Secret and has no row in secretRows")
+			case f.Secret && f.Type != "stringSlice":
+				problems = append(problems, "flag --"+f.Name+" of "+d.Name+" is marked Secret and is a "+f.Type+"; only a stringSlice flag is delivered through Secrets")
+			case f.Secret && len(f.Enum) > 0:
+				problems = append(problems, "flag --"+f.Name+" of "+d.Name+" is marked Secret and has an Enum; an enum value is public")
+			case f.Secret || !rows[f.Name]:
+			case f.Type == "bool" && strings.HasSuffix(f.Name, "-stdin"):
+			case valueFlags[f.Name].kind != "":
+			case listed != "":
+			default:
+				problems = append(problems, "flag --"+f.Name+" of "+d.Name+" may carry a secret and stays a string: mark it Secret, or add \""+d.Name+" --"+f.Name+"\" to secretStringFlags with the reason")
+			}
+		}
+	}
+	for key, reason := range stringFlags {
+		switch {
+		case !used[key]:
+			problems = append(problems, "secretStringFlags has an entry for "+key+" that covers no flag of any command")
+		case reason == "":
+			problems = append(problems, "the entry for "+key+" in secretStringFlags has no reason")
+		}
+	}
+	slices.Sort(problems)
+	return problems
+}
+
+// TestEverySecretFlagIsSecretOrListed asserts every flag with a row in
+// secretRows is Secret on its command (delivered as a secret.Value), a bool
+// ending in -stdin, public data, or listed in secretStringFlags with the reason
+// it is still a string; that a Secret flag has a row, is a stringSlice and has
+// no Enum; and that no entry of secretStringFlags is stale.
+func TestEverySecretFlagIsSecretOrListed(t *testing.T) {
+	t.Parallel()
+	wr, err := buildWiredRegistry("v-test")
+	require.NoError(t, err)
+	assert.Empty(t, secretStringFlagGaps(wr.reg.Commands(), rowFlags(secretRows()), secretValueFlags, secretStringFlags))
+}
+
+// fakeSecretCommand is a runtime.Command that only describes itself.
+type fakeSecretCommand struct{ d runtime.Descriptor }
+
+func (c fakeSecretCommand) Describe() runtime.Descriptor { return c.d }
+
+// TestSecretFlagScanFailsOnEachMistake asserts the scan reports a flag with
+// a row that is none of the allowed kinds, a Secret flag with no row, a Secret
+// flag that is not a stringSlice or has an Enum, a stale entry and an entry with
+// no reason, and accepts a Secret flag and a listed flag.
+func TestSecretFlagScanFailsOnEachMistake(t *testing.T) {
+	t.Parallel()
+	rows := map[string]bool{"token": true, "set": true, "from-file": true}
+	cmd := func(name string, flags ...runtime.ArgSpec) []runtime.Command {
+		return []runtime.Command{fakeSecretCommand{runtime.Descriptor{Name: name, Flags: flags}}}
+	}
+	secretSlice := runtime.ArgSpec{Name: "from-file", Type: "stringSlice", Secret: true}
+	for name, tc := range map[string]struct {
+		cmds        []runtime.Command
+		stringFlags map[string]string
+		want        []string
+	}{
+		"a Secret flag": {cmd("create x", secretSlice), nil, nil},
+		"a flag with no Secret and no entry": {
+			cmd("create x", runtime.ArgSpec{Name: "token", Type: "string"}), nil,
+			[]string{"flag --token of create x may carry a secret and stays a string: mark it Secret, or add \"create x --token\" to secretStringFlags with the reason"}},
+		"a listed flag":      {cmd("create x", runtime.ArgSpec{Name: "token", Type: "string"}), map[string]string{"create x --token": "why"}, nil},
+		"a listed by *":      {cmd("patch x", runtime.ArgSpec{Name: "set", Type: "stringSlice"}), map[string]string{"patch * --set": "why"}, nil},
+		"a stdin bool":       {cmd("create x", runtime.ArgSpec{Name: "token-stdin", Type: "bool"}), nil, nil},
+		"a flag with no row": {cmd("create x", runtime.ArgSpec{Name: "other", Type: "string"}), nil, nil},
+		"a Secret flag with no row": {
+			cmd("create x", runtime.ArgSpec{Name: "other", Type: "stringSlice", Secret: true}), nil,
+			[]string{"flag --other of create x is marked Secret and has no row in secretRows"}},
+		"a Secret flag that is a string": {
+			cmd("create x", runtime.ArgSpec{Name: "token", Type: "string", Secret: true}), nil,
+			[]string{"flag --token of create x is marked Secret and is a string; only a stringSlice flag is delivered through Secrets"}},
+		"a Secret flag with an Enum": {
+			cmd("create x", runtime.ArgSpec{Name: "set", Type: "stringSlice", Secret: true, Enum: []string{"a"}}), nil,
+			[]string{"flag --set of create x is marked Secret and has an Enum; an enum value is public"}},
+		"a stale entry": {cmd("create x", secretSlice), map[string]string{"create y --token": "why"},
+			[]string{"secretStringFlags has an entry for create y --token that covers no flag of any command"}},
+		"an entry with no reason": {cmd("create x", runtime.ArgSpec{Name: "token", Type: "string"}), map[string]string{"create x --token": ""},
+			[]string{"the entry for create x --token in secretStringFlags has no reason"}},
+	} {
+		got := secretStringFlagGaps(tc.cmds, rows, map[string]secretValueFlag{"url": {reason: "r", kind: secretKindPublic}}, tc.stringFlags)
+		assert.Equal(t, tc.want, got, name)
+	}
+}
+
+// TestSecretFlagsAreReadOnlyThroughSecrets asserts that, for every flag marked
+// Secret in the wired registry, the Input of internal/cli returns nil from
+// Strings and "" from String, returns the typed values from Secrets, and
+// returns nil from Secrets for a flag not marked; and that the registry has a
+// Secret flag.
+func TestSecretFlagsAreReadOnlyThroughSecrets(t *testing.T) {
+	t.Parallel()
+	wr, err := buildWiredRegistry("v-test")
+	require.NoError(t, err)
+	found := 0
+	for _, c := range wr.reg.Commands() {
+		d := c.Describe()
+		for _, f := range d.Flags {
+			if !f.Secret {
+				continue
+			}
+			found++
+			leaf := &Command{Name: "leaf", Flags: flagsFor(d)}
+			root := link(&Command{Name: "rancher", StopAtFirstWord: true, Commands: []*Command{leaf}})
+			p := parseLine(root, []string{"leaf", "--" + f.Name, "a=" + secretCanary, "--" + f.Name, "b=" + secretCanary})
+			require.Equal(t, lineRuns, p.end.kind, d.Name+" --"+f.Name)
+			in := &Input{p: &p, level: p.end.level}
+			assert.True(t, in.IsSet(f.Name), d.Name+" --"+f.Name)
+			assert.Nil(t, in.Strings(f.Name), d.Name+" --"+f.Name+": Strings returns the values of a Secret flag")
+			assert.Empty(t, in.String(f.Name), d.Name+" --"+f.Name+": String returns a value of a Secret flag")
+			var texts []string
+			for _, v := range in.Secrets(f.Name) {
+				texts = append(texts, secret.Reveal(v))
+			}
+			assert.Equal(t, []string{"a=" + secretCanary, "b=" + secretCanary}, texts, d.Name+" --"+f.Name)
+			for _, other := range d.Flags {
+				if !other.Secret {
+					assert.Nil(t, in.Secrets(other.Name), d.Name+" --"+other.Name+" is not marked Secret")
+				}
+			}
+		}
+	}
+	require.Positive(t, found, "the wired registry has no flag marked Secret")
+}
+
+// sliceFlagTexts returns the values a slice flag was typed with, as texts:
+// from Secrets for a flag marked Secret, from Strings for any other. A harness
+// that compares what a command received reads flags through it.
+func sliceFlagTexts(in *Input, name string) []string {
+	if f := in.flag(name); f != nil && f.secret() {
+		var out []string
+		for _, v := range in.Secrets(name) {
+			out = append(out, secret.Reveal(v))
+		}
+		return out
+	}
+	return slices.Clone(in.Strings(name))
 }

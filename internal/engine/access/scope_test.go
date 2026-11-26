@@ -11,6 +11,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/secret"
 )
 
 // fakeInput is a minimal runtime.Input for command tests.
@@ -20,11 +21,12 @@ type fakeInput struct {
 	args  []string
 }
 
-func (f fakeInput) String(n string) string    { return f.strs[n] }
-func (f fakeInput) Bool(n string) bool        { return f.bools[n] }
-func (f fakeInput) Strings(n string) []string { return nil }
-func (f fakeInput) IsSet(n string) bool       { _, ok := f.strs[n]; return ok || f.bools[n] }
-func (f fakeInput) Args() []string            { return f.args }
+func (f fakeInput) String(n string) string        { return f.strs[n] }
+func (f fakeInput) Bool(n string) bool            { return f.bools[n] }
+func (f fakeInput) Strings(n string) []string     { return nil }
+func (f fakeInput) IsSet(n string) bool           { _, ok := f.strs[n]; return ok || f.bools[n] }
+func (f fakeInput) Secrets(string) []secret.Value { return nil }
+func (f fakeInput) Args() []string                { return f.args }
 
 var _ runtime.Input = fakeInput{}
 

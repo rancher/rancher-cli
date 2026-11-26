@@ -14,6 +14,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/secret"
 )
 
 var errWaitFlagsClientUsed = errors.New("a client was used before the flags were validated")
@@ -42,11 +43,12 @@ func (failingRoots) Root() (engine.RootClient, error) { return nil, errWaitFlags
 // argument, the shape of a get that names no object.
 type waitFlagInput map[string]string
 
-func (in waitFlagInput) String(name string) string { return in[name] }
-func (in waitFlagInput) Bool(string) bool          { return false }
-func (in waitFlagInput) Strings(string) []string   { return nil }
-func (in waitFlagInput) IsSet(name string) bool    { _, ok := in[name]; return ok }
-func (in waitFlagInput) Args() []string            { return nil }
+func (in waitFlagInput) String(name string) string     { return in[name] }
+func (in waitFlagInput) Bool(string) bool              { return false }
+func (in waitFlagInput) Strings(string) []string       { return nil }
+func (in waitFlagInput) IsSet(name string) bool        { _, ok := in[name]; return ok }
+func (in waitFlagInput) Secrets(string) []secret.Value { return nil }
+func (in waitFlagInput) Args() []string                { return nil }
 
 // declaredFlags lists the flag names a command declares.
 func declaredFlags(c runtime.Command) []string {

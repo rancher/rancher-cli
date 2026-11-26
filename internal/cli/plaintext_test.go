@@ -13,6 +13,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/secret"
 )
 
 // plainTextCommands are the commands whose descriptor sets PlainText, each
@@ -58,11 +59,12 @@ func TestPlainTextListCoversTheWholeRegistry(t *testing.T) {
 // it is given.
 type argInput struct{ args []string }
 
-func (argInput) String(string) string    { return "" }
-func (argInput) Bool(string) bool        { return false }
-func (argInput) Strings(string) []string { return nil }
-func (argInput) IsSet(string) bool       { return false }
-func (in argInput) Args() []string       { return in.args }
+func (argInput) String(string) string          { return "" }
+func (argInput) Bool(string) bool              { return false }
+func (argInput) Strings(string) []string       { return nil }
+func (argInput) IsSet(string) bool             { return false }
+func (argInput) Secrets(string) []secret.Value { return nil }
+func (in argInput) Args() []string             { return in.args }
 
 // argumentsFor is one argument for each argument a descriptor declares: the
 // first value of its enum, or a word.

@@ -10,6 +10,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/managementtoken"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/secret"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -303,11 +304,12 @@ type stubInput struct {
 	b    map[string]bool
 }
 
-func (i stubInput) String(k string) string  { return i.s[k] }
-func (i stubInput) Bool(k string) bool      { return i.b[k] }
-func (i stubInput) Strings(string) []string { return nil }
-func (i stubInput) IsSet(string) bool       { return false }
-func (i stubInput) Args() []string          { return i.args }
+func (i stubInput) String(k string) string        { return i.s[k] }
+func (i stubInput) Bool(k string) bool            { return i.b[k] }
+func (i stubInput) Strings(string) []string       { return nil }
+func (i stubInput) IsSet(string) bool             { return false }
+func (i stubInput) Secrets(string) []secret.Value { return nil }
+func (i stubInput) Args() []string                { return i.args }
 
 type stubNamer struct {
 	id    string

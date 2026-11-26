@@ -7,6 +7,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/secret"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -21,11 +22,12 @@ type pcrInput struct {
 	bools map[string]bool
 }
 
-func (i pcrInput) String(k string) string  { return i.s[k] }
-func (i pcrInput) Bool(k string) bool      { return i.bools[k] }
-func (i pcrInput) Strings(string) []string { return nil }
-func (i pcrInput) IsSet(string) bool       { return false }
-func (i pcrInput) Args() []string          { return i.args }
+func (i pcrInput) String(k string) string        { return i.s[k] }
+func (i pcrInput) Bool(k string) bool            { return i.bools[k] }
+func (i pcrInput) Strings(string) []string       { return nil }
+func (i pcrInput) IsSet(string) bool             { return false }
+func (i pcrInput) Secrets(string) []secret.Value { return nil }
+func (i pcrInput) Args() []string                { return i.args }
 
 func passwordUpdatedStatus() map[string]any {
 	return map[string]any{

@@ -16,6 +16,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/secret"
 )
 
 const (
@@ -81,10 +82,11 @@ func (i flagInput) String(name string) string {
 	}
 	return ""
 }
-func (flagInput) Bool(string) bool        { return false }
-func (flagInput) Strings(string) []string { return nil }
-func (flagInput) IsSet(string) bool       { return false }
-func (flagInput) Args() []string          { return nil }
+func (flagInput) Bool(string) bool              { return false }
+func (flagInput) Strings(string) []string       { return nil }
+func (flagInput) IsSet(string) bool             { return false }
+func (flagInput) Secrets(string) []secret.Value { return nil }
+func (flagInput) Args() []string                { return nil }
 
 func requireByIDRBAC(t *testing.T, err error, message, hint string, candidates []clierr.Candidate) {
 	t.Helper()

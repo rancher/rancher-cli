@@ -6,12 +6,16 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"maps"
+	"reflect"
 	"slices"
 	"strconv"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/secret"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -355,10 +359,10 @@ type CloudCredentialClientFactory interface {
 }
 
 // CloudCredentialBody is the request body of a cloud credential create or
-// update. It has the secret values the request sends and prints as <hidden>
-// in every format; only RequestJSON writes them, and only the client that
-// sends the request calls it. The methods have value receivers, so a body
-// inside another value prints <hidden> too.
+// update. Its document has the values the request sends as secret.Value, and
+// the body prints as <hidden> in every format; only RequestJSON writes the
+// values, and only the client that sends the request calls it. The methods have
+// value receivers; a body inside another value prints <hidden> too.
 type CloudCredentialBody struct {
 	doc map[string]any
 }
@@ -386,8 +390,98 @@ func writeHiddenText(f fmt.State) {
 	}
 }
 
-// RequestJSON is the one encoding that writes the values: the request body.
-func (b CloudCredentialBody) RequestJSON() ([]byte, error) { return json.Marshal(b.doc) }
+// RequestJSON is the one encoding that writes the values: the request body. It
+// encodes a copy of the document with each secret.Value revealed, in nested
+// objects and in lists. It returns an error before encoding when a Value is
+// left at a position it does not reveal (a typed list or map, a struct) or the
+// document is nested deeper than it can check; no request carries the
+// placeholder <hidden> in place of a value.
+func (b CloudCredentialBody) RequestJSON() ([]byte, error) {
+	doc := maps.Clone(b.doc)
+	pending := []any{doc}
+	for len(pending) > 0 {
+		last := pending[len(pending)-1]
+		pending = pending[:len(pending)-1]
+		switch c := last.(type) {
+		case map[string]any:
+			for k, v := range c {
+				switch x := v.(type) {
+				case secret.Value:
+					c[k] = secret.Reveal(x)
+				case map[string]any:
+					copied := maps.Clone(x)
+					c[k] = copied
+					pending = append(pending, copied)
+				case []any:
+					copied := slices.Clone(x)
+					c[k] = copied
+					pending = append(pending, copied)
+				}
+			}
+		case []any:
+			for i, v := range c {
+				switch x := v.(type) {
+				case secret.Value:
+					c[i] = secret.Reveal(x)
+				case map[string]any:
+					copied := maps.Clone(x)
+					c[i] = copied
+					pending = append(pending, copied)
+				case []any:
+					copied := slices.Clone(x)
+					c[i] = copied
+					pending = append(pending, copied)
+				}
+			}
+		}
+	}
+	if holdsSecretValue(reflect.ValueOf(doc), 0) {
+		return nil, errors.New("internal error: the request body has a secret value that RequestJSON does not reveal, or is nested too deep to check")
+	}
+	return json.Marshal(doc)
+}
+
+// maxBodyDepth is how deep holdsSecretValue looks. A document nested deeper
+// counts as having a Value: the check refuses what it cannot inspect.
+const maxBodyDepth = 64
+
+// holdsSecretValue reports whether v has a secret.Value anywhere below it:
+// in a map, a slice, an array, a pointer, an interface or a struct field, or
+// is nested deeper than maxBodyDepth.
+func holdsSecretValue(v reflect.Value, depth int) bool {
+	if depth > maxBodyDepth {
+		return true
+	}
+	if !v.IsValid() {
+		return false
+	}
+	if v.Type() == reflect.TypeFor[secret.Value]() {
+		return true
+	}
+	switch v.Kind() {
+	case reflect.Interface, reflect.Pointer:
+		return !v.IsNil() && holdsSecretValue(v.Elem(), depth+1)
+	case reflect.Map:
+		for iter := v.MapRange(); iter.Next(); {
+			if holdsSecretValue(iter.Key(), depth+1) || holdsSecretValue(iter.Value(), depth+1) {
+				return true
+			}
+		}
+	case reflect.Slice, reflect.Array:
+		for i := range v.Len() {
+			if holdsSecretValue(v.Index(i), depth+1) {
+				return true
+			}
+		}
+	case reflect.Struct:
+		for _, field := range v.Fields() {
+			if holdsSecretValue(field, depth+1) {
+				return true
+			}
+		}
+	}
+	return false
+}
 
 // ServerBaseURLProvider exposes the canonical, resolved server base URL
 // (scheme preserved, no trailing slash) - the SAME value RootClient's

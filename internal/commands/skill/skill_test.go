@@ -16,6 +16,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/secret"
 	"github.com/rancher/rancher-cli/internal/skillinstall"
 	"github.com/rancher/rancher-cli/internal/testfs"
 )
@@ -25,11 +26,12 @@ type skillInput struct {
 	bools   map[string]bool
 }
 
-func (f skillInput) String(k string) string  { return f.strings[k] }
-func (f skillInput) Bool(k string) bool      { return f.bools[k] }
-func (f skillInput) Strings(string) []string { return nil }
-func (f skillInput) IsSet(k string) bool     { _, ok := f.strings[k]; return ok }
-func (f skillInput) Args() []string          { return nil }
+func (f skillInput) String(k string) string        { return f.strings[k] }
+func (f skillInput) Bool(k string) bool            { return f.bools[k] }
+func (f skillInput) Strings(string) []string       { return nil }
+func (f skillInput) IsSet(k string) bool           { _, ok := f.strings[k]; return ok }
+func (f skillInput) Secrets(string) []secret.Value { return nil }
+func (f skillInput) Args() []string                { return nil }
 
 func skillTestSource(t *testing.T) fs.FS {
 	t.Helper()

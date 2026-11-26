@@ -44,6 +44,17 @@ func (d Driver) Field(name string) (Field, bool) {
 	return Field{}, false
 }
 
+// Match returns the first field for which match reports true, for a caller
+// that compares a field name that is a secret.Value, not a string.
+func (d Driver) Match(match func(Field) bool) (Field, bool) {
+	for _, f := range d.Fields {
+		if match(f) {
+			return f, true
+		}
+	}
+	return Field{}, false
+}
+
 // SecretFolded returns the secret field whose name equals name without regard
 // to case, for a refusal that must not let a different spelling of a secret
 // field through as a public one.

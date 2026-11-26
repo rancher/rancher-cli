@@ -14,6 +14,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/secret"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"sigs.k8s.io/yaml"
@@ -27,11 +28,12 @@ type mapInput struct {
 	is map[string]bool
 }
 
-func (m mapInput) String(k string) string    { return m.s[k] }
-func (m mapInput) Bool(k string) bool        { return m.b[k] }
-func (m mapInput) Strings(k string) []string { return m.sl[k] }
-func (m mapInput) IsSet(k string) bool       { return m.is[k] }
-func (m mapInput) Args() []string            { return m.a }
+func (m mapInput) String(k string) string        { return m.s[k] }
+func (m mapInput) Bool(k string) bool            { return m.b[k] }
+func (m mapInput) Strings(k string) []string     { return m.sl[k] }
+func (m mapInput) IsSet(k string) bool           { return m.is[k] }
+func (m mapInput) Secrets(string) []secret.Value { return nil }
+func (m mapInput) Args() []string                { return m.a }
 
 type fakeRead struct {
 	d   Descriptor

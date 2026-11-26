@@ -5,23 +5,25 @@ import (
 	"strings"
 
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/secret"
 	"github.com/rancher/rancher-cli/internal/ui"
 )
 
 // Input is a runtime.Input over fixed maps: Str answers String, Flag
 // answers Bool, Pos is the positional argument list. Strings and IsSet
-// always answer empty and false.
+// always answer empty and false, and Secrets returns nil.
 type Input struct {
 	Str  map[string]string
 	Flag map[string]bool
 	Pos  []string
 }
 
-func (x Input) String(k string) string  { return x.Str[k] }
-func (x Input) Bool(k string) bool      { return x.Flag[k] }
-func (x Input) Strings(string) []string { return nil }
-func (x Input) IsSet(string) bool       { return false }
-func (x Input) Args() []string          { return x.Pos }
+func (x Input) String(k string) string        { return x.Str[k] }
+func (x Input) Bool(k string) bool            { return x.Flag[k] }
+func (x Input) Strings(string) []string       { return nil }
+func (x Input) IsSet(string) bool             { return false }
+func (x Input) Secrets(string) []secret.Value { return nil }
+func (x Input) Args() []string                { return x.Pos }
 
 var _ runtime.Input = Input{}
 

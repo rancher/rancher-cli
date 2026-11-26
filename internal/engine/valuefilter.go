@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/secret"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -112,6 +114,46 @@ func filterNeedles(values []string, base64Forms bool) []string {
 	}
 	slices.SortFunc(needles, func(a, b string) int { return len(b) - len(a) })
 	return slices.Compact(needles)
+}
+
+// NewSecretFilter is NewTextFilter, with base64 forms, over every form of the
+// text of each secret value and of each extra text: the text, each of its
+// lines (cut at a line feed or a carriage return, empty lines dropped) and, for
+// the text and for each line, the text between the quotes of strconv.Quote,
+// QuoteToASCII and QuoteToGraphic. A command that sends secret values filters
+// every text of the server's response with it. extra lists the plain texts the
+// request sent along that the response may echo.
+func NewSecretFilter(values []secret.Value, extra ...string) func(string) string {
+	texts := slices.Clone(extra)
+	for _, v := range values {
+		texts = append(texts, secret.Reveal(v))
+	}
+	var forms []string
+	for _, text := range texts {
+		forms = append(forms, redactionForms(text)...)
+	}
+	return NewTextFilter(forms, true)
+}
+
+// redactionForms lists the texts a filter hides for one value: the value, each
+// of its lines and, for the value and for each line, the text between the
+// quotes of strconv.Quote, QuoteToASCII and QuoteToGraphic.
+func redactionForms(value string) []string {
+	forms := []string{value}
+	texts := []string{value}
+	for line := range strings.FieldsFuncSeq(value, func(r rune) bool { return r == '\n' || r == '\r' }) {
+		forms = append(forms, line)
+		texts = append(texts, line)
+	}
+	for _, text := range texts {
+		for _, quoted := range []string{strconv.Quote(text), strconv.QuoteToASCII(text), strconv.QuoteToGraphic(text)} {
+			inner := strings.TrimSuffix(strings.TrimPrefix(quoted, `"`), `"`)
+			if !slices.Contains(forms, inner) {
+				forms = append(forms, inner)
+			}
+		}
+	}
+	return forms
 }
 
 // JSONForms returns the forms s takes inside a JSON string: with and

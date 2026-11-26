@@ -13,17 +13,19 @@ import (
 	"github.com/rancher/rancher-cli/internal/commands/cmdtest"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/secret"
 )
 
 type fakeInput struct {
 	args []string
 }
 
-func (f fakeInput) String(string) string    { return "" }
-func (f fakeInput) Bool(string) bool        { return false }
-func (f fakeInput) Strings(string) []string { return nil }
-func (f fakeInput) IsSet(string) bool       { return false }
-func (f fakeInput) Args() []string          { return f.args }
+func (f fakeInput) String(string) string          { return "" }
+func (f fakeInput) Bool(string) bool              { return false }
+func (f fakeInput) Strings(string) []string       { return nil }
+func (f fakeInput) IsSet(string) bool             { return false }
+func (f fakeInput) Secrets(string) []secret.Value { return nil }
+func (f fakeInput) Args() []string                { return f.args }
 
 // TestCompletionEmitsGoldenScriptPerShell asserts each script byte-exact: these
 // are install artifacts (sourced directly into a shell), so any drift -

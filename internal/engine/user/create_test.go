@@ -11,6 +11,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/secret"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -219,11 +220,12 @@ type userInput struct {
 	lists map[string][]string
 }
 
-func (i userInput) String(k string) string    { return i.flags[k] }
-func (i userInput) IsSet(k string) bool       { _, ok := i.flags[k]; return ok }
-func (i userInput) Bool(k string) bool        { return i.bools[k] }
-func (i userInput) Strings(k string) []string { return i.lists[k] }
-func (i userInput) Args() []string            { return i.args }
+func (i userInput) String(k string) string        { return i.flags[k] }
+func (i userInput) IsSet(k string) bool           { _, ok := i.flags[k]; return ok }
+func (i userInput) Secrets(string) []secret.Value { return nil }
+func (i userInput) Bool(k string) bool            { return i.bools[k] }
+func (i userInput) Strings(k string) []string     { return i.lists[k] }
+func (i userInput) Args() []string                { return i.args }
 
 func planInput(username string) userInput {
 	return userInput{

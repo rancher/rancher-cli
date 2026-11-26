@@ -20,6 +20,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/secret"
 	"github.com/rancher/rancher-cli/internal/token"
 )
 
@@ -31,11 +32,12 @@ const plantedRemedy = "\u2063rancher delete x"
 // siteInput is the Input of a command that takes no flags and no arguments.
 type siteInput struct{}
 
-func (siteInput) String(string) string    { return "" }
-func (siteInput) Bool(string) bool        { return false }
-func (siteInput) Strings(string) []string { return nil }
-func (siteInput) IsSet(string) bool       { return false }
-func (siteInput) Args() []string          { return nil }
+func (siteInput) String(string) string          { return "" }
+func (siteInput) Bool(string) bool              { return false }
+func (siteInput) Strings(string) []string       { return nil }
+func (siteInput) IsSet(string) bool             { return false }
+func (siteInput) Secrets(string) []secret.Value { return nil }
+func (siteInput) Args() []string                { return nil }
 
 // siteRead is a read command that prints a notice through its prompter and
 // returns its result and error.

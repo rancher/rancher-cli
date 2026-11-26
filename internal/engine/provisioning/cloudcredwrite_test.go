@@ -20,6 +20,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime/completion"
 	"github.com/rancher/rancher-cli/internal/runtime/completion/completiontest"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/secret"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -59,15 +60,24 @@ func (i ccwInput) String(k string) string {
 	}
 	return ""
 }
-func (i ccwInput) Bool(k string) bool { return k == "wait" && i.wait != nil && *i.wait }
-func (i ccwInput) Strings(k string) []string {
+func (i ccwInput) Bool(k string) bool      { return k == "wait" && i.wait != nil && *i.wait }
+func (i ccwInput) Strings(string) []string { return nil }
+
+// Secrets returns the values of --set and --from-file, which the commands mark
+// Secret.
+func (i ccwInput) Secrets(k string) []secret.Value {
+	var words []string
 	switch k {
 	case "set":
-		return i.set
+		words = i.set
 	case "from-file":
-		return i.fromFile
+		words = i.fromFile
 	}
-	return nil
+	var out []secret.Value
+	for _, w := range words {
+		out = append(out, secret.New(w))
+	}
+	return out
 }
 func (i ccwInput) IsSet(k string) bool {
 	switch k {
@@ -88,7 +98,8 @@ func (i ccwInput) StdinTerminal() bool { return i.terminal }
 var _ runtime.StdinInput = ccwInput{}
 
 // ccwFiles is a FileSource over a map; "-" is stdin. A path with no entry is
-// unreadable. It counts the reads.
+// unreadable. It counts the reads and returns a copy of the bytes, as a read of
+// a file does: the caller may clear what it gets.
 type ccwFiles struct {
 	mu    sync.Mutex
 	files map[string][]byte
@@ -100,7 +111,7 @@ func (f *ccwFiles) Read(path string) ([]byte, error) {
 	f.reads = append(f.reads, path)
 	f.mu.Unlock()
 	if b, ok := f.files[path]; ok {
-		return b, nil
+		return slices.Clone(b), nil
 	}
 	return nil, errors.New("no such file: OS text that must never be shown")
 }

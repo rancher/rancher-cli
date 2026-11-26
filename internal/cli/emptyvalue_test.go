@@ -12,6 +12,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/secret"
 )
 
 // sweepInput is a runtime.Input built from values, for driving the
@@ -27,7 +28,14 @@ func (i sweepInput) String(k string) string    { return i.s[k] }
 func (i sweepInput) Bool(string) bool          { return false }
 func (i sweepInput) Strings(k string) []string { return i.sl[k] }
 func (i sweepInput) IsSet(k string) bool       { return i.set[k] }
-func (i sweepInput) Args() []string            { return i.args }
+func (i sweepInput) Secrets(k string) []secret.Value {
+	var out []secret.Value
+	for _, v := range i.sl[k] {
+		out = append(out, secret.New(v))
+	}
+	return out
+}
+func (i sweepInput) Args() []string { return i.args }
 
 // emptyValueMessage is the refusal of a typed blank value of f.
 func emptyValueMessage(f runtime.ArgSpec) string {

@@ -5,6 +5,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/secret"
 )
 
 // CommandType selects the pipeline path. Exactly one per command.
@@ -128,6 +129,11 @@ type ArgSpec struct {
 	// where a typed empty value means something omission does not, and say
 	// what in a comment at the declaration. Go-only.
 	AllowEmpty bool `json:"-"`
+	// Secret makes the command receive the flag's typed values only as
+	// secret.Value, through Input.Secrets: Strings and String of the flag
+	// return nothing. Only a stringSlice flag takes it, and it takes no Enum
+	// (an enum value is public). Go-only; the manifest does not carry it.
+	Secret bool `json:"-"`
 }
 
 // OutputShape is a command's declared success-result shape: the closed-world
@@ -313,6 +319,9 @@ type Input interface {
 	// Strings returns every occurrence of a stringSlice flag, ordered, one
 	// entry per occurrence - never comma-split.
 	Strings(name string) []string
+	// Secrets returns every occurrence of a stringSlice flag marked Secret,
+	// ordered, as secret values. It returns nil for a flag not marked.
+	Secrets(name string) []secret.Value
 	// IsSet reports whether the named flag was explicitly provided on the
 	// command line - the tri-state seam for boolean flags (an
 	// omitted bool is distinguishable from an explicit false).

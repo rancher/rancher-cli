@@ -20,6 +20,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/provisioning"
 	"github.com/rancher/rancher-cli/internal/engine/user"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/secret"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -125,6 +126,13 @@ func (i fieldCoverageInput) IsSet(k string) bool {
 	_, b := i.bools[k]
 	_, l := i.lists[k]
 	return v || b || l
+}
+func (i fieldCoverageInput) Secrets(k string) []secret.Value {
+	var out []secret.Value
+	for _, v := range i.lists[k] {
+		out = append(out, secret.New(v))
+	}
+	return out
 }
 
 // absent is the expected value of a field the dry-run object must not carry.

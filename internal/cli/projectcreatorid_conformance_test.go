@@ -23,6 +23,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/projects"
 	"github.com/rancher/rancher-cli/internal/engine/resources"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/secret"
 	"github.com/rancher/rancher-cli/internal/testrancher"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -101,11 +102,12 @@ type guardInput struct {
 	a []string
 }
 
-func (i guardInput) String(k string) string  { return i.s[k] }
-func (i guardInput) Bool(string) bool        { return false }
-func (i guardInput) Strings(string) []string { return nil }
-func (i guardInput) IsSet(string) bool       { return false }
-func (i guardInput) Args() []string          { return i.a }
+func (i guardInput) String(k string) string        { return i.s[k] }
+func (i guardInput) Bool(string) bool              { return false }
+func (i guardInput) Strings(string) []string       { return nil }
+func (i guardInput) IsSet(string) bool             { return false }
+func (i guardInput) Secrets(string) []secret.Value { return nil }
+func (i guardInput) Args() []string                { return i.a }
 
 const guardProjectManifest = `apiVersion: management.cattle.io/v3
 kind: Project

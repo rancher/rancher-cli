@@ -33,6 +33,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/secret"
 	"github.com/rancher/rancher-cli/internal/testrancher"
 	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
@@ -53,6 +54,7 @@ func (t tin) IsSet(k string) bool {
 	_, inB := t.b[k]
 	return inS || inB
 }
+func (t tin) Secrets(string) []secret.Value { return nil }
 
 // selfSignedCAPEM returns a freshly generated self-signed certificate as PEM,
 // for tests that need a --cacert value httpx.New accepts without any server

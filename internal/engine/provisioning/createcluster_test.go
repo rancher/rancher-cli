@@ -13,6 +13,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/secret"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -28,11 +29,12 @@ type ccInput struct {
 	a []string
 }
 
-func (i ccInput) String(k string) string  { return i.s[k] }
-func (i ccInput) Bool(k string) bool      { return i.b[k] }
-func (i ccInput) Strings(string) []string { return nil }
-func (i ccInput) IsSet(string) bool       { return false }
-func (i ccInput) Args() []string          { return i.a }
+func (i ccInput) String(k string) string        { return i.s[k] }
+func (i ccInput) Bool(k string) bool            { return i.b[k] }
+func (i ccInput) Strings(string) []string       { return nil }
+func (i ccInput) IsSet(string) bool             { return false }
+func (i ccInput) Secrets(string) []secret.Value { return nil }
+func (i ccInput) Args() []string                { return i.a }
 
 var _ runtime.Input = ccInput{}
 

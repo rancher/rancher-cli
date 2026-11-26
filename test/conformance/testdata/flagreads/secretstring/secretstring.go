@@ -1,0 +1,14 @@
+package secretstring
+
+import "github.com/rancher/rancher-cli/internal/runtime"
+
+// Describe declares a Secret flag and a plain flag.
+func Describe() runtime.Descriptor {
+	return runtime.Descriptor{Flags: []runtime.ArgSpec{
+		{Name: "from-file", Type: "stringSlice", Secret: true},
+		{Name: "label", Type: "stringSlice"},
+	}}
+}
+
+// Read reads the Secret flag through String.
+func Read(in runtime.Input) { _ = in.String("from-file") }

@@ -11,6 +11,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/secret"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -35,8 +36,9 @@ func (i mcInput) Strings(k string) []string {
 	}
 	return nil
 }
-func (i mcInput) IsSet(k string) bool { return i.is[k] }
-func (i mcInput) Args() []string      { return i.a }
+func (i mcInput) IsSet(k string) bool           { return i.is[k] }
+func (i mcInput) Secrets(string) []secret.Value { return nil }
+func (i mcInput) Args() []string                { return i.a }
 
 var _ runtime.Input = mcInput{}
 

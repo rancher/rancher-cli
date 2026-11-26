@@ -14,16 +14,18 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/secret"
 )
 
 // gatedInput is the Input of a command that takes no flags and no arguments.
 type gatedInput struct{}
 
-func (gatedInput) String(string) string    { return "" }
-func (gatedInput) Bool(string) bool        { return false }
-func (gatedInput) Strings(string) []string { return nil }
-func (gatedInput) IsSet(string) bool       { return false }
-func (gatedInput) Args() []string          { return nil }
+func (gatedInput) String(string) string          { return "" }
+func (gatedInput) Bool(string) bool              { return false }
+func (gatedInput) Strings(string) []string       { return nil }
+func (gatedInput) IsSet(string) bool             { return false }
+func (gatedInput) Secrets(string) []secret.Value { return nil }
+func (gatedInput) Args() []string                { return nil }
 
 // gatedCommand is a read command with a capability requirement, which the
 // pipeline refuses before it runs.

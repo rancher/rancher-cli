@@ -20,6 +20,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/remedytest"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/secret"
 )
 
 // terminalHostileTail is what a server value can hold to drive a terminal or
@@ -90,11 +91,12 @@ var terminalColorSequences = slices.Concat(
 // arguments.
 type terminalInput struct{}
 
-func (terminalInput) String(string) string    { return "" }
-func (terminalInput) Bool(string) bool        { return false }
-func (terminalInput) Strings(string) []string { return nil }
-func (terminalInput) IsSet(string) bool       { return false }
-func (terminalInput) Args() []string          { return nil }
+func (terminalInput) String(string) string          { return "" }
+func (terminalInput) Bool(string) bool              { return false }
+func (terminalInput) Strings(string) []string       { return nil }
+func (terminalInput) IsSet(string) bool             { return false }
+func (terminalInput) Secrets(string) []secret.Value { return nil }
+func (terminalInput) Args() []string                { return nil }
 
 // terminalRead is a read command: it calls act with its prompter, then
 // returns its result and error.

@@ -7,17 +7,19 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/secret"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 type flagInput map[string]string
 
-func (f flagInput) String(name string) string { return f[name] }
-func (flagInput) Bool(string) bool            { return false }
-func (flagInput) Strings(string) []string     { return nil }
-func (flagInput) IsSet(string) bool           { return false }
-func (flagInput) Args() []string              { return nil }
+func (f flagInput) String(name string) string   { return f[name] }
+func (flagInput) Bool(string) bool              { return false }
+func (flagInput) Strings(string) []string       { return nil }
+func (flagInput) IsSet(string) bool             { return false }
+func (flagInput) Secrets(string) []secret.Value { return nil }
+func (flagInput) Args() []string                { return nil }
 
 // TestResolveDownstreamClusterMissingFlagFitsTheCommand asserts the empty
 // --cluster refusal is a VALIDATION error with the cluster-listing command

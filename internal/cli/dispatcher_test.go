@@ -229,7 +229,7 @@ func TestEverySliceFlagKeepsACommaInOneValue(t *testing.T) {
 			p := parseLine(root, append(slices.Clone(path), long, "a,b", long+"=c,d", long, "e"))
 			require.Equal(t, lineRuns, p.end.kind, "rancher %s %s", strings.Join(path, " "), long)
 			in := &Input{p: &p, level: p.end.level}
-			assert.Equal(t, []string{"a,b", "c,d", "e"}, in.Strings(f.Name), "rancher %s %s", strings.Join(path, " "), long)
+			assert.Equal(t, []string{"a,b", "c,d", "e"}, sliceFlagTexts(in, f.Name), "rancher %s %s", strings.Join(path, " "), long)
 		}
 	})
 	assert.Positive(t, found, "the walk found no slice flag")
