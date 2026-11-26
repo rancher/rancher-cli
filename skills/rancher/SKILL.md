@@ -40,14 +40,14 @@ stores, the kinds of token and the login errors are in the topic `auth`;
 ### 2. Discover, don't guess
 
 ```
-rancher schema -o json              # orientation: command names + usage per group, kind names, exit codes (small)
+rancher schema -o json              # overview: groups with counts, commands in no group, kinds, exit codes
 rancher schema get pod -o json      # one command's full contract: args, flags, gates
 rancher schema --all -o json        # the complete manifest in one document (bulk extraction only)
 ```
 
-The orientation payload is compact; the full manifest is for bulk extraction.
+A group's commands: `rancher schema <group>`. The full manifest is for bulk extraction.
 Error-code meanings live only in the full manifest (`errorCodes`: code,
-exit status, meaning); the orientation payload and command cards carry
+exit status, meaning); the overview and command cards carry
 exit statuses alone. Print that part alone (about 4 KB):
 `rancher schema --all -o 'template={{range .errorCodes}}{{.code}} (exit {{.exit}}): {{.desc}}{{println}}{{end}}'`.
 The full manifest is about 650 KB: never print it to read it.
@@ -215,9 +215,9 @@ Exit codes: `0` ok · `2` usage/validation/confirmation · `3` auth ·
 - `PRIME_REQUIRED` (exit `9`) means the command needs a capability this
   server's edition does not have - Rancher Prime. Do not retry and do not
   look for a workaround; tell the user what was refused and pass along the
-  message's learn-more link. `rancher schema` marks such a command with a
-  `[Prime]` token in its usage column, and such a kind with a `prime` trait,
-  so you can check before running.
+  message's learn-more link. `rancher schema <group>` marks such a command
+  (`[Prime]` in text, `prime` in JSON) and such a kind with a `prime` trait;
+  the overview marks a group only if all its commands are Prime.
 
 ### 6. Waits
 

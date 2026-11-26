@@ -4,10 +4,16 @@ cp stdout toc.json
 jsonquery toc.json 'data.commandCount' 276
 jsonquery toc.json 'data.kindCount' 73
 jsonquery toc.json 'data.kinds.#' 73
-# generated get/patch/delete <kind> commands are COLLAPSED on the bare
-# TOC - assert a NON-generated command's group entry and the collapsed count
-# (verify both actual values when writing this, like every count pin)
-jsonquery toc.json 'data.groups.#(name="auth").commands.0.name' 'auth login'
+# a named group is its description and command count, with no command list;
+# generated get/patch/delete <kind> commands are COLLAPSED on the bare TOC
+# (verify the actual values when writing this, like every count assertion)
+jsonquery toc.json 'data.groups.#(name="auth").commandCount' 6
+jsonquery toc.json 'data.groups.#(name="auth").commands' ''
+jsonquery toc.json 'data.groups.#(name="access").commandCount' 6
+jsonquery toc.json 'data.groups.#(name="oidc-client").prime' true
+jsonquery toc.json 'data.groups.#(name="cluster").prime' ''
+jsonquery toc.json 'data.groups.#(name="get").commandCount' 75
+jsonquery toc.json 'data.groups.#(name="get").generated.count' 73
 jsonquery toc.json 'data.generatedCommandCount' 189
 # global contracts are disclosed on the bare TOC: the exit map and the
 # Effect contract - an agent parses --dry-run output without --all

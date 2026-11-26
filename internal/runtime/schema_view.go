@@ -40,11 +40,19 @@ type tocEntry struct {
 	Prime bool   `json:"prime,omitempty"`
 }
 
+// tocGroup is one group of the orientation. On the bare path a named group
+// carries its name, desc and CommandCount (every command the group covers,
+// generated ones included) and no Commands; Prime is set when every command
+// of the group is Prime. A group with no name keeps its Commands. The
+// filtered path lists the matching Commands and sets neither CommandCount
+// nor Prime.
 type tocGroup struct {
-	Name      string                 `json:"name,omitempty"`
-	Desc      string                 `json:"desc,omitempty"`
-	Commands  []tocEntry             `json:"commands,omitempty"`
-	Generated *groupGeneratedSummary `json:"generated,omitempty"`
+	Name         string                 `json:"name,omitempty"`
+	Desc         string                 `json:"desc,omitempty"`
+	CommandCount int                    `json:"commandCount,omitempty"`
+	Prime        bool                   `json:"prime,omitempty"`
+	Commands     []tocEntry             `json:"commands,omitempty"`
+	Generated    *groupGeneratedSummary `json:"generated,omitempty"`
 }
 
 // readOnlyJSON is the session read-only pair shared by all three JSON shapes
@@ -89,28 +97,34 @@ func (v tocView) toc() tocJSON {
 		readOnlyJSON:      newReadOnlyJSON(m.ReadOnly, m.ReadOnlySources),
 		CommandCount:      len(m.Commands),
 	}
-	// The bare text TOC collapses generated get/patch/delete <kind> commands
-	// into one summary line instead of listing them individually; the bare JSON
-	// mirrors both halves - skip generated in the per-command list, add a
-	// Generated summary to all-generated sections so they remain visible
-	// (schema disclosure spec). The filtered TOC never collapses: the matches
-	// ARE the content.
+	// The bare orientation lists no command of a named group: the group shows
+	// its desc and the number of commands it covers (generated ones included),
+	// and the group card lists them. A group with no name keeps its commands.
+	// The bare text mirrors this. Generated get/patch/delete <kind> commands
+	// are collapsed into a Generated summary per group. The filtered TOC never
+	// collapses: the matches ARE the content.
 	generated := map[string]bool{}
 	if v.bare {
 		generated = generatedCommandNames(m.Kinds)
 	}
 	for _, g := range m.Groups {
 		bespoke, genCount := partitionGroup(g, byName, generated)
+		if len(bespoke) == 0 && genCount == 0 {
+			continue
+		}
 		tg := tocGroup{Name: g.Name, Desc: g.Desc}
-		for _, c := range bespoke {
-			tg.Commands = append(tg.Commands, tocEntry{Name: c.Name, Usage: c.Usage, Prime: c.Prime})
+		if v.bare && g.Name != "" {
+			tg.CommandCount = len(g.Commands)
+			tg.Prime = groupAllPrime(g, byName)
+		} else {
+			for _, c := range bespoke {
+				tg.Commands = append(tg.Commands, tocEntry{Name: c.Name, Usage: c.Usage, Prime: c.Prime})
+			}
 		}
 		if v.bare && genCount > 0 {
 			tg.Generated = &groupGeneratedSummary{Count: genCount, Pattern: g.Name + " <kind>"}
 		}
-		if len(tg.Commands) > 0 || tg.Generated != nil {
-			out.Groups = append(out.Groups, tg)
-		}
+		out.Groups = append(out.Groups, tg)
 	}
 	if v.bare {
 		out.KindCount = len(m.Kinds)

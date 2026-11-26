@@ -68,11 +68,19 @@ func TestGeneratedSetLeavesOutACreateWithTheNameOfACommand(t *testing.T) {
 	}
 	toc := newTOCView(m, true).toc()
 	assert.Equal(t, 2, toc.GeneratedCommandCount)
-	require.NotEmpty(t, toc.Groups)
+	require.GreaterOrEqual(t, len(toc.Groups), 2, "the fixture has two named groups")
 	assert.Equal(t, "create", toc.Groups[0].Name)
-	require.Len(t, toc.Groups[0].Commands, 1)
-	assert.Equal(t, "create token", toc.Groups[0].Commands[0].Name)
+	assert.Equal(t, 1, toc.Groups[0].CommandCount)
+	assert.Empty(t, toc.Groups[0].Commands, "the bare orientation lists no command of a named group")
 	assert.Nil(t, toc.Groups[0].Generated)
+	assert.Equal(t, 1, toc.Groups[1].CommandCount)
+	require.NotNil(t, toc.Groups[1].Generated)
+	assert.Equal(t, 1, toc.Groups[1].Generated.Count)
+
+	card := newGroupView(m, m.Groups[0])
+	require.Len(t, card.bespoke, 1)
+	assert.Equal(t, "create token", card.bespoke[0].Name)
+	assert.Zero(t, card.generatedCount)
 }
 
 // TestSchemaGateLineMatrix asserts that the gate line is a
@@ -393,7 +401,7 @@ func tocManifest() Manifest {
 		}}},
 		Groups: []SchemaGroup{
 			{Name: "", Commands: []string{"schema", "completion"}},
-			{Name: "auth", Commands: []string{"auth login"}},
+			{Name: "auth", Desc: "Sign in to Rancher", Commands: []string{"auth login"}},
 			{Name: "get", Commands: []string{"get pod", "get kubernetes-versions"}},
 			{Name: "", Commands: []string{"grant"}},
 			{Name: "patch", Commands: []string{"patch pod"}},
@@ -402,13 +410,14 @@ func tocManifest() Manifest {
 }
 
 // TestSchemaTOCSectionOrderAndVocabularyBlock asserts that the bare TOC
-// renders the manifest's sections in order, one line per non-generated
-// command, with generated get/patch/delete collapsed into ONE kind-vocabulary
-// block at the position of the first generated command's group, counts
-// derived from the manifest, a version+counts header, and the exit-code +
-// `-o json` footer. All-generated sections (patch in this fixture) still
-// render their header and a per-group collapsed summary line so they are
-// discoverable; they do NOT produce a second vocabulary block.
+// renders the manifest's sections in order: a named group as its label, its
+// desc when set and its command count (generated commands included), a group
+// with no name as one line per command, with generated get/patch/delete
+// collapsed into ONE kind-vocabulary block at the position of the first
+// generated command's group, counts derived from the manifest, a
+// version+counts header, and the exit-code + `-o json` footer. A second
+// group with generated commands (patch in this fixture) does NOT produce a
+// second vocabulary block.
 func TestSchemaTOCSectionOrderAndVocabularyBlock(t *testing.T) {
 	t.Parallel()
 	text := renderTOC(tocManifest())
@@ -425,31 +434,34 @@ func TestSchemaTOCSectionOrderAndVocabularyBlock(t *testing.T) {
 	schemaAt := idx("schema - Print the schema manifest")
 	completionAt := idx("completion - Emit a completion script")
 	authHdrAt := idx("auth:")
-	authAt := idx("  auth login - Log in")
+	authDescAt := idx("  Sign in to Rancher")
+	authCountAt := idx("  1 command; to see it, run: rancher schema auth")
 	blockAt := idx("get/patch/delete <kind> - 2 commands for 1 kinds")
 	blockPointerAt := idx("  to see one kind, run: rancher schema <kind>")
 	getHdrAt := idx("get:")
-	kvAt := idx("  get kubernetes-versions - List installable versions")
+	getCountAt := idx("  2 commands; to see them, run: rancher schema get")
 	grantAt := idx("grant - Grant a role")
 	patchHdrAt := idx("patch:")
-	patchSummaryAt := idx("  patch <kind> - one command for each of 1 kinds; to see one kind, run: rancher schema <kind>")
+	patchCountAt := idx("  1 command; to see it, run: rancher schema patch")
 	stripAt := idx("exit codes: GENERIC=1 · VALIDATION=2")
 	pointerAt := idx("full manifest: rancher schema --all -o json")
 
 	assert.Less(t, schemaAt, completionAt, "unnamed leading section keeps registration order")
 	assert.Less(t, completionAt, authHdrAt)
-	assert.Less(t, authHdrAt, authAt)
-	assert.Less(t, authAt, blockAt, "the block sits at the first generated group's position")
+	assert.Equal(t, authHdrAt+1, authDescAt, "the desc follows the label")
+	assert.Equal(t, authDescAt+1, authCountAt, "the count line follows the desc")
+	assert.Less(t, authCountAt, blockAt, "the block sits at the first generated group's position")
 	assert.Equal(t, blockAt+1, blockPointerAt)
-	assert.Less(t, blockPointerAt, getHdrAt, "the generated group's own non-generated commands follow the block")
-	assert.Less(t, getHdrAt, kvAt)
-	assert.Less(t, kvAt, grantAt, "the later unnamed section renders at its own position")
-	assert.Less(t, grantAt, patchHdrAt, "all-generated section renders after the unnamed section")
-	assert.Equal(t, patchHdrAt+1, patchSummaryAt, "collapsed summary immediately follows the section header")
-	assert.Less(t, patchSummaryAt, stripAt)
+	assert.Less(t, blockPointerAt, getHdrAt, "the generated group's label follows the block")
+	assert.Equal(t, getHdrAt+1, getCountAt, "a group with no desc has its count line right after the label")
+	assert.Less(t, getCountAt, grantAt, "the later group with no name renders at its own position")
+	assert.Less(t, grantAt, patchHdrAt)
+	assert.Equal(t, patchHdrAt+1, patchCountAt)
+	assert.Less(t, patchCountAt, stripAt)
 	assert.Less(t, stripAt, pointerAt)
 
 	assert.NotContains(t, lines, "  get pod - List pods", "generated commands collapse into the block, not individual lines")
+	assert.NotContains(t, text, "auth login", "a named group lists no command")
 	assert.Equal(t, 1, strings.Count(text, "get/patch/delete <kind>"), "exactly one global vocabulary block")
 }
 

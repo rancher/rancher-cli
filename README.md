@@ -307,8 +307,9 @@ Formats: `-o table` (default) · `wide` · `json` · `yaml` · `name` ·
   either; a second signal forces a command that did not stop on the first
   to exit with 128 plus that signal's own number (`130` Ctrl-C, `143`
   SIGTERM).
-- **Discovery:** `rancher schema -o json` is the overview -
-  commands, kinds, and exit codes as a compact table of contents;
+- **Discovery:** `rancher schema -o json` is the overview - each
+  command group with its description and command count, the commands that
+  belong to no group, kinds, and exit codes;
   `rancher schema --all -o json` is the complete manifest, and the single
   source for contract and stability. `rancher schema <command|kind|group>`
   shows only that command, kind or group.

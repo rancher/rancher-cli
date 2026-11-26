@@ -278,7 +278,7 @@ func TestCheckResultShapeRejectsStyledTextWithoutText(t *testing.T) {
 }
 
 // TestStyleSchemaTOCStripInvariant asserts the bare TOC's bold spans: the
-// banner line and every named group label are bold, command rows are not,
+// banner line and every named group label are bold, the lines under a label are not,
 // stripping restores the plain render exactly, and the disabled style
 // returns the plain render unchanged.
 func TestStyleSchemaTOCStripInvariant(t *testing.T) {
@@ -305,13 +305,13 @@ func TestStyleSchemaTOCStripInvariant(t *testing.T) {
 	}
 	require.GreaterOrEqual(t, authIdx, 0, "fixture must contain a named group label")
 	assert.Contains(t, styledLines[authIdx], "\x1b[1m", "the auth: group label must be bold")
-	assert.NotContains(t, styledLines[authIdx+1], "\x1b[", "a command row must not be styled")
+	assert.NotContains(t, styledLines[authIdx+1], "\x1b[", "the group's count line must not be styled")
 }
 
 // TestStyleSchemaTOCColorsPrimeMarkers asserts the green span wraps exactly
-// "[Prime]" on a Prime command's row and on an all-Prime group's own label
-// line, while a non-Prime row or a mixed group's label stays entirely plain
-// beyond the pre-existing bold.
+// "[Prime]" on a Prime command's row (a command with no group) and on an
+// all-Prime group's own label line, while a non-Prime row or a mixed group's
+// label stays entirely plain beyond its bold.
 func TestStyleSchemaTOCColorsPrimeMarkers(t *testing.T) {
 	t.Parallel()
 	m := Manifest{
@@ -320,10 +320,13 @@ func TestStyleSchemaTOCColorsPrimeMarkers(t *testing.T) {
 			{Name: "oidc-client create", Usage: "Create a client", Prime: true},
 			{Name: "cluster scale", Usage: "Scale a pool"},
 			{Name: "cluster set-autoscaling", Usage: "Turn on autoscaling", Prime: true},
+			{Name: "login", Usage: "Log in", Prime: true},
+			{Name: "version", Usage: "Print the version"},
 		},
 		Groups: []SchemaGroup{
 			{Name: "oidc-client", Commands: []string{"oidc-client create"}},
 			{Name: "cluster", Commands: []string{"cluster scale", "cluster set-autoscaling"}},
+			{Commands: []string{"login", "version"}},
 		},
 	}
 	text := renderTOCText(m, false)
@@ -339,11 +342,11 @@ func TestStyleSchemaTOCColorsPrimeMarkers(t *testing.T) {
 	clusterLabel := lineContainingRT(t, styled, "cluster:")
 	assert.NotContains(t, clusterLabel, "[Prime]", "a mixed group's label carries no marker")
 
-	primeRow := lineContainingRT(t, styled, "cluster set-autoscaling")
+	primeRow := lineContainingRT(t, styled, "login - ")
 	assert.Contains(t, primeRow, greenPrime, "a Prime command row's marker is green")
 
-	scaleRow := lineContainingRT(t, styled, "cluster scale - ")
-	assert.NotContains(t, scaleRow, "\x1b[", "a non-Prime row stays entirely plain")
+	versionRow := lineContainingRT(t, styled, "version - ")
+	assert.NotContains(t, versionRow, "\x1b[", "a non-Prime row stays entirely plain")
 }
 
 // lineContainingRT returns the first line of text containing substr, failing

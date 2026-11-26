@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -241,10 +242,10 @@ func TestSchemaManifestGolden(t *testing.T) {
 }
 
 // TestSchemaTOCMarksEveryPrimeCommand cross-checks the full manifest against
-// the bare TOC: every bespoke command carrying prime:true in schema --all
-// must also carry prime:true in the TOC's groups[].commands[] entries.
-// Generated commands are skipped - the bare TOC collapses them into a
-// per-group summary and never lists them individually.
+// the bare TOC: a named group carries prime:true exactly when every command
+// of the group is prime:true in schema --all, a command with no group carries
+// prime:true when the manifest says so, and every prime command in the
+// manifest is either listed in the TOC or belongs to a named group.
 func TestSchemaTOCMarksEveryPrimeCommand(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	dir := t.TempDir()
@@ -267,28 +268,62 @@ func TestSchemaTOCMarksEveryPrimeCommand(t *testing.T) {
 	full := runJSON("schema", "--all", "-o", "json")
 	bare := runJSON("schema", "-o", "json")
 
-	tocPrime := map[string]bool{}
-	for _, g := range bare["groups"].([]any) {
-		cmds, _ := g.(map[string]any)["commands"].([]any)
-		for _, c := range cmds {
-			m := c.(map[string]any)
-			prime, _ := m["prime"].(bool)
-			tocPrime[m["name"].(string)] = prime
-		}
-	}
-
+	manifestPrime := map[string]bool{}
 	for _, c := range full["commands"].([]any) {
 		m := c.(map[string]any)
 		prime, _ := m["prime"].(bool)
-		if !prime {
+		manifestPrime[m["name"].(string)] = prime
+	}
+
+	groupMembers := map[string][]string{}
+	for _, g := range full["groups"].([]any) {
+		gm := g.(map[string]any)
+		name, _ := gm["name"].(string)
+		if name == "" {
 			continue
 		}
-		name := m["name"].(string)
-		got, ok := tocPrime[name]
-		if !ok {
-			continue // generated command: collapsed on the bare TOC, never listed by name
+		for _, c := range gm["commands"].([]any) {
+			groupMembers[name] = append(groupMembers[name], c.(string))
 		}
-		assert.True(t, got, "command %q is prime:true in the manifest but not TOC-marked", name)
+	}
+
+	listed := map[string]bool{}
+	namedGroups := map[string]bool{}
+	for _, g := range bare["groups"].([]any) {
+		gm := g.(map[string]any)
+		name, _ := gm["name"].(string)
+		prime, _ := gm["prime"].(bool)
+		if name == "" {
+			for _, c := range gm["commands"].([]any) {
+				cm := c.(map[string]any)
+				cname := cm["name"].(string)
+				cprime, _ := cm["prime"].(bool)
+				listed[cname] = true
+				assert.Equal(t, manifestPrime[cname], cprime, "command %q: TOC prime flag disagrees with the manifest", cname)
+			}
+			continue
+		}
+		namedGroups[name] = true
+		members := groupMembers[name]
+		require.NotEmpty(t, members, "group %q", name)
+		want := true
+		for _, member := range members {
+			want = want && manifestPrime[member]
+		}
+		assert.Equal(t, want, prime, "group %q: TOC prime flag must be set exactly when every command of the group is prime", name)
+	}
+
+	for name, prime := range manifestPrime {
+		if !prime || listed[name] {
+			continue
+		}
+		inNamedGroup := false
+		for group, members := range groupMembers {
+			if namedGroups[group] && slices.Contains(members, name) {
+				inNamedGroup = true
+			}
+		}
+		assert.True(t, inNamedGroup, "prime command %q is neither listed in the TOC nor in a named group", name)
 	}
 
 	// The group JSON card is a third projection of the same per-command
@@ -553,6 +588,89 @@ func TestSchemaTOCGolden(t *testing.T) {
 	want, err := os.ReadFile(golden)
 	require.NoError(t, err)
 	assert.Equal(t, string(want), string(got), "schema TOC drifted from golden; run with -update if intended")
+}
+
+// schemaTOCSizeLimit is the most bytes the bare `schema -o json` output may
+// hold: an agent harness shows its model only part of a longer output.
+const schemaTOCSizeLimit = 20480
+
+// TestSchemaTOCStaysUnderTheSizeLimit asserts the bare `schema -o json`
+// output, the whole envelope as written (indented, LF line ends, nothing
+// re-encoded), stays at or under schemaTOCSizeLimit bytes. A named group
+// adds its name, description and command count; a command with no group adds
+// its usage line.
+func TestSchemaTOCStaysUnderTheSizeLimit(t *testing.T) {
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	root, err := BuildRoot("golden")
+	require.NoError(t, err)
+
+	var out bytes.Buffer
+	root.Writer = &out
+	require.NoError(t, root.Run(t.Context(), []string{"rancher", "--config", t.TempDir(), "schema", "-o", "json"}))
+
+	assert.LessOrEqual(t, out.Len(), schemaTOCSizeLimit,
+		"the bare schema orientation is %d bytes, over the limit of %d bytes", out.Len(), schemaTOCSizeLimit)
+}
+
+// TestSchemaTOCGroupCountsEqualTheirCards asserts a named group's
+// commandCount in the bare orientation equals the commands its card covers
+// (the commands it lists plus its generated count), and that the named
+// counts plus the commands listed with no group add up to the orientation's
+// commandCount, so no command is in two groups or in none.
+func TestSchemaTOCGroupCountsEqualTheirCards(t *testing.T) {
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	root, err := BuildRoot("golden")
+	require.NoError(t, err)
+
+	runJSON := func(args ...string) map[string]any {
+		var out bytes.Buffer
+		root.Writer = &out
+		require.NoError(t, root.Run(t.Context(), append([]string{"rancher", "--config", dir}, args...)))
+		var env struct {
+			Data json.RawMessage `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(out.Bytes(), &env))
+		var v map[string]any
+		require.NoError(t, json.Unmarshal(env.Data, &v))
+		return v
+	}
+
+	bare := runJSON("schema", "-o", "json")
+	sum := 0
+	named := 0
+	groups, ok := bare["groups"].([]any)
+	require.True(t, ok, "the bare orientation has no groups list")
+	for _, g := range groups {
+		gm, ok := g.(map[string]any)
+		require.True(t, ok, "a group is not an object")
+		name, _ := gm["name"].(string)
+		if name == "" {
+			cmds, ok := gm["commands"].([]any)
+			require.True(t, ok, "a group with no name has no commands list")
+			sum += len(cmds)
+			continue
+		}
+		named++
+		assert.NotContains(t, gm, "commands", "group %q: the bare orientation lists no command of a named group", name)
+		count, ok := gm["commandCount"].(float64)
+		require.True(t, ok, "group %q has no commandCount", name)
+		sum += int(count)
+
+		card := runJSON("schema", name, "-o", "json")
+		cardCmds, ok := card["commands"].([]any)
+		require.True(t, ok, "group %q: its card has no commands list", name)
+		covered := len(cardCmds)
+		if gen, ok := card["generated"].(map[string]any); ok {
+			genCount, ok := gen["count"].(float64)
+			require.True(t, ok, "group %q: its card's generated summary has no count", name)
+			covered += int(genCount)
+		}
+		assert.Equal(t, covered, int(count), "group %q: commandCount disagrees with the commands its card covers", name)
+	}
+	assert.Positive(t, named)
+	assert.Equal(t, int(bare["commandCount"].(float64)), sum,
+		"named group counts plus commands with no group must add up to commandCount")
 }
 
 func TestBuildRootWiresGeneratedCommands(t *testing.T) {

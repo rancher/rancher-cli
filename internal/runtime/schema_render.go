@@ -310,6 +310,15 @@ func readOnlyLine(m Manifest) string {
 	return "read-only (" + strings.Join(m.ReadOnlySources, ", ") + ")\n"
 }
 
+// commandCountText renders a group's command count for the bare TOC text,
+// with the pronoun the pointer sentence after it uses.
+func commandCountText(n int) (count, pronoun string) {
+	if n == 1 {
+		return "1 command", "it"
+	}
+	return fmt.Sprintf("%d commands", n), "them"
+}
+
 // renderTOCText builds the bare-schema TOC text. withManifestLine controls
 // whether the "full manifest: rancher schema --all -o json" footer line is
 // appended; the bare path includes it, the --all path omits it (the footer
@@ -324,10 +333,6 @@ func renderTOCText(m Manifest, withManifestLine bool) string {
 	blockDone := false
 	for _, g := range m.Groups {
 		bespoke, pGenCount := partitionGroup(g, byName, generated)
-		indent := ""
-		if g.Name != "" {
-			indent = "  "
-		}
 		// Render the global generated vocabulary block at the first group that
 		// contains generated commands (one collapsed line for all of them).
 		if pGenCount > 0 && !blockDone {
@@ -348,17 +353,16 @@ func renderTOCText(m Manifest, withManifestLine bool) string {
 			}
 			b.WriteString(label + "\n")
 		}
-		for _, c := range bespoke {
-			b.WriteString(indent + tocLine(c) + "\n")
-		}
-		// All-generated section: show desc so users know what the section covers,
-		// then a per-group collapsed summary - analogous to the group card's treatment.
-		if len(bespoke) == 0 && pGenCount > 0 {
+		if g.Name != "" {
 			if g.Desc != "" {
-				b.WriteString(indent + g.Desc + "\n")
+				b.WriteString("  " + g.Desc + "\n")
 			}
-			fmt.Fprintf(&b, "%s%s <kind> - one command for each of %d kinds; to see one kind, run: rancher schema <kind>\n",
-				indent, g.Name, pGenCount)
+			count, pronoun := commandCountText(len(g.Commands))
+			fmt.Fprintf(&b, "  %s; to see %s, run: rancher schema %s\n", count, pronoun, g.Name)
+			continue
+		}
+		for _, c := range bespoke {
+			b.WriteString(tocLine(c) + "\n")
 		}
 	}
 	b.WriteString("\n" + exitCodeStrip(m.ExitCodes) + "\n")
@@ -369,8 +373,9 @@ func renderTOCText(m Manifest, withManifestLine bool) string {
 }
 
 // renderTOC builds the bare-`schema` table of contents: a header of
-// CLI version plus derived counts, the manifest's ordered sections with one
-// line per non-generated command, the generated get/patch/delete commands
+// CLI version plus derived counts, the manifest's ordered sections (a named
+// group as its label, desc and command count; a group with no name as one
+// line per command), the generated get/patch/delete commands
 // collapsed into ONE kind-vocabulary block at the position of the first
 // generated command's group, and a footer of the exit-code strip plus the
 // `-o json` pointer. Rendered via Result.Text under default/table only.

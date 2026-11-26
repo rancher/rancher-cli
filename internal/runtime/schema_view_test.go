@@ -25,7 +25,7 @@ func readOnlyTOCManifest() Manifest {
 			{Name: "delete pod", Usage: "Delete the pod", CommandType: Mutating, Destructive: "true"},
 		},
 		Groups: []SchemaGroup{
-			{Name: "auth", Commands: []string{"auth login"}},
+			{Name: "auth", Desc: "Sign in to Rancher", Commands: []string{"auth login"}},
 			{Name: "get", Commands: []string{"get pod"}},
 			{Name: "delete", Commands: []string{"delete pod"}},
 		},
@@ -39,8 +39,9 @@ func readOnlyTOCManifest() Manifest {
 }
 
 // TestTOCViewBareMirrorsTheTOC asserts the bare TOC JSON shape:
-// header facts, groups with name+usage entries, kind NAMES only, the
-// global exit map - and none of the full-manifest sections.
+// header facts, groups with name, desc and command count and no command
+// list, kind NAMES only, the global exit map - and none of the
+// full-manifest sections.
 func TestTOCViewBareMirrorsTheTOC(t *testing.T) {
 	t.Parallel()
 	b, err := json.Marshal(newTOCView(readOnlyTOCManifest(), true))
@@ -64,19 +65,27 @@ func TestTOCViewBareMirrorsTheTOC(t *testing.T) {
 	assert.Equal(t, []any{"create", "update", "delete"}, es["actions"])
 	assert.NotEmpty(t, es["fields"])
 
-	// Generated commands are COLLAPSED on the bare path: absent from the
-	// per-group commands list, represented instead by a generated summary
-	// object - exactly what renderTOC does (collapse mirror).
-	// All-generated groups carry no commands key (omitempty), so the
-	// iteration uses a nil-safe type assertion.
-	var flat []string
-	for _, g := range got["groups"].([]any) {
-		cmds, _ := g.(map[string]any)["commands"].([]any)
-		for _, e := range cmds {
-			flat = append(flat, e.(map[string]any)["name"].(string))
-		}
+	// A named group is its name, desc and the number of commands it covers,
+	// generated ones included, with no command list; the generated commands
+	// are also summarized as a count and a pattern.
+	type group struct {
+		name, desc string
+		count      float64
+		generated  bool
 	}
-	assert.Equal(t, []string{"auth login"}, flat, "only non-generated commands appear in the per-group commands list on the bare TOC")
+	var seen []group
+	for _, g := range got["groups"].([]any) {
+		gm := g.(map[string]any)
+		assert.NotContains(t, gm, "commands", "the bare orientation lists no command of a named group")
+		_, hasGen := gm["generated"]
+		desc, _ := gm["desc"].(string)
+		seen = append(seen, group{name: gm["name"].(string), desc: desc, count: gm["commandCount"].(float64), generated: hasGen})
+	}
+	assert.Equal(t, []group{
+		{name: "auth", desc: "Sign in to Rancher", count: 1},
+		{name: "get", count: 1, generated: true},
+		{name: "delete", count: 1, generated: true},
+	}, seen)
 
 	// Full-manifest sections must be absent - the mirror rule. effectSchema
 	// left this list deliberately: it is a global contract, disclosed on the
@@ -84,6 +93,41 @@ func TestTOCViewBareMirrorsTheTOC(t *testing.T) {
 	for _, absent := range []string{"commands", "kindsDetail", "envVars", "globalFlags", "errorCodes", "exitCodes"} {
 		assert.NotContains(t, got, absent)
 	}
+}
+
+// TestTOCViewBareGroupShapes asserts the bare groups' fields: a named group
+// carries commandCount, and prime only when every command of the group is
+// Prime; a group with no name keeps its commands and carries neither; the
+// filtered selection lists the matching commands of a group and carries
+// neither field.
+func TestTOCViewBareGroupShapes(t *testing.T) {
+	t.Parallel()
+	m := Manifest{
+		Commands: []SchemaCommand{
+			{Name: "login", Usage: "Log in"},
+			{Name: "oidc-client create", Usage: "Create a client", Prime: true},
+			{Name: "oidc-client delete", Usage: "Delete a client", Prime: true},
+			{Name: "cluster scale", Usage: "Scale a pool"},
+			{Name: "cluster set-autoscaling", Usage: "Turn on autoscaling", Prime: true},
+		},
+		Groups: []SchemaGroup{
+			{Commands: []string{"login"}},
+			{Name: "oidc-client", Desc: "Manage OIDC clients", Commands: []string{"oidc-client create", "oidc-client delete"}},
+			{Name: "cluster", Commands: []string{"cluster scale", "cluster set-autoscaling"}},
+		},
+	}
+	toc := newTOCView(m, true).toc()
+	require.Len(t, toc.Groups, 3)
+	assert.Equal(t, tocGroup{Commands: []tocEntry{{Name: "login", Usage: "Log in"}}}, toc.Groups[0])
+	assert.Equal(t, tocGroup{Name: "oidc-client", Desc: "Manage OIDC clients", CommandCount: 2, Prime: true}, toc.Groups[1])
+	assert.Equal(t, tocGroup{Name: "cluster", CommandCount: 2}, toc.Groups[2])
+
+	filtered := newTOCView(m, false).toc()
+	require.Len(t, filtered.Groups, 3)
+	assert.Zero(t, filtered.Groups[2].CommandCount)
+	assert.False(t, filtered.Groups[1].Prime)
+	require.Len(t, filtered.Groups[2].Commands, 2)
+	assert.True(t, filtered.Groups[2].Commands[1].Prime, "the filtered selection keeps the per-command marker")
 }
 
 // TestTOCViewFilteredOmitsBareOnlyFields asserts the conditionality: a filtered
