@@ -9,11 +9,11 @@
       "clientPseudoVersion": "v0.0.0-20261029130418-99ab89e90bf1"
     },
     "prime": {
-      "image": "registry.rancher.com/rancher/rancher:v2.14.5@sha256:073346158ebe41229177aef8f99cf765762f0b222e0ac6350c842d2bb19c31ca",
+      "image": "registry.rancher.com/rancher/rancher:v2.14.8@sha256:f84ff4b0d23d3068e9fc48bc26e13986d84cd319cc69b9717a7f9998e829b249",
       "label": "org.opencontainers.image.oss.revision",
-      "commit": "63d8501ec84950c65d9fb62c1666ef193d468bf5",
-      "pseudoVersion": "v0.0.0-20260826145222-63d8501ec849",
-      "clientPseudoVersion": "v0.0.0-20260826145222-63d8501ec849"
+      "commit": "5739c205f8655b2b4ebc61361410a1b20f1f4aab",
+      "pseudoVersion": "v0.0.0-20261124223004-5739c205f865",
+      "clientPseudoVersion": "v0.0.0-20261124223004-5739c205f865"
     }
   },
   "resources": [

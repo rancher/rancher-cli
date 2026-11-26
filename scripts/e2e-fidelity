@@ -25,7 +25,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 # chart in a node container.
 ORACLE_IMAGE="rancher/rancher:v2.15.3@sha256:3f3a50c6e49c1cf5b4673bef236e0f260f36055de4d073438e38c441dc97aa9b"
 ORACLE_BOOT="container"
-PRIME_ORACLE_IMAGE="registry.rancher.com/rancher/rancher:v2.14.5@sha256:073346158ebe41229177aef8f99cf765762f0b222e0ac6350c842d2bb19c31ca"
+PRIME_ORACLE_IMAGE="registry.rancher.com/rancher/rancher:v2.14.8@sha256:f84ff4b0d23d3068e9fc48bc26e13986d84cd319cc69b9717a7f9998e829b249"
 PRIME_ORACLE_BOOT="container"
 # The helm-check (E2E_FIDELITY_HELM_CHECK=1) boots ORACLE_IMAGE with helm and
 # compares it with the goldens recorded from the same image under container.
