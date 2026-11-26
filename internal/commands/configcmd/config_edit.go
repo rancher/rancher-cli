@@ -14,6 +14,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/fsacl"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/telemetry"
 )
@@ -241,7 +242,16 @@ func newTempCopy(realPath string) (tmpPath string, baseline []byte, existed bool
 		return "", nil, false, readErr
 	}
 
-	tmp, err := os.CreateTemp(dir, ".rancher-config-edit-*.yaml")
+	// The scratch file sits open in the editor for the duration of an edit.
+	// It is created inside an os.Root of the directory, so that on Windows
+	// the owner-only security descriptor is part of the create: no other
+	// local user can open the file before it is set.
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return "", nil, false, err
+	}
+	tmp, err := fsacl.CreateTemp(root, ".rancher-config-edit-*.yaml", 0600)
+	_ = root.Close()
 	if err != nil {
 		return "", nil, false, err
 	}
@@ -249,10 +259,6 @@ func newTempCopy(realPath string) (tmpPath string, baseline []byte, existed bool
 	cleanup := func() { _ = tmp.Close(); _ = os.Remove(tmpPath) }
 
 	if err := tmp.Chmod(0600); err != nil {
-		cleanup()
-		return "", nil, false, err
-	}
-	if err := config.HardenTempFileACL(tmpPath); err != nil {
 		cleanup()
 		return "", nil, false, err
 	}

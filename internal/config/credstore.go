@@ -389,11 +389,11 @@ var warnedLoosePerm sync.Map // path -> struct{}
 // later call for the same path returns "". On Windows this Unix-perm check
 // is SKIPPED via permCheckApplicable (NTFS ignores mode bits; Mode().Perm()
 // is synthetic there and would false-positive on every file) - the
-// owner-only DACL set by fsacl.Harden at write time is the guarantee on that
-// platform. The caller decides where the notice goes: a fileStore method
-// records it on its own buffer, while ReadOnlyCachedCred (no store
-// receiver, a standalone read on the token shim's fast path) returns it to
-// its own caller instead.
+// owner-only security descriptor a file is created with (fsacl.CreateFile
+// and fsacl.CreateTemp) is the guarantee on that platform. The caller
+// decides where the notice goes: a fileStore method records it on its own
+// buffer, while ReadOnlyCachedCred (no store receiver, a standalone read on
+// the token shim's fast path) returns it to its own caller instead.
 func warnLoosePerm(path string) string {
 	if fi, err := os.Stat(path); err == nil {
 		return warnLoosePermFI(path, fi)

@@ -5,6 +5,7 @@ package testfs
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -117,5 +118,52 @@ func TestRequireOnlyCurrentUserRefusesAnEmptyListAndOtherEntries(t *testing.T) {
 			r := run(t, func(tb testing.TB) { tb.Helper(); acl.RequireOnlyCurrentUser(tb, "a file") })
 			assert.True(t, r.failed)
 		})
+	}
+}
+
+// TestGrantEveryoneReadGivesNewFilesAnEntryForEveryone asserts a file made
+// with no access list of its own in a directory the helper changed holds an
+// entry for Everyone beside the one for the current user, and a directory
+// the helper changed has a protected list.
+func TestGrantEveryoneReadGivesNewFilesAnEntryForEveryone(t *testing.T) {
+	dir := t.TempDir()
+	GrantEveryoneRead(t, dir)
+	assert.True(t, ReadACL(t, dir).Protected)
+
+	file := filepath.Join(dir, "f")
+	require.NoError(t, os.WriteFile(file, []byte("x"), 0o600))
+	got := ReadACL(t, file)
+	assert.True(t, got.HasEntryForAnotherUser(t), "the file must hold an inherited entry for Everyone")
+	everyone, err := windows.CreateWellKnownSid(windows.WinWorldSid)
+	require.NoError(t, err)
+	assert.True(t, slices.ContainsFunc(got.Allowed, everyone.Equals))
+}
+
+// TestHasEntryForAnotherUser asserts the check is false for entries of the
+// current user alone and true for an entry of another SID or of another type.
+func TestHasEntryForAnotherUser(t *testing.T) {
+	user := CurrentUser(t)
+	everyone, err := windows.CreateWellKnownSid(windows.WinWorldSid)
+	require.NoError(t, err)
+	assert.False(t, ACL{Allowed: []*windows.SID{user, user}}.HasEntryForAnotherUser(t))
+	assert.True(t, ACL{Allowed: []*windows.SID{user, everyone}}.HasEntryForAnotherUser(t))
+	assert.True(t, ACL{Allowed: []*windows.SID{user}, Other: 1}.HasEntryForAnotherUser(t))
+}
+
+// TestReadHandleACLMatchesReadACL asserts the list read through an open
+// handle is the list read through the path.
+func TestReadHandleACLMatchesReadACL(t *testing.T) {
+	file := ownerOnlyFile(t)
+	f, err := os.Open(file)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = f.Close() })
+	byHandle := ReadHandleACL(t, windows.Handle(f.Fd()))
+	byPath := ReadACL(t, file)
+	assert.Equal(t, byPath.Protected, byHandle.Protected)
+	assert.Equal(t, byPath.Other, byHandle.Other)
+	assert.Equal(t, byPath.Flags, byHandle.Flags)
+	require.Len(t, byHandle.Allowed, len(byPath.Allowed))
+	for i, sid := range byPath.Allowed {
+		assert.True(t, sid.Equals(byHandle.Allowed[i]))
 	}
 }

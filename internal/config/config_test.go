@@ -27,8 +27,9 @@ func TestWriteThenLoadRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	if runtime.GOOS != "windows" {
 		// On Windows os.FileInfo.Mode() synthesizes mode bits regardless of
-		// the real NTFS DACL (fsacl.Harden is the enforcement there), so the
-		// 0600 assertion is meaningless on that platform.
+		// the real NTFS DACL (the security descriptor the file is created with
+		// is the enforcement there), so the 0600 assertion is meaningless on
+		// that platform.
 		assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
 	}
 

@@ -29,23 +29,18 @@ func WriteRawConfig(path string, data []byte) error {
 }
 
 // hardenACLHook is fsacl.Harden behind a package var, so a test can inject a
-// failure to exercise atomicWriteFile's error-cleanup ordering without a
-// real Windows host.
+// failure for the directory it is still called on (the credential identity
+// directory that already exists) without a real Windows host.
 var hardenACLHook = fsacl.Harden
 
-// hardenDirHook is fsacl.HardenInheritable behind a package var, so a test
-// can record the call EnsureDir makes on a new directory, or fail it, without
-// a real Windows host.
-var hardenDirHook = fsacl.HardenInheritable
+// createTempHook is fsacl.CreateTemp behind a package var, so a test can fail
+// the create, or read the new file's access list right after it, without a
+// real Windows host.
+var createTempHook = fsacl.CreateTemp
 
-// HardenTempFileACL exposes fsacl.Harden to other internal packages whose own
-// temp files hold config/credential content but which don't go through
-// atomicWriteFile - e.g. the config-edit scratch file (newTempCopy), which
-// sits open in the editor for the duration of an edit and deserves the same
-// owner-only DACL as atomicWriteFile's real writes.
-func HardenTempFileACL(path string) error {
-	return hardenACLHook(path)
-}
+// createFileHook is fsacl.CreateFile behind a package var, for the same
+// tests as createTempHook.
+var createFileHook = fsacl.CreateFile
 
 // afterWriteHook runs after each write this package makes that a process
 // taking no lock can observe: a file written by atomic rename, an identity
@@ -82,25 +77,31 @@ func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 		return fmt.Errorf("refusing to write through symlink: %s", path)
 	}
 
-	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+"-*")
+	// The temp file is created inside an os.Root of the directory: on
+	// Windows the create sets the owner-only security descriptor in the same
+	// call, so no other local user can open it before the descriptor is set
+	// and keep a handle that outlives a later change. The root closes after
+	// the create; the file stays open.
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return err
+	}
+	tmp, err := createTempHook(root, "."+filepath.Base(path)+"-*", 0600)
+	_ = root.Close()
 	if err != nil {
 		return err
 	}
 	tmpPath := tmp.Name()
-	// closeAndRemove closes before removing - Windows can't remove an open
-	// file (no FILE_SHARE_DELETE by default), so Remove-before-Close
-	// silently leaks the temp file there.
+	// closeAndRemove closes before removing, on every system. The removal goes
+	// by path, and on Windows the removal of a file with an open handle can
+	// be refused, or the file can stay in the directory until the handle
+	// closes, which would leave the temp file behind.
 	closeAndRemove := func() {
 		_ = tmp.Close()
 		_ = removeFile(tmpPath)
 	}
 
 	if err := tmp.Chmod(perm); err != nil {
-		closeAndRemove()
-		return err
-	}
-
-	if err := hardenACLHook(tmpPath); err != nil {
 		closeAndRemove()
 		return err
 	}

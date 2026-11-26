@@ -284,17 +284,26 @@ func createIdentityRoot(dir string) (*os.Root, error) {
 	if err := EnsureDir(dir); err != nil {
 		return nil, err
 	}
-	switch err := os.Mkdir(identityDirPath(dir), identityDirPerm); {
-	case err == nil, errors.Is(err, fs.ErrExist):
-	default:
+	parent, err := os.OpenRoot(dir)
+	if err != nil {
 		return nil, err
 	}
-	// The mode bits above are what Unix enforces; the access control list
-	// is what Windows enforces, and a directory that inherits its parent's
-	// is not owner-only there. Applied on every write, not only at
-	// creation: the call is idempotent, and a directory left behind by a
-	// creation whose hardening failed would otherwise never be repaired.
-	if err := hardenACLHook(identityDirPath(dir)); err != nil {
+	// The mode bits are what Unix enforces; the access control list is what
+	// Windows enforces. A new directory gets its owner-only list in the call
+	// that creates it, with no entry that passes to files: a file in it
+	// takes its own list when it is created.
+	err = mkdirDir(parent, identityDirName, identityDirPerm, false)
+	_ = parent.Close()
+	switch {
+	case err == nil:
+	case errors.Is(err, fs.ErrExist):
+		// A directory that exists gets the list on every write: the call is
+		// idempotent, and a directory that something else created with
+		// another list would otherwise never be repaired.
+		if err := hardenACLHook(identityDirPath(dir)); err != nil {
+			return nil, err
+		}
+	default:
 		return nil, err
 	}
 	return openIdentityRoot(dir)
@@ -501,7 +510,7 @@ func writeIdentityRecord(dir string, rec identityRecord) error {
 	tmp := "." + name + "-" + suffix
 
 	observeIdentity("recordwrite")
-	f, err := root.OpenFile(tmp, os.O_RDWR|os.O_CREATE|os.O_EXCL, identityFilePerm)
+	f, err := createFileHook(root, tmp, identityFilePerm)
 	if err != nil {
 		return err
 	}
@@ -510,10 +519,6 @@ func writeIdentityRecord(dir string, rec identityRecord) error {
 	closeAndRemove := func() {
 		_ = f.Close()
 		_ = root.Remove(tmp)
-	}
-	if err := hardenACLHook(filepath.Join(identityDirPath(dir), tmp)); err != nil {
-		closeAndRemove()
-		return err
 	}
 	if _, err := f.Write(data); err != nil {
 		closeAndRemove()

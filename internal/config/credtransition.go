@@ -341,7 +341,7 @@ func writeTransition(dir string, m transitionManifest) error {
 		return err
 	}
 	tmp := "." + transitionFileName + "-" + suffix
-	f, err := root.OpenFile(tmp, os.O_RDWR|os.O_CREATE|os.O_EXCL, transitionFilePerm)
+	f, err := createFileHook(root, tmp, transitionFilePerm)
 	if err != nil {
 		return err
 	}
@@ -350,10 +350,6 @@ func writeTransition(dir string, m transitionManifest) error {
 	closeAndRemove := func() {
 		_ = f.Close()
 		_ = root.Remove(tmp)
-	}
-	if err := hardenACLHook(filepath.Join(dir, tmp)); err != nil {
-		closeAndRemove()
-		return err
 	}
 	if _, err := f.Write(data); err != nil {
 		closeAndRemove()

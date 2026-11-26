@@ -28,8 +28,9 @@ func TestAtomicWriteFile(t *testing.T) {
 		require.NoError(t, err)
 		if runtime.GOOS != "windows" {
 			// On Windows os.FileInfo.Mode() synthesizes mode bits regardless
-			// of the real NTFS DACL (fsacl.Harden is the enforcement there), so
-			// the 0600 assertion is meaningless on that platform.
+			// of the real NTFS DACL (the security descriptor the file is created
+			// with is the enforcement there), so the 0600 assertion is meaningless
+			// on that platform.
 			assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
 		}
 
@@ -66,8 +67,9 @@ func TestAtomicWriteFile(t *testing.T) {
 		require.NoError(t, err)
 		if runtime.GOOS != "windows" {
 			// On Windows os.FileInfo.Mode() synthesizes mode bits regardless
-			// of the real NTFS DACL (fsacl.Harden is the enforcement there), so
-			// the 0600 assertion is meaningless on that platform.
+			// of the real NTFS DACL (the security descriptor the file is created
+			// with is the enforcement there), so the 0600 assertion is meaningless
+			// on that platform.
 			assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
 		}
 
@@ -87,45 +89,76 @@ func TestAtomicWriteFile(t *testing.T) {
 		require.NoError(t, err)
 		if runtime.GOOS != "windows" {
 			// On Windows os.FileInfo.Mode() synthesizes mode bits regardless
-			// of the real NTFS DACL (fsacl.Harden is the enforcement there), so
-			// the 0600 assertion is meaningless on that platform.
+			// of the real NTFS DACL (the security descriptor the file is created
+			// with is the enforcement there), so the 0600 assertion is meaningless
+			// on that platform.
 			assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
 		}
 	})
 
-	// TestAtomicWriteFileHardenACLFailureLeavesNoTempFile exercises the
-	// fsacl.Harden failure path via hardenACLHook: the temp file must be
-	// closed before it is removed, or the removal silently fails on
-	// Windows (no FILE_SHARE_DELETE by default) and leaks the temp file.
-	// Close-before-remove is correct on every platform; this test just
-	// makes the ordering observable without a real Windows host.
-	t.Run("owner-only ACL failure leaves no temp file behind", func(t *testing.T) {
-		orig := hardenACLHook
-		hardenACLHook = func(string) error { return fmt.Errorf("boom") }
-		t.Cleanup(func() { hardenACLHook = orig })
+	// A failure after the create must close the temp file before it removes
+	// it, or the removal silently fails on Windows (the handle shares no
+	// delete access with the removal) and leaks the temp file. The seam
+	// returns the created file's name reopened for reading only, with that
+	// handle still open: the mode change fails on Windows (no access to write
+	// attributes) and the write fails on Linux and macOS. Close-before-remove
+	// is correct on every platform; the test makes the ordering observable.
+	t.Run("a failure after the create leaves no temp file behind", func(t *testing.T) {
+		orig := createTempHook
+		createTempHook = func(root *os.Root, pattern string, perm os.FileMode) (*os.File, error) {
+			f, err := orig(root, pattern, perm)
+			if err != nil {
+				return nil, err
+			}
+			name := f.Name()
+			require.NoError(t, f.Close())
+			return os.Open(name)
+		}
+		t.Cleanup(func() { createTempHook = orig })
 
 		dir := t.TempDir()
 		path := filepath.Join(dir, "config.yaml")
 
-		err := atomicWriteFile(path, []byte("new"), 0600)
-		require.Error(t, err)
-		require.ErrorContains(t, err, "boom")
+		require.Error(t, atomicWriteFile(path, []byte("new"), 0600))
 
 		entries, rerr := os.ReadDir(dir)
 		require.NoError(t, rerr)
-		assert.Empty(t, entries, "no stray temp file must remain after an owner-only ACL failure")
+		assert.Empty(t, entries, "no stray temp file must remain after a failure past the create")
+	})
+
+	t.Run("a failed create leaves the target untouched", func(t *testing.T) {
+		orig := createTempHook
+		createTempHook = func(*os.Root, string, os.FileMode) (*os.File, error) { return nil, fmt.Errorf("boom") }
+		t.Cleanup(func() { createTempHook = orig })
+
+		dir := t.TempDir()
+		path := filepath.Join(dir, "config.yaml")
+		require.NoError(t, os.WriteFile(path, []byte("old"), 0600))
+
+		err := atomicWriteFile(path, []byte("new"), 0600)
+		require.ErrorContains(t, err, "boom")
+
+		b, rerr := os.ReadFile(path)
+		require.NoError(t, rerr)
+		assert.Equal(t, "old", string(b))
+		entries, rerr := os.ReadDir(dir)
+		require.NoError(t, rerr)
+		assert.Len(t, entries, 1, "only the target remains")
 	})
 }
 
-// TestHardenHookIsTheSharedACLCall asserts the hook every config file write
-// goes through is the shared owner-only access list call, so moving the
+// TestHardenHookIsTheSharedACLCall asserts the hook the identity directory's
+// repair goes through is the shared owner-only access list call, so moving the
 // code did not leave a second copy behind.
 func TestHardenHookIsTheSharedACLCall(t *testing.T) {
 	assert.Equal(t, reflect.ValueOf(fsacl.Harden).Pointer(), reflect.ValueOf(hardenACLHook).Pointer())
 }
 
-// TestHardenDirHookIsTheSharedACLCall asserts the hook EnsureDir calls on a
-// new config directory is the shared inheritable owner-only access list call.
-func TestHardenDirHookIsTheSharedACLCall(t *testing.T) {
-	assert.Equal(t, reflect.ValueOf(fsacl.HardenInheritable).Pointer(), reflect.ValueOf(hardenDirHook).Pointer())
+// TestCreateHooksAreTheSharedCreateCalls asserts the hooks every temp file
+// and new directory of this package is created through are the shared create
+// calls that set the owner-only access list with the create.
+func TestCreateHooksAreTheSharedCreateCalls(t *testing.T) {
+	assert.Equal(t, reflect.ValueOf(fsacl.CreateTemp).Pointer(), reflect.ValueOf(createTempHook).Pointer())
+	assert.Equal(t, reflect.ValueOf(fsacl.CreateFile).Pointer(), reflect.ValueOf(createFileHook).Pointer())
+	assert.Equal(t, reflect.ValueOf(fsacl.Mkdir).Pointer(), reflect.ValueOf(mkdirDir).Pointer())
 }

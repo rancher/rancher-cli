@@ -35,9 +35,10 @@ import (
 // covers.
 var directoryCreateAllowlist = map[string]requestAllowance{
 	"internal/config/configdir.go:EnsureDir:MkdirAll":              {4, "the parents of the config directory, and three calls that return the error os.MkdirAll returns for an empty name or an existing path that is not a directory, or accept a directory another process created first; they create the directory itself only in a race"},
-	"internal/config/configdir.go:(package level):Mkdir":           {1, "the seam of EnsureDir's one create of the config directory"},
-	"internal/config/configdir.go:EnsureDir:mkdirDir":              {1, "EnsureDir's one create of the config directory, through its seam; the access list is set right after it"},
-	"internal/config/credstoreid.go:createIdentityRoot:Mkdir":      {1, "credstore-id inside the config directory; it sets its own owner-only access list on every write"},
+	"internal/config/configdir.go:(package level):Mkdir":           {1, "the seam of the creates of the owner-only directories: fsacl.Mkdir"},
+	"internal/config/configdir.go:EnsureDir:mkdirDir":              {1, "EnsureDir's one create of the config directory, through its seam; the access list is part of the create"},
+	"internal/config/credstoreid.go:createIdentityRoot:mkdirDir":   {1, "credstore-id inside the config directory, through the seam of fsacl.Mkdir; the owner-only access list is part of the create"},
+	"internal/fsacl/fsacl_other.go:mkdir:Mkdir":                    {1, "the owner-only create of a directory inside an os.Root, where the mode is the restriction"},
 	"internal/telemetry/fsroot.go:Mkdir:Mkdir":                     {1, "wrapper of os.Root.Mkdir inside the opened config directory"},
 	"internal/telemetry/fsroot.go:MkdirAll:MkdirAll":               {1, "wrapper of os.Root.MkdirAll inside the opened config directory"},
 	"internal/telemetry/store.go:ensureDir:Mkdir":                  {1, "telemetry/ inside the config directory; it sets the inheritable owner-only access list when it creates it"},
