@@ -89,14 +89,76 @@ func assertNoValuePart(t *testing.T, value string, err error, row string) {
 }
 
 // randomToken is 32 letters and digits from crypto/rand.
-func randomToken() string {
+func randomToken() string { return randomString(32) }
+
+// randomString is n letters and digits from crypto/rand.
+func randomString(n int) string {
 	const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	b := make([]byte, 32)
+	b := make([]byte, n)
 	_, _ = rand.Read(b)
 	for i := range b {
 		b[i] = alphabet[int(b[i])%len(alphabet)]
 	}
 	return string(b)
+}
+
+// otherValue is a random value of the length of value that has no part of
+// minFilteredLength characters in common with value. The case planted with it
+// has the same fixed text as the case planted with value, and none of the parts
+// of value.
+func otherValue(t *testing.T, value string) string {
+	t.Helper()
+	for range 10 {
+		other := randomString(len(value))
+		if _, shared := valuePart(value, other); !shared {
+			return other
+		}
+	}
+	require.FailNow(t, "every value drawn shares a run of characters with the planted value")
+	return ""
+}
+
+// errorTextNames are the names of the texts of an error that the checks read:
+// the message, the hint and the whole chain text.
+var errorTextNames = [3]string{"message", "hint", "chain"}
+
+// messageHintAndChain returns those texts of err, in the order of
+// errorTextNames.
+func messageHintAndChain(err error) [3]string {
+	ce := clierr.From(err)
+	return [3]string{ce.Message, ce.Hint, chainText(err)}
+}
+
+// valuePartLeft returns the name of a text of err and a run of
+// minFilteredLength characters of value that the text holds and the same text
+// of second does not. second is the error of the same case planted with
+// otherValue(value). A run both texts hold is fixed text of the case, not a
+// part of the value.
+func valuePartLeft(value string, err, second error) (string, string, bool) {
+	got, other := messageHintAndChain(err), messageHintAndChain(second)
+	for i, what := range errorTextNames {
+		for j := 0; j+minFilteredLength <= len(value); j++ {
+			part := value[j : j+minFilteredLength]
+			if strings.Contains(got[i], part) && !strings.Contains(other[i], part) {
+				return what, part, true
+			}
+		}
+	}
+	return "", "", false
+}
+
+// sameError reports whether err and second are the one error, which a check of
+// err against a second output must refuse: every part of the value that err
+// holds is then in second too, and the check finds nothing.
+func sameError(err, second error) bool { return err == second }
+
+// assertNoValuePartLeft asserts valuePartLeft finds no run of value in err. It
+// requires second to be another error than err.
+func assertNoValuePartLeft(t *testing.T, value string, err, second error, row string) {
+	t.Helper()
+	require.False(t, sameError(err, second), "%s: the second output is the error under test", row)
+	what, part, found := valuePartLeft(value, err, second)
+	assert.False(t, found, "%s: the %s holds %q, a part of the planted value: %s", row, what, part, clierr.From(err).Message)
 }
 
 // errorObjectBody is a Rancher error object whose message holds value from

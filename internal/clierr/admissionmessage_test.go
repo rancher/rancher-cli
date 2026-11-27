@@ -23,8 +23,14 @@ const (
 // crypto/rand, new on every run.
 func plantedToken(t *testing.T) string {
 	t.Helper()
+	return randomToken(t, 32)
+}
+
+// randomToken is n letters and digits from crypto/rand.
+func randomToken(t *testing.T, n int) string {
+	t.Helper()
 	const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	b := make([]byte, 32)
+	b := make([]byte, n)
 	_, err := rand.Read(b)
 	require.NoError(t, err)
 	for i := range b {
@@ -33,17 +39,50 @@ func plantedToken(t *testing.T) string {
 	return string(b)
 }
 
+// minFilteredLength is the number of characters of a part of a planted token
+// that the checks look for; it equals the minimum length the filter hides.
+const minFilteredLength = 4
+
+// otherToken is a random token of the length of token that has no part of
+// minFilteredLength characters in common with token. The case planted with it
+// has the same fixed text as the case planted with token, and none of the parts
+// of token.
+func otherToken(t *testing.T, token string) string {
+	t.Helper()
+	for range 10 {
+		other := randomToken(t, len(token))
+		if _, shared := tokenRunLeft(token, other, ""); !shared {
+			return other
+		}
+	}
+	require.FailNow(t, "every token drawn shares a part with the planted token")
+	return ""
+}
+
 // hideToken is the filter that replaces token with <hidden>.
 func hideToken(token string) func(string) string {
 	return func(s string) string { return strings.ReplaceAll(s, token, "<hidden>") }
 }
 
-// assertNoTokenPart asserts text has no run of 4 characters of token.
-func assertNoTokenPart(t *testing.T, token, text, row string) {
-	t.Helper()
-	for i := 0; i+4 <= len(token); i++ {
-		assert.NotContains(t, text, token[i:i+4], "%s: a part of the planted value is left", row)
+// tokenRunLeft returns a run of minFilteredLength characters of token that text
+// holds and second does not. second is the output of the same case planted with
+// otherToken(token). A run both hold is fixed text of the case, not a part of
+// the token.
+func tokenRunLeft(token, text, second string) (string, bool) {
+	for i := 0; i+minFilteredLength <= len(token); i++ {
+		if run := token[i : i+minFilteredLength]; strings.Contains(text, run) && !strings.Contains(second, run) {
+			return run, true
+		}
 	}
+	return "", false
+}
+
+// assertNoTokenPart asserts text has no run of 4 characters of token that
+// second does not hold.
+func assertNoTokenPart(t *testing.T, token, text, second, row string) {
+	t.Helper()
+	run, found := tokenRunLeft(token, text, second)
+	assert.False(t, found, "%s: %q, a part of the planted token, is left in %q", row, run, text)
 }
 
 // straddling is head, padding and token in that order. The padding puts the
@@ -243,34 +282,43 @@ func TestAdmissionRefusalOfBodyHidesAPlantedValue(t *testing.T) {
 	t.Run("AdmissionRefusalOfBody, not cut", func(t *testing.T) {
 		t.Parallel()
 		token := plantedToken(t)
-		message := podRefusalHead + vapTextPrefix + "value " + token + " was refused"
-		ce, ok := refusalOf(bodyOf(t, message), hideToken(token))
+		other := otherToken(t, token)
+		message := func(v string) string { return podRefusalHead + vapTextPrefix + "value " + v + " was refused" }
+		ce, ok := refusalOf(bodyOf(t, message(token)), hideToken(token))
 		require.True(t, ok)
-		assertNoTokenPart(t, token, ce.Message, "not cut")
+		second, ok := refusalOf(bodyOf(t, message(other)), hideToken(other))
+		require.True(t, ok)
+		assertNoTokenPart(t, token, ce.Message, second.Message, "not cut")
 		assert.Contains(t, ce.Message, "<hidden>")
 	})
 	t.Run("AdmissionRefusalOfBody, cut inside the value", func(t *testing.T) {
 		t.Parallel()
 		token := plantedToken(t)
-		message := straddling(podRefusalHead+vapTextPrefix, token, maxAdmissionMessage)
-		ce, ok := refusalOf(bodyOf(t, message), hideToken(token))
+		other := otherToken(t, token)
+		ce, ok := refusalOf(bodyOf(t, straddling(podRefusalHead+vapTextPrefix, token, maxAdmissionMessage)), hideToken(token))
 		require.True(t, ok)
-		assertNoTokenPart(t, token, ce.Message, "cut")
+		second, ok := refusalOf(bodyOf(t, straddling(podRefusalHead+vapTextPrefix, other, maxAdmissionMessage)), hideToken(other))
+		require.True(t, ok)
+		assertNoTokenPart(t, token, ce.Message, second.Message, "cut")
 		assert.Contains(t, ce.Message, "<hidden>")
 		assert.True(t, strings.HasSuffix(ce.Message, "…"))
 	})
 	t.Run("FilteredServerMessage, not cut", func(t *testing.T) {
 		t.Parallel()
 		token := plantedToken(t)
+		other := otherToken(t, token)
 		got := FilteredServerMessage(bodyOf(t, "refused "+token+" now"), hideToken(token))
-		assertNoTokenPart(t, token, got, "not cut")
+		second := FilteredServerMessage(bodyOf(t, "refused "+other+" now"), hideToken(other))
+		assertNoTokenPart(t, token, got, second, "not cut")
 		assert.Equal(t, "refused <hidden> now", got)
 	})
 	t.Run("FilteredServerMessage, cut inside the value", func(t *testing.T) {
 		t.Parallel()
 		token := plantedToken(t)
+		other := otherToken(t, token)
 		got := FilteredServerMessage(bodyOf(t, straddling("refused ", token, maxServerMessage)), hideToken(token))
-		assertNoTokenPart(t, token, got, "cut")
+		second := FilteredServerMessage(bodyOf(t, straddling("refused ", other, maxServerMessage)), hideToken(other))
+		assertNoTokenPart(t, token, got, second, "cut")
 		assert.Contains(t, got, "<hidden>")
 		assert.True(t, strings.HasSuffix(got, "…"))
 	})
