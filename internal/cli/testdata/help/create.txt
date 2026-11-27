@@ -2,7 +2,7 @@ NAME:
    rancher create - Create resources
 
 USAGE:
-   rancher create [command [command options]]
+   rancher create [command] [flags]
 
 COMMANDS:
    cloud-credential:         Create a cloud credential for a node driver or for etcd snapshots in S3
@@ -18,10 +18,10 @@ COMMANDS:
    token:                    Create a token on the server
    user:                     Create a local user and bind its global roles
 
-OPTIONS:
+FLAGS:
    --help, -h  show help
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

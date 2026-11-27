@@ -16,6 +16,6 @@
 {"line":["get","feature"],"kind":"runs","command":"get feature","exit":0}
 {"line":["get","feature","--help"],"kind":"help","command":"get feature","exit":0,"helpPath":"get-feature.txt"}
 {"line":["get","feature","x"],"kind":"runs","command":"get feature","args":["x"],"exit":0}
-{"line":["get","feature","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","feature","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","features"],"kind":"runs","command":"get feature","exit":0}
 {"line":["get","features","--help"],"kind":"help","command":"get feature","exit":0,"helpPath":"get-feature.txt"}

@@ -19,7 +19,7 @@
 {"line":["get","encryption-key-rotation"],"kind":"runs","command":"get encryption-key-rotation","exit":0}
 {"line":["get","encryption-key-rotation","--help"],"kind":"help","command":"get encryption-key-rotation","exit":0,"helpPath":"get-encryption-key-rotation.txt"}
 {"line":["get","encryption-key-rotation","x"],"kind":"runs","command":"get encryption-key-rotation","args":["x"],"exit":0}
-{"line":["get","encryption-key-rotation","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","encryption-key-rotation","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","encryptionkeyrotations"],"kind":"runs","command":"get encryption-key-rotation","exit":0}
 {"line":["get","encryption-key-rotations"],"kind":"runs","command":"get encryption-key-rotation","exit":0}
 {"line":["get","encryptionkeyrotations","--help"],"kind":"help","command":"get encryption-key-rotation","exit":0,"helpPath":"get-encryption-key-rotation.txt"}

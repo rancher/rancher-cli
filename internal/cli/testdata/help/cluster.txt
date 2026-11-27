@@ -2,7 +2,7 @@ NAME:
    rancher cluster - Scale a machine pool, manage cluster-autoscaler settings, upgrade the Kubernetes version of a cluster, set its upgrade strategy, take an etcd snapshot or restore a cluster from one (create a provisioning cluster with `rancher create cluster` and delete it with `rancher delete provisioning-cluster`)
 
 USAGE:
-   rancher cluster [command [command options]]
+   rancher cluster [command] [flags]
 
 COMMANDS:
    clear-autoscaling:      [Prime] Turn off autoscaling for a machine pool
@@ -15,10 +15,10 @@ COMMANDS:
    set-upgrade-strategy:   Set how Rancher upgrades the nodes of an RKE2 or K3s cluster
    upgrade:                Upgrade the Kubernetes version of an RKE2 or K3s cluster
 
-OPTIONS:
+FLAGS:
    --help, -h  show help
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

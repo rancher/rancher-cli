@@ -10,4 +10,4 @@
 {"line":["extension","uninstall"],"kind":"runs","command":"extension uninstall","exit":0}
 {"line":["extension","uninstall","--help"],"kind":"help","command":"extension uninstall","exit":0,"helpPath":"extension-uninstall.txt"}
 {"line":["extension","uninstall","x"],"kind":"runs","command":"extension uninstall","args":["x"],"exit":0}
-{"line":["extension","uninstall","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["extension","uninstall","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}

@@ -2,17 +2,17 @@ NAME:
    rancher skill - Install, remove and check the agent skills that come with rancher-cli
 
 USAGE:
-   rancher skill [command [command options]]
+   rancher skill [command] [flags]
 
 COMMANDS:
    install:    Install the rancher-cli agent skill into coding-agent harnesses
    status:     Report, for each harness, the installed skill version and whether its files are unchanged
    uninstall:  Remove the agent skills that rancher-cli installed
 
-OPTIONS:
+FLAGS:
    --help, -h  show help
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --color string              auto|always|never
    --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
    --debug                     print telemetry upload details on stderr (development builds)

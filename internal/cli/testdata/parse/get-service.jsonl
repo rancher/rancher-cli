@@ -22,7 +22,7 @@
 {"line":["get","service"],"kind":"runs","command":"get service","exit":0}
 {"line":["get","service","--help"],"kind":"help","command":"get service","exit":0,"helpPath":"get-service.txt"}
 {"line":["get","service","x"],"kind":"runs","command":"get service","args":["x"],"exit":0}
-{"line":["get","service","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","service","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","services"],"kind":"runs","command":"get service","exit":0}
 {"line":["get","svc"],"kind":"runs","command":"get service","exit":0}
 {"line":["get","services","--help"],"kind":"help","command":"get service","exit":0,"helpPath":"get-service.txt"}

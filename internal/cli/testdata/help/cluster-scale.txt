@@ -2,15 +2,15 @@ NAME:
    rancher cluster scale - Change the number of nodes in a machine pool
 
 USAGE:
-   rancher cluster scale [options] <cluster>
+   rancher cluster scale [flags] <cluster>
 
-OPTIONS:
+FLAGS:
    --help, -h                     show help
    --namespace string, -n string  Fleet workspace (namespace) of the provisioning cluster (default: fleet-default)
    --nodes number                 target number of nodes
    --pool name                    machine pool name
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

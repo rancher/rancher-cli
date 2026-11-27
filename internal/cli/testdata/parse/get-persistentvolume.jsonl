@@ -19,7 +19,7 @@
 {"line":["get","persistentvolume"],"kind":"runs","command":"get persistentvolume","exit":0}
 {"line":["get","persistentvolume","--help"],"kind":"help","command":"get persistentvolume","exit":0,"helpPath":"get-persistentvolume.txt"}
 {"line":["get","persistentvolume","x"],"kind":"runs","command":"get persistentvolume","args":["x"],"exit":0}
-{"line":["get","persistentvolume","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","persistentvolume","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","persistentvolumes"],"kind":"runs","command":"get persistentvolume","exit":0}
 {"line":["get","pv"],"kind":"runs","command":"get persistentvolume","exit":0}
 {"line":["get","persistentvolumes","--help"],"kind":"help","command":"get persistentvolume","exit":0,"helpPath":"get-persistentvolume.txt"}

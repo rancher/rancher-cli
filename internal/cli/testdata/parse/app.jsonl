@@ -53,7 +53,7 @@
 {"line":["app","--yes= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
 {"line":["app","--yes=\t"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
 {"line":["app","--yes=false"],"kind":"help","command":"app","exit":0,"helpPath":"app.txt"}
-{"line":["app","--yes=maybe"],"kind":"error","command":"","errorClass":"bad bool value","exit":2,"stderr":["error (VALIDATION): invalid value for flag -yes: the value must be true or false; pass --help for usage","  hint: rancher schema"]}
+{"line":["app","--yes=maybe"],"kind":"error","command":"","errorClass":"bad bool value","exit":2,"stderr":["error (VALIDATION): invalid value for flag --yes: the value must be true or false; pass --help for usage","  hint: rancher schema"]}
 {"line":["app","--yes","false"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"false\"","  hint: rancher schema"]}
 {"line":["app","--output"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --output; pass --help for usage","  hint: rancher schema"]}
 {"line":["app","-o","json"],"kind":"help","command":"app","exit":0,"helpPath":"app.txt"}

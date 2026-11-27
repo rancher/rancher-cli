@@ -22,4 +22,4 @@
 {"line":["access","list"],"kind":"runs","command":"access list","exit":0}
 {"line":["access","list","--help"],"kind":"help","command":"access list","exit":0,"helpPath":"access-list.txt"}
 {"line":["access","list","x"],"kind":"runs","command":"access list","args":["x"],"exit":0}
-{"line":["access","list","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["access","list","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}

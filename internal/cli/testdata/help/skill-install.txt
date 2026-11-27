@@ -2,15 +2,15 @@ NAME:
    rancher skill install - Install the rancher-cli agent skill into coding-agent harnesses
 
 USAGE:
-   rancher skill install [options]
+   rancher skill install [flags]
 
-OPTIONS:
+FLAGS:
    --agent all    target harness (or all; default all)
    --force        replace content at the target that rancher-cli did not install
    --help, -h     show help
    --scope scope  install location scope: user or project (default user)
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --color string              auto|always|never
    --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
    --debug                     print telemetry upload details on stderr (development builds)

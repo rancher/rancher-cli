@@ -19,6 +19,6 @@
 {"line":["get","helmop"],"kind":"runs","command":"get helmop","exit":0}
 {"line":["get","helmop","--help"],"kind":"help","command":"get helmop","exit":0,"helpPath":"get-helmop.txt"}
 {"line":["get","helmop","x"],"kind":"runs","command":"get helmop","args":["x"],"exit":0}
-{"line":["get","helmop","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","helmop","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","helmops"],"kind":"runs","command":"get helmop","exit":0}
 {"line":["get","helmops","--help"],"kind":"help","command":"get helmop","exit":0,"helpPath":"get-helmop.txt"}

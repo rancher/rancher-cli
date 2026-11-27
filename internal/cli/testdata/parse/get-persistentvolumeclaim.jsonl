@@ -22,7 +22,7 @@
 {"line":["get","persistentvolumeclaim"],"kind":"runs","command":"get persistentvolumeclaim","exit":0}
 {"line":["get","persistentvolumeclaim","--help"],"kind":"help","command":"get persistentvolumeclaim","exit":0,"helpPath":"get-persistentvolumeclaim.txt"}
 {"line":["get","persistentvolumeclaim","x"],"kind":"runs","command":"get persistentvolumeclaim","args":["x"],"exit":0}
-{"line":["get","persistentvolumeclaim","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","persistentvolumeclaim","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","persistentvolumeclaims"],"kind":"runs","command":"get persistentvolumeclaim","exit":0}
 {"line":["get","pvc"],"kind":"runs","command":"get persistentvolumeclaim","exit":0}
 {"line":["get","persistentvolumeclaims","--help"],"kind":"help","command":"get persistentvolumeclaim","exit":0,"helpPath":"get-persistentvolumeclaim.txt"}

@@ -2,9 +2,9 @@ NAME:
    rancher cluster restore-etcd-snapshot - Restore an RKE2 or K3s cluster from one of its etcd snapshots
 
 USAGE:
-   rancher cluster restore-etcd-snapshot [options] <cluster>
+   rancher cluster restore-etcd-snapshot [flags] <cluster>
 
-OPTIONS:
+FLAGS:
    --help, -h                     show help
    --namespace string, -n string  Fleet workspace (namespace) of the provisioning cluster (default: fleet-default)
    --restore-mode string          restore mode: none|kubernetesVersion|all (default: the Rancher UI's default for the snapshot)
@@ -12,7 +12,7 @@ OPTIONS:
    --timeout timeout              wait timeout, a positive duration, e.g. 1h (default 30m)
    --wait                         wait until Rancher reports the operation done before returning (default true; --wait=false returns once the server accepts the request)
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

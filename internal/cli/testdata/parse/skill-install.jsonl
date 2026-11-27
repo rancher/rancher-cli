@@ -13,4 +13,4 @@
 {"line":["skill","install"],"kind":"runs","command":"skill install","exit":0}
 {"line":["skill","install","--help"],"kind":"help","command":"skill install","exit":0,"helpPath":"skill-install.txt"}
 {"line":["skill","install","x"],"kind":"runs","command":"skill install","args":["x"],"exit":0}
-{"line":["skill","install","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["skill","install","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}

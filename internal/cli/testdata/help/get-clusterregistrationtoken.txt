@@ -2,14 +2,14 @@ NAME:
    rancher get clusterregistrationtoken - List clusterregistrationtokens or show one
 
 USAGE:
-   rancher get clusterregistrationtoken [options] [name]
+   rancher get clusterregistrationtoken [flags] [name]
 
-OPTIONS:
+FLAGS:
    --help, -h                        show help
    --namespace id, -n id             cluster id (c-...), the namespace of its cluster registration tokens
    --selector selector, -l selector  filter a list by Kubernetes label selector, e.g. app=web,tier!=cache (kubectl's -l)
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --color string              auto|always|never
    --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
    --debug                     print telemetry upload details on stderr (development builds)

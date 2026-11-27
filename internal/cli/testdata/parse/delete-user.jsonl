@@ -10,6 +10,6 @@
 {"line":["delete","user"],"kind":"runs","command":"delete user","exit":0}
 {"line":["delete","user","--help"],"kind":"help","command":"delete user","exit":0,"helpPath":"delete-user.txt"}
 {"line":["delete","user","x"],"kind":"runs","command":"delete user","args":["x"],"exit":0}
-{"line":["delete","user","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","user","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["delete","users"],"kind":"runs","command":"delete user","exit":0}
 {"line":["delete","users","--help"],"kind":"help","command":"delete user","exit":0,"helpPath":"delete-user.txt"}

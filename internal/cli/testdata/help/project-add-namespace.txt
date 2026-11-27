@@ -2,14 +2,14 @@ NAME:
    rancher project add-namespace - Add a namespace to a project
 
 USAGE:
-   rancher project add-namespace [options] <namespace>
+   rancher project add-namespace [flags] <namespace>
 
-OPTIONS:
+FLAGS:
    --cluster id|name  cluster id|name of the project
    --help, -h         show help
    --project id|name  target project id|name
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

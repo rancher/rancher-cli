@@ -22,7 +22,7 @@
 {"line":["get","horizontalpodautoscaler"],"kind":"runs","command":"get horizontalpodautoscaler","exit":0}
 {"line":["get","horizontalpodautoscaler","--help"],"kind":"help","command":"get horizontalpodautoscaler","exit":0,"helpPath":"get-horizontalpodautoscaler.txt"}
 {"line":["get","horizontalpodautoscaler","x"],"kind":"runs","command":"get horizontalpodautoscaler","args":["x"],"exit":0}
-{"line":["get","horizontalpodautoscaler","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","horizontalpodautoscaler","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","horizontalpodautoscalers"],"kind":"runs","command":"get horizontalpodautoscaler","exit":0}
 {"line":["get","hpa"],"kind":"runs","command":"get horizontalpodautoscaler","exit":0}
 {"line":["get","horizontalpodautoscalers","--help"],"kind":"help","command":"get horizontalpodautoscaler","exit":0,"helpPath":"get-horizontalpodautoscaler.txt"}

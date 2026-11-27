@@ -13,6 +13,6 @@
 {"line":["delete","digitaloceanconfig"],"kind":"runs","command":"delete digitaloceanconfig","exit":0}
 {"line":["delete","digitaloceanconfig","--help"],"kind":"help","command":"delete digitaloceanconfig","exit":0,"helpPath":"delete-digitaloceanconfig.txt"}
 {"line":["delete","digitaloceanconfig","x"],"kind":"runs","command":"delete digitaloceanconfig","args":["x"],"exit":0}
-{"line":["delete","digitaloceanconfig","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","digitaloceanconfig","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["delete","digitaloceanconfigs"],"kind":"runs","command":"delete digitaloceanconfig","exit":0}
 {"line":["delete","digitaloceanconfigs","--help"],"kind":"help","command":"delete digitaloceanconfig","exit":0,"helpPath":"delete-digitaloceanconfig.txt"}

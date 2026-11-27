@@ -21,6 +21,6 @@
 {"line":["get","user"],"kind":"runs","command":"get user","exit":0}
 {"line":["get","user","--help"],"kind":"help","command":"get user","exit":0,"helpPath":"get-user.txt"}
 {"line":["get","user","x"],"kind":"runs","command":"get user","args":["x"],"exit":0}
-{"line":["get","user","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","user","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","users"],"kind":"runs","command":"get user","exit":0}
 {"line":["get","users","--help"],"kind":"help","command":"get user","exit":0,"helpPath":"get-user.txt"}

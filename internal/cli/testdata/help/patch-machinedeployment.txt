@@ -2,16 +2,16 @@ NAME:
    rancher patch machinedeployment - Patch the machinedeployment
 
 USAGE:
-   rancher patch machinedeployment [options] <name>
+   rancher patch machinedeployment [flags] <name>
 
-OPTIONS:
+FLAGS:
    --help, -h                           show help
    --namespace namespace, -n namespace  namespace of the CAPI object: for a cluster Rancher provisions, the namespace of its provisioning cluster (default: fleet-default); otherwise the namespace the CAPI cluster was created in
    --patch patch, -p patch              inline patch: a list of RFC 6902 operations, or a JSON object with --type merge
    --patch-file file                    patch file, or - for stdin
    --type string                        patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

@@ -18,6 +18,6 @@
 {"line":["delete","project"],"kind":"runs","command":"delete project","exit":0}
 {"line":["delete","project","--help"],"kind":"help","command":"delete project","exit":0,"helpPath":"delete-project.txt"}
 {"line":["delete","project","x"],"kind":"runs","command":"delete project","args":["x"],"exit":0}
-{"line":["delete","project","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","project","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["delete","projects"],"kind":"runs","command":"delete project","exit":0}
 {"line":["delete","projects","--help"],"kind":"help","command":"delete project","exit":0,"helpPath":"delete-project.txt"}

@@ -19,6 +19,6 @@
 {"line":["get","machinedeployment"],"kind":"runs","command":"get machinedeployment","exit":0}
 {"line":["get","machinedeployment","--help"],"kind":"help","command":"get machinedeployment","exit":0,"helpPath":"get-machinedeployment.txt"}
 {"line":["get","machinedeployment","x"],"kind":"runs","command":"get machinedeployment","args":["x"],"exit":0}
-{"line":["get","machinedeployment","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","machinedeployment","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","machinedeployments"],"kind":"runs","command":"get machinedeployment","exit":0}
 {"line":["get","machinedeployments","--help"],"kind":"help","command":"get machinedeployment","exit":0,"helpPath":"get-machinedeployment.txt"}

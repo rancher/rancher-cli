@@ -19,6 +19,6 @@
 {"line":["get","gitrepo"],"kind":"runs","command":"get gitrepo","exit":0}
 {"line":["get","gitrepo","--help"],"kind":"help","command":"get gitrepo","exit":0,"helpPath":"get-gitrepo.txt"}
 {"line":["get","gitrepo","x"],"kind":"runs","command":"get gitrepo","args":["x"],"exit":0}
-{"line":["get","gitrepo","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","gitrepo","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","gitrepos"],"kind":"runs","command":"get gitrepo","exit":0}
 {"line":["get","gitrepos","--help"],"kind":"help","command":"get gitrepo","exit":0,"helpPath":"get-gitrepo.txt"}

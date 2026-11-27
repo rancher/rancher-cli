@@ -19,7 +19,7 @@
 {"line":["get","provisioning-cluster"],"kind":"runs","command":"get provisioning-cluster","exit":0}
 {"line":["get","provisioning-cluster","--help"],"kind":"help","command":"get provisioning-cluster","exit":0,"helpPath":"get-provisioning-cluster.txt"}
 {"line":["get","provisioning-cluster","x"],"kind":"runs","command":"get provisioning-cluster","args":["x"],"exit":0}
-{"line":["get","provisioning-cluster","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","provisioning-cluster","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","provisioningclusters"],"kind":"runs","command":"get provisioning-cluster","exit":0}
 {"line":["get","provisioning-clusters"],"kind":"runs","command":"get provisioning-cluster","exit":0}
 {"line":["get","provisioningclusters","--help"],"kind":"help","command":"get provisioning-cluster","exit":0,"helpPath":"get-provisioning-cluster.txt"}

@@ -13,6 +13,6 @@
 {"line":["delete","vmwarevsphereconfig"],"kind":"runs","command":"delete vmwarevsphereconfig","exit":0}
 {"line":["delete","vmwarevsphereconfig","--help"],"kind":"help","command":"delete vmwarevsphereconfig","exit":0,"helpPath":"delete-vmwarevsphereconfig.txt"}
 {"line":["delete","vmwarevsphereconfig","x"],"kind":"runs","command":"delete vmwarevsphereconfig","args":["x"],"exit":0}
-{"line":["delete","vmwarevsphereconfig","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","vmwarevsphereconfig","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["delete","vmwarevsphereconfigs"],"kind":"runs","command":"delete vmwarevsphereconfig","exit":0}
 {"line":["delete","vmwarevsphereconfigs","--help"],"kind":"help","command":"delete vmwarevsphereconfig","exit":0,"helpPath":"delete-vmwarevsphereconfig.txt"}

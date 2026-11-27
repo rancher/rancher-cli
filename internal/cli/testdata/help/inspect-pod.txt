@@ -2,15 +2,15 @@ NAME:
    rancher inspect pod - Inspect a pod: owners, metrics, and container logs
 
 USAGE:
-   rancher inspect pod [options] <name>
+   rancher inspect pod [flags] <name>
 
-OPTIONS:
+FLAGS:
    --cluster id|name                    target cluster id|name
    --help, -h                           show help
    --namespace namespace, -n namespace  namespace to operate in
    --tail lines                         max log lines per container (default 50)
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --color string              auto|always|never
    --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
    --debug                     print telemetry upload details on stderr (development builds)

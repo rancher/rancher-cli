@@ -16,7 +16,7 @@
 {"line":["delete","daemonset"],"kind":"runs","command":"delete daemonset","exit":0}
 {"line":["delete","daemonset","--help"],"kind":"help","command":"delete daemonset","exit":0,"helpPath":"delete-daemonset.txt"}
 {"line":["delete","daemonset","x"],"kind":"runs","command":"delete daemonset","args":["x"],"exit":0}
-{"line":["delete","daemonset","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","daemonset","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["delete","daemonsets"],"kind":"runs","command":"delete daemonset","exit":0}
 {"line":["delete","ds"],"kind":"runs","command":"delete daemonset","exit":0}
 {"line":["delete","daemonsets","--help"],"kind":"help","command":"delete daemonset","exit":0,"helpPath":"delete-daemonset.txt"}

@@ -2,9 +2,9 @@ NAME:
    rancher get job - List jobs or show one
 
 USAGE:
-   rancher get job [options] [name]
+   rancher get job [flags] [name]
 
-OPTIONS:
+FLAGS:
    --cluster id|name                    target cluster id|name
    --for condition                      wait for condition, e.g. state=active or condition=Ready (starts the wait)
    --help, -h                           show help
@@ -14,7 +14,7 @@ OPTIONS:
    --timeout timeout                    wait timeout, e.g. 5m (default 120s; starts the wait)
    --wait                               wait for the resource to reach its default wait condition, or --for, before returning
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --color string              auto|always|never
    --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
    --debug                     print telemetry upload details on stderr (development builds)

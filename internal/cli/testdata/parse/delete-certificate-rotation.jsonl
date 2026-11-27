@@ -13,7 +13,7 @@
 {"line":["delete","certificate-rotation"],"kind":"runs","command":"delete certificate-rotation","exit":0}
 {"line":["delete","certificate-rotation","--help"],"kind":"help","command":"delete certificate-rotation","exit":0,"helpPath":"delete-certificate-rotation.txt"}
 {"line":["delete","certificate-rotation","x"],"kind":"runs","command":"delete certificate-rotation","args":["x"],"exit":0}
-{"line":["delete","certificate-rotation","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","certificate-rotation","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["delete","certificaterotations"],"kind":"runs","command":"delete certificate-rotation","exit":0}
 {"line":["delete","certificate-rotations"],"kind":"runs","command":"delete certificate-rotation","exit":0}
 {"line":["delete","certificaterotations","--help"],"kind":"help","command":"delete certificate-rotation","exit":0,"helpPath":"delete-certificate-rotation.txt"}

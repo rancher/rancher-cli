@@ -29,4 +29,4 @@
 {"line":["node","drain"],"kind":"runs","command":"node drain","exit":0}
 {"line":["node","drain","--help"],"kind":"help","command":"node drain","exit":0,"helpPath":"node-drain.txt"}
 {"line":["node","drain","x"],"kind":"runs","command":"node drain","args":["x"],"exit":0}
-{"line":["node","drain","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["node","drain","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}

@@ -2,15 +2,15 @@ NAME:
    rancher delete etcd-snapshot-restore - Delete the etcd-snapshot-restore
 
 USAGE:
-   rancher delete etcd-snapshot-restore [options] <name>
+   rancher delete etcd-snapshot-restore [flags] <name>
 
-OPTIONS:
+FLAGS:
    --cluster id|name  cluster id|name of the etcd-snapshot-restore
    --help, -h         show help
    --timeout timeout  wait timeout, a positive duration, e.g. 10m (default 5m)
    --wait             wait until the etcd-snapshot-restore is gone before returning (default true; --wait=false returns once the server accepts the request)
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

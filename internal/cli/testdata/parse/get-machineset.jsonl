@@ -19,6 +19,6 @@
 {"line":["get","machineset"],"kind":"runs","command":"get machineset","exit":0}
 {"line":["get","machineset","--help"],"kind":"help","command":"get machineset","exit":0,"helpPath":"get-machineset.txt"}
 {"line":["get","machineset","x"],"kind":"runs","command":"get machineset","args":["x"],"exit":0}
-{"line":["get","machineset","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","machineset","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","machinesets"],"kind":"runs","command":"get machineset","exit":0}
 {"line":["get","machinesets","--help"],"kind":"help","command":"get machineset","exit":0,"helpPath":"get-machineset.txt"}

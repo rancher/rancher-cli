@@ -2,9 +2,9 @@ NAME:
    rancher delete resourcequota - Delete the resourcequota
 
 USAGE:
-   rancher delete resourcequota [options] <name>
+   rancher delete resourcequota [flags] <name>
 
-OPTIONS:
+FLAGS:
    --cluster id|name                    target cluster id|name
    --help, -h                           show help
    --namespace namespace, -n namespace  namespace to operate in
@@ -12,7 +12,7 @@ OPTIONS:
    --timeout timeout                    wait timeout, a positive duration, e.g. 10m (default 5m)
    --wait                               wait until the resourcequota is gone before returning (default true; --wait=false returns once the server accepts the request)
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

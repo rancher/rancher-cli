@@ -19,6 +19,6 @@
 {"line":["get","bundledeployment"],"kind":"runs","command":"get bundledeployment","exit":0}
 {"line":["get","bundledeployment","--help"],"kind":"help","command":"get bundledeployment","exit":0,"helpPath":"get-bundledeployment.txt"}
 {"line":["get","bundledeployment","x"],"kind":"runs","command":"get bundledeployment","args":["x"],"exit":0}
-{"line":["get","bundledeployment","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","bundledeployment","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","bundledeployments"],"kind":"runs","command":"get bundledeployment","exit":0}
 {"line":["get","bundledeployments","--help"],"kind":"help","command":"get bundledeployment","exit":0,"helpPath":"get-bundledeployment.txt"}

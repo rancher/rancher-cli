@@ -2,13 +2,13 @@ NAME:
    rancher extension list - List the Rancher UI extensions the ClusterRepos offer and the installed ones
 
 USAGE:
-   rancher extension list [options]
+   rancher extension list [flags]
 
-OPTIONS:
+FLAGS:
    --help, -h     show help
    --show string  which extensions to list: all, installed or available (default all)
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --color string              auto|always|never
    --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
    --debug                     print telemetry upload details on stderr (development builds)

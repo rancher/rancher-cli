@@ -16,6 +16,6 @@
 {"line":["delete","job"],"kind":"runs","command":"delete job","exit":0}
 {"line":["delete","job","--help"],"kind":"help","command":"delete job","exit":0,"helpPath":"delete-job.txt"}
 {"line":["delete","job","x"],"kind":"runs","command":"delete job","args":["x"],"exit":0}
-{"line":["delete","job","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","job","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["delete","jobs"],"kind":"runs","command":"delete job","exit":0}
 {"line":["delete","jobs","--help"],"kind":"help","command":"delete job","exit":0,"helpPath":"delete-job.txt"}

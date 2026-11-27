@@ -2,13 +2,13 @@ NAME:
    rancher auth logout - Clear stored login credentials for a server
 
 USAGE:
-   rancher auth logout [options] [name]
+   rancher auth logout [flags] [name]
 
-OPTIONS:
+FLAGS:
    --all       log out of all configured servers
    --help, -h  show help
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --color string              auto|always|never
    --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
    --debug                     print telemetry upload details on stderr (development builds)

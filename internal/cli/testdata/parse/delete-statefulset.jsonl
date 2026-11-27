@@ -16,7 +16,7 @@
 {"line":["delete","statefulset"],"kind":"runs","command":"delete statefulset","exit":0}
 {"line":["delete","statefulset","--help"],"kind":"help","command":"delete statefulset","exit":0,"helpPath":"delete-statefulset.txt"}
 {"line":["delete","statefulset","x"],"kind":"runs","command":"delete statefulset","args":["x"],"exit":0}
-{"line":["delete","statefulset","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","statefulset","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["delete","statefulsets"],"kind":"runs","command":"delete statefulset","exit":0}
 {"line":["delete","sts"],"kind":"runs","command":"delete statefulset","exit":0}
 {"line":["delete","statefulsets","--help"],"kind":"help","command":"delete statefulset","exit":0,"helpPath":"delete-statefulset.txt"}

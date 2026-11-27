@@ -16,7 +16,7 @@
 {"line":["delete","configmap"],"kind":"runs","command":"delete configmap","exit":0}
 {"line":["delete","configmap","--help"],"kind":"help","command":"delete configmap","exit":0,"helpPath":"delete-configmap.txt"}
 {"line":["delete","configmap","x"],"kind":"runs","command":"delete configmap","args":["x"],"exit":0}
-{"line":["delete","configmap","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","configmap","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["delete","configmaps"],"kind":"runs","command":"delete configmap","exit":0}
 {"line":["delete","cm"],"kind":"runs","command":"delete configmap","exit":0}
 {"line":["delete","configmaps","--help"],"kind":"help","command":"delete configmap","exit":0,"helpPath":"delete-configmap.txt"}

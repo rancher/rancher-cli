@@ -29,7 +29,7 @@ const (
 const helpNamePartial = `{{wrap .FullName 3}}{{if .Usage}} - {{wrap .Usage (offset .FullName 6)}}{{end}}`
 
 // helpUsagePartial is the USAGE line of a leaf page.
-const helpUsagePartial = `{{.FullName}}{{if .VisibleFlags}} [options]{{end}}{{if .VisibleCommands}} [command [command options]]{{end}}{{if .ArgsUsage}} {{.ArgsUsage}}{{end}}`
+const helpUsagePartial = `{{.FullName}}{{if .VisibleFlags}} [flags]{{end}}{{if .ArgsUsage}} {{.ArgsUsage}}{{end}}`
 
 // renderHelpPage writes the help page of cmd to w, in the style s, and returns
 // the first error a write to w returned, else the error of the template, else
@@ -116,19 +116,22 @@ func wrapLines(text string, offset int) string {
 	return strings.Join(lines, "\n")
 }
 
-// helpRow returns the row of flag f in an options list: the names, a tab
-// and the usage text, followed by the environment variable f reads. The
-// names are -x for a name of one character and --name for the others, each
-// followed by the placeholder; a flag that can be given more than once
-// repeats them in brackets. The placeholder is the text inside the first pair
-// of backticks of the usage text (the backticks are dropped from the text),
-// whether or not the flag takes a value; without a pair, a flag that takes a
-// value has the placeholder "string" and any other flag has none. No flag
-// shows a default value, and the variable name reads the same on every OS.
+// helpRow returns the row of flag f in a flag list: the names, a tab and the
+// usage text, followed by the environment variable f reads. The names are -x
+// for a name of one character and --name for the others, each followed by the
+// placeholder; a flag that can be given more than once repeats them in
+// brackets. A flag that takes a value has a placeholder: the text inside the
+// first pair of backticks of the usage text (the backticks are dropped from
+// the text), or "string" without a pair. A bool flag takes no value and has no
+// placeholder: its usage prints as written, backticks included. No flag shows
+// a default value, and the variable name reads the same on every OS.
 func (f *Flag) helpRow() string {
-	placeholder, usage := splitPlaceholder(f.Usage)
-	if placeholder == "" && f.takesValue() {
-		placeholder = "string"
+	placeholder, usage := "", f.Usage
+	if f.takesValue() {
+		placeholder, usage = splitPlaceholder(f.Usage)
+		if placeholder == "" {
+			placeholder = "string"
+		}
 	}
 	var names strings.Builder
 	all := f.Names()

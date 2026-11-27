@@ -2,7 +2,7 @@ NAME:
    rancher access - Which clusters a subject can reach, which projects it can see into, and what it can do, as the server answers (never inferred from bindings)
 
 USAGE:
-   rancher access [command [command options]]
+   rancher access [command] [flags]
 
 COMMANDS:
    can:       Ask the cluster's authorizer whether a subject can perform a verb on a resource
@@ -12,10 +12,10 @@ COMMANDS:
    projects:  List the projects a subject can see into, and the Rancher memberships behind them
    who-can:   List the subjects the cluster's authorizer allows to perform a verb on a resource
 
-OPTIONS:
+FLAGS:
    --help, -h  show help
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --color string              auto|always|never
    --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
    --debug                     print telemetry upload details on stderr (development builds)

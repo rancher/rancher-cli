@@ -22,7 +22,7 @@
 {"line":["get","ingress"],"kind":"runs","command":"get ingress","exit":0}
 {"line":["get","ingress","--help"],"kind":"help","command":"get ingress","exit":0,"helpPath":"get-ingress.txt"}
 {"line":["get","ingress","x"],"kind":"runs","command":"get ingress","args":["x"],"exit":0}
-{"line":["get","ingress","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","ingress","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","ingresses"],"kind":"runs","command":"get ingress","exit":0}
 {"line":["get","ing"],"kind":"runs","command":"get ingress","exit":0}
 {"line":["get","ingresses","--help"],"kind":"help","command":"get ingress","exit":0,"helpPath":"get-ingress.txt"}

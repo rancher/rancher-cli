@@ -19,6 +19,6 @@
 {"line":["get","harvesterconfig"],"kind":"runs","command":"get harvesterconfig","exit":0}
 {"line":["get","harvesterconfig","--help"],"kind":"help","command":"get harvesterconfig","exit":0,"helpPath":"get-harvesterconfig.txt"}
 {"line":["get","harvesterconfig","x"],"kind":"runs","command":"get harvesterconfig","args":["x"],"exit":0}
-{"line":["get","harvesterconfig","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","harvesterconfig","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","harvesterconfigs"],"kind":"runs","command":"get harvesterconfig","exit":0}
 {"line":["get","harvesterconfigs","--help"],"kind":"help","command":"get harvesterconfig","exit":0,"helpPath":"get-harvesterconfig.txt"}

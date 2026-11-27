@@ -16,6 +16,6 @@
 {"line":["get","cluster"],"kind":"runs","command":"get cluster","exit":0}
 {"line":["get","cluster","--help"],"kind":"help","command":"get cluster","exit":0,"helpPath":"get-cluster.txt"}
 {"line":["get","cluster","x"],"kind":"runs","command":"get cluster","args":["x"],"exit":0}
-{"line":["get","cluster","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","cluster","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","clusters"],"kind":"runs","command":"get cluster","exit":0}
 {"line":["get","clusters","--help"],"kind":"help","command":"get cluster","exit":0,"helpPath":"get-cluster.txt"}

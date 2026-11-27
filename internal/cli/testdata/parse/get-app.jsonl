@@ -22,6 +22,6 @@
 {"line":["get","app"],"kind":"runs","command":"get app","exit":0}
 {"line":["get","app","--help"],"kind":"help","command":"get app","exit":0,"helpPath":"get-app.txt"}
 {"line":["get","app","x"],"kind":"runs","command":"get app","args":["x"],"exit":0}
-{"line":["get","app","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","app","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","apps"],"kind":"runs","command":"get app","exit":0}
 {"line":["get","apps","--help"],"kind":"help","command":"get app","exit":0,"helpPath":"get-app.txt"}

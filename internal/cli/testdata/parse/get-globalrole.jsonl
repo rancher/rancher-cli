@@ -16,6 +16,6 @@
 {"line":["get","globalrole"],"kind":"runs","command":"get globalrole","exit":0}
 {"line":["get","globalrole","--help"],"kind":"help","command":"get globalrole","exit":0,"helpPath":"get-globalrole.txt"}
 {"line":["get","globalrole","x"],"kind":"runs","command":"get globalrole","args":["x"],"exit":0}
-{"line":["get","globalrole","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","globalrole","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","globalroles"],"kind":"runs","command":"get globalrole","exit":0}
 {"line":["get","globalroles","--help"],"kind":"help","command":"get globalrole","exit":0,"helpPath":"get-globalrole.txt"}

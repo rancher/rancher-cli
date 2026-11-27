@@ -13,7 +13,7 @@
 {"line":["delete","etcd-snapshot-save"],"kind":"runs","command":"delete etcd-snapshot-save","exit":0}
 {"line":["delete","etcd-snapshot-save","--help"],"kind":"help","command":"delete etcd-snapshot-save","exit":0,"helpPath":"delete-etcd-snapshot-save.txt"}
 {"line":["delete","etcd-snapshot-save","x"],"kind":"runs","command":"delete etcd-snapshot-save","args":["x"],"exit":0}
-{"line":["delete","etcd-snapshot-save","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","etcd-snapshot-save","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["delete","etcdsnapshotsaves"],"kind":"runs","command":"delete etcd-snapshot-save","exit":0}
 {"line":["delete","etcd-snapshot-saves"],"kind":"runs","command":"delete etcd-snapshot-save","exit":0}
 {"line":["delete","etcdsnapshotsaves","--help"],"kind":"help","command":"delete etcd-snapshot-save","exit":0,"helpPath":"delete-etcd-snapshot-save.txt"}

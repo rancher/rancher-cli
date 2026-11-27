@@ -2,15 +2,15 @@ NAME:
    rancher create token - Create a token on the server
 
 USAGE:
-   rancher create token [options]
+   rancher create token [flags]
 
-OPTIONS:
+FLAGS:
    --cluster id|name     scope the token to this cluster id|name
    --description string  description of the token, to identify it
    --help, -h            show help
    --ttl string          token expiration, e.g. 30d, 12h (omit for server default)
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

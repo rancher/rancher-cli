@@ -29,4 +29,4 @@
 {"line":["app","uninstall"],"kind":"runs","command":"app uninstall","exit":0}
 {"line":["app","uninstall","--help"],"kind":"help","command":"app uninstall","exit":0,"helpPath":"app-uninstall.txt"}
 {"line":["app","uninstall","x"],"kind":"runs","command":"app uninstall","args":["x"],"exit":0}
-{"line":["app","uninstall","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["app","uninstall","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}

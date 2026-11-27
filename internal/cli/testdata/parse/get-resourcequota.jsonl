@@ -22,7 +22,7 @@
 {"line":["get","resourcequota"],"kind":"runs","command":"get resourcequota","exit":0}
 {"line":["get","resourcequota","--help"],"kind":"help","command":"get resourcequota","exit":0,"helpPath":"get-resourcequota.txt"}
 {"line":["get","resourcequota","x"],"kind":"runs","command":"get resourcequota","args":["x"],"exit":0}
-{"line":["get","resourcequota","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","resourcequota","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","resourcequotas"],"kind":"runs","command":"get resourcequota","exit":0}
 {"line":["get","quota"],"kind":"runs","command":"get resourcequota","exit":0}
 {"line":["get","resourcequotas","--help"],"kind":"help","command":"get resourcequota","exit":0,"helpPath":"get-resourcequota.txt"}

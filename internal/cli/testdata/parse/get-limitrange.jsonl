@@ -22,7 +22,7 @@
 {"line":["get","limitrange"],"kind":"runs","command":"get limitrange","exit":0}
 {"line":["get","limitrange","--help"],"kind":"help","command":"get limitrange","exit":0,"helpPath":"get-limitrange.txt"}
 {"line":["get","limitrange","x"],"kind":"runs","command":"get limitrange","args":["x"],"exit":0}
-{"line":["get","limitrange","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","limitrange","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","limitranges"],"kind":"runs","command":"get limitrange","exit":0}
 {"line":["get","limits"],"kind":"runs","command":"get limitrange","exit":0}
 {"line":["get","limitranges","--help"],"kind":"help","command":"get limitrange","exit":0,"helpPath":"get-limitrange.txt"}

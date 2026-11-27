@@ -8,7 +8,7 @@
 {"line":["inspect","deployment"],"kind":"runs","command":"inspect deployment","exit":0}
 {"line":["inspect","deployment","--help"],"kind":"help","command":"inspect deployment","exit":0,"helpPath":"inspect-deployment.txt"}
 {"line":["inspect","deployment","x"],"kind":"runs","command":"inspect deployment","args":["x"],"exit":0}
-{"line":["inspect","deployment","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["inspect","deployment","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["inspect","deployments"],"kind":"runs","command":"inspect deployment","exit":0}
 {"line":["inspect","deploy"],"kind":"runs","command":"inspect deployment","exit":0}
 {"line":["inspect","deployments","--help"],"kind":"help","command":"inspect deployment","exit":0,"helpPath":"inspect-deployment.txt"}

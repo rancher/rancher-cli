@@ -317,7 +317,7 @@ func TestCompletionWithReadOnlyOnTheLineIsUnchanged(t *testing.T) {
 
 // TestLocalCommandsNeitherListNorOfferReadOnly asserts, for every
 // registered command, that a Local command lists --read-only neither under
-// GLOBAL OPTIONS in its help nor among its flag-name completion
+// GLOBAL FLAGS in its help nor among its flag-name completion
 // candidates, since it refuses the flag, and that every other command
 // still does both.
 func TestLocalCommandsNeitherListNorOfferReadOnly(t *testing.T) {
@@ -339,12 +339,12 @@ func TestLocalCommandsNeitherListNorOfferReadOnly(t *testing.T) {
 		listed := listsFlag(globals, runtime.FlagReadOnly)
 		if d.CommandType == runtime.Local {
 			local++
-			assert.False(t, listed, "%s: GLOBAL OPTIONS lists --read-only", d.Name)
+			assert.False(t, listed, "%s: GLOBAL FLAGS lists --read-only", d.Name)
 			assert.False(t, offered, "%s: completion offers --read-only", d.Name)
 			continue
 		}
 		other++
-		assert.True(t, listed, "%s: GLOBAL OPTIONS lists --read-only", d.Name)
+		assert.True(t, listed, "%s: GLOBAL FLAGS lists --read-only", d.Name)
 		assert.True(t, offered, "%s: completion offers --read-only", d.Name)
 	}
 	assert.Positive(t, local)

@@ -19,7 +19,7 @@
 {"line":["get","fleet-cluster"],"kind":"runs","command":"get fleet-cluster","exit":0}
 {"line":["get","fleet-cluster","--help"],"kind":"help","command":"get fleet-cluster","exit":0,"helpPath":"get-fleet-cluster.txt"}
 {"line":["get","fleet-cluster","x"],"kind":"runs","command":"get fleet-cluster","args":["x"],"exit":0}
-{"line":["get","fleet-cluster","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","fleet-cluster","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","fleetclusters"],"kind":"runs","command":"get fleet-cluster","exit":0}
 {"line":["get","fleet-clusters"],"kind":"runs","command":"get fleet-cluster","exit":0}
 {"line":["get","fleetclusters","--help"],"kind":"help","command":"get fleet-cluster","exit":0,"helpPath":"get-fleet-cluster.txt"}

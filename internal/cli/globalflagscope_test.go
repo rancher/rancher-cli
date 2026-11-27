@@ -118,7 +118,7 @@ func hasOwnVersionFlag(path string) bool {
 // read or change server resources, --project on commands that take it and
 // the rest on every command. A group offers a flag when a command under it
 // accepts it; the root offers every flag. A command lists --project under
-// its own OPTIONS, never under GLOBAL OPTIONS. Completion offers --version
+// its own FLAGS, never under GLOBAL FLAGS. Completion offers --version
 // and its alias -v, and the help page lists --version, on the root only.
 // The offer is checked in both directions: a flag a command accepts must
 // still be offered. It also asserts that the built tree and the registry
@@ -221,24 +221,24 @@ func TestEveryCommandAndGroupOffersOnlyTheGlobalFlagsItAccepts(t *testing.T) {
 		}
 		offered := offeredFlagTokens(t, row.words)
 		help := surfaceRun(t, slices.Concat(row.words, []string{"--help"}))
-		options, globals := helpSections(help)
+		own, globals := helpSections(help)
 		for _, gf := range flags {
 			name := globalFlagLongName(gf)
 			want := globalFlagIsOfferedBy(t, row, gf)
 			assert.Equal(t, want, slices.Contains(offered, "--"+name), "%s: completion offers --%s", row.label, name)
 			if isCommand && name == runtime.FlagProject {
-				assert.Equal(t, want, listsFlag(options, name), "%s: OPTIONS lists --%s", row.label, name)
-				assert.False(t, listsFlag(globals, name), "%s: GLOBAL OPTIONS lists --%s", row.label, name)
+				assert.Equal(t, want, listsFlag(own, name), "%s: FLAGS lists --%s", row.label, name)
+				assert.False(t, listsFlag(globals, name), "%s: GLOBAL FLAGS lists --%s", row.label, name)
 				continue
 			}
-			assert.Equal(t, want, listsFlag(globals, name), "%s: GLOBAL OPTIONS lists --%s", row.label, name)
+			assert.Equal(t, want, listsFlag(globals, name), "%s: GLOBAL FLAGS lists --%s", row.label, name)
 		}
 		// app install and app upgrade declare their own --version, the chart
 		// version; no other command below the root offers one.
 		wantVersion := row.root || hasOwnVersionFlag(row.label)
 		assert.Equal(t, wantVersion, slices.Contains(offered, "--version"), "%s: completion offers --version", row.label)
 		assert.Equal(t, row.root, slices.Contains(offeredTokensFor(t, row.words, "-"), "-v"), "%s: completion offers -v", row.label)
-		assert.Equal(t, row.root, listsVersionFlag(globals), "%s: GLOBAL OPTIONS lists --version", row.label)
+		assert.Equal(t, row.root, listsVersionFlag(globals), "%s: GLOBAL FLAGS lists --version", row.label)
 		checked[row.label] = true
 	}
 

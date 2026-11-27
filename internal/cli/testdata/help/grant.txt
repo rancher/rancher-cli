@@ -2,9 +2,9 @@ NAME:
    rancher grant - Grant a role to a user or group at project, cluster, or global scope
 
 USAGE:
-   rancher grant [options] <subject>
+   rancher grant [flags] <subject>
 
-OPTIONS:
+FLAGS:
    --cluster string   cluster scope, or the cluster the --project is in
    --global           global scope
    --help, -h         show help
@@ -12,7 +12,7 @@ OPTIONS:
    --role id          role for the scope: a roletemplate id (project/cluster) or globalrole `id` (global); discover with: `rancher get roletemplates` (project/cluster) or `rancher get globalroles` (global)
    --type string      subject type, user or group; the CLI infers it from a principal prefix it recognizes, and requires it for any other principal prefix
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

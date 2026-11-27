@@ -16,7 +16,7 @@
 {"line":["delete","horizontalpodautoscaler"],"kind":"runs","command":"delete horizontalpodautoscaler","exit":0}
 {"line":["delete","horizontalpodautoscaler","--help"],"kind":"help","command":"delete horizontalpodautoscaler","exit":0,"helpPath":"delete-horizontalpodautoscaler.txt"}
 {"line":["delete","horizontalpodautoscaler","x"],"kind":"runs","command":"delete horizontalpodautoscaler","args":["x"],"exit":0}
-{"line":["delete","horizontalpodautoscaler","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","horizontalpodautoscaler","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["delete","horizontalpodautoscalers"],"kind":"runs","command":"delete horizontalpodautoscaler","exit":0}
 {"line":["delete","hpa"],"kind":"runs","command":"delete horizontalpodautoscaler","exit":0}
 {"line":["delete","horizontalpodautoscalers","--help"],"kind":"help","command":"delete horizontalpodautoscaler","exit":0,"helpPath":"delete-horizontalpodautoscaler.txt"}

@@ -1,4 +1,4 @@
 {"line":["telemetry","show"],"kind":"runs","command":"telemetry show","exit":0}
 {"line":["telemetry","show","--help"],"kind":"help","command":"telemetry show","exit":0,"helpPath":"telemetry-show.txt"}
 {"line":["telemetry","show","x"],"kind":"runs","command":"telemetry show","args":["x"],"exit":0}
-{"line":["telemetry","show","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["telemetry","show","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}

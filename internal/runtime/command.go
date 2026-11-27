@@ -311,8 +311,8 @@ type CommittedContext struct {
 	Recovery string
 }
 
-// Input abstracts parsed flags/args so engine code never imports the command
-// line reader.
+// Input abstracts parsed flags/args so engine code never imports the command-line
+// parser.
 type Input interface {
 	String(name string) string
 	Bool(name string) bool

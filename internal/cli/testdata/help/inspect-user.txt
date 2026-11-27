@@ -2,12 +2,12 @@ NAME:
    rancher inspect user - Inspect a user: id and names, groups, and role bindings at global, cluster and project level
 
 USAGE:
-   rancher inspect user [options] <user>
+   rancher inspect user [flags] <user>
 
-OPTIONS:
+FLAGS:
    --help, -h  show help
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --color string              auto|always|never
    --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
    --debug                     print telemetry upload details on stderr (development builds)

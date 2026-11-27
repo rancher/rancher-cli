@@ -53,7 +53,7 @@
 {"line":["create","user","--yes= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
 {"line":["create","user","--yes=\t"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
 {"line":["create","user","--yes=false"],"kind":"runs","command":"create user","flags":{"yes":false},"exit":0}
-{"line":["create","user","--yes=maybe"],"kind":"error","command":"","errorClass":"bad bool value","exit":2,"stderr":["error (VALIDATION): invalid value for flag -yes: the value must be true or false; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","--yes=maybe"],"kind":"error","command":"","errorClass":"bad bool value","exit":2,"stderr":["error (VALIDATION): invalid value for flag --yes: the value must be true or false; pass --help for usage","  hint: rancher schema"]}
 {"line":["create","user","--yes","false"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): create user: argument at position 1 was typed after the bool flag --yes; a bool flag takes its value only as --yes=<value>. To pass an argument such as true or false, put it before the flags or after --","  hint: rancher create user --help"]}
 {"line":["create","user","--output"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --output; pass --help for usage","  hint: rancher schema"]}
 {"line":["create","user","-o","json"],"kind":"runs","command":"create user","flags":{"output":"json"},"exit":0}

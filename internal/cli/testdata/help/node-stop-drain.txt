@@ -2,15 +2,15 @@ NAME:
    rancher node stop-drain - Stop a running drain of a node; the node stays cordoned
 
 USAGE:
-   rancher node stop-drain [options] <node>
+   rancher node stop-drain [flags] <node>
 
-OPTIONS:
+FLAGS:
    --cluster id|name  target cluster id|name
    --help, -h         show help
    --timeout timeout  wait timeout, a positive duration (default 2m)
    --wait             wait until Rancher reports the drain stopped (default true; --wait=false returns once the server accepts the request)
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

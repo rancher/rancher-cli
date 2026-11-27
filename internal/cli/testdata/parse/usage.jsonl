@@ -14,4 +14,4 @@
 {"line":["usage"],"kind":"runs","command":"usage","exit":0}
 {"line":["usage","--help"],"kind":"help","command":"usage","exit":0,"helpPath":"usage.txt"}
 {"line":["usage","x"],"kind":"runs","command":"usage","args":["x"],"exit":0}
-{"line":["usage","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["usage","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}

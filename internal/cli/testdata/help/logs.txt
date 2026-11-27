@@ -2,9 +2,9 @@ NAME:
    rancher logs - Show logs of Rancher components (server, agent, fleet-agent, kube-api-auth, webhook, api-extension)
 
 USAGE:
-   rancher logs [options] <server|agent|fleet-agent|kube-api-auth|webhook|api-extension>
+   rancher logs [flags] <server|agent|fleet-agent|kube-api-auth|webhook|api-extension>
 
-OPTIONS:
+FLAGS:
    --cluster id|name      target cluster id|name
    --container container  container name (default: the containers and init containers of each pod)
    --help, -h             show help
@@ -14,7 +14,7 @@ OPTIONS:
    --tail lines           max lines (default 200)
    --timestamps           prefix each line with a timestamp
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --color string              auto|always|never
    --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
    --debug                     print telemetry upload details on stderr (development builds)

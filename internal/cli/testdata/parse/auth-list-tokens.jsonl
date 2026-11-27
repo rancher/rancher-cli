@@ -1,4 +1,4 @@
 {"line":["auth","list-tokens"],"kind":"runs","command":"auth list-tokens","exit":0}
 {"line":["auth","list-tokens","--help"],"kind":"help","command":"auth list-tokens","exit":0,"helpPath":"auth-list-tokens.txt"}
 {"line":["auth","list-tokens","x"],"kind":"runs","command":"auth list-tokens","args":["x"],"exit":0}
-{"line":["auth","list-tokens","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["auth","list-tokens","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}

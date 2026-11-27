@@ -8,4 +8,4 @@
 {"line":["cluster","clear-autoscaling"],"kind":"runs","command":"cluster clear-autoscaling","exit":0}
 {"line":["cluster","clear-autoscaling","--help"],"kind":"help","command":"cluster clear-autoscaling","exit":0,"helpPath":"cluster-clear-autoscaling.txt"}
 {"line":["cluster","clear-autoscaling","x"],"kind":"runs","command":"cluster clear-autoscaling","args":["x"],"exit":0}
-{"line":["cluster","clear-autoscaling","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["cluster","clear-autoscaling","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}

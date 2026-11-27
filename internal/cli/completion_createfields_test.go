@@ -239,8 +239,8 @@ func TestCreateFieldFlagsFullCallback(t *testing.T) {
 }
 
 // TestKeyValueFlagsRefuseASecondInstance asserts, through the real command
-// tree, that each key=value flag given twice is a VALIDATION error naming
-// the flag and the remedy, in the space and the equals form, at parse time:
+// tree, that each key=value flag given twice is a VALIDATION error that says
+// the flag may be given once, in the space and the equals form, at parse time:
 // no server is configured, so a run that got past parsing would fail with
 // another error. NOT parallel: it sets the package's raw argv and the
 // environment.

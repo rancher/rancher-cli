@@ -2,15 +2,15 @@ NAME:
    rancher access clusters - List the clusters Rancher lets a subject into, and the bindings that grant it
 
 USAGE:
-   rancher access clusters [options]
+   rancher access clusters [flags]
 
-OPTIONS:
+FLAGS:
    --as string       username, user id, or user principal; omitted = you
    --help, -h        show help
    --timeout string  time limit for the whole command, e.g. 2m (default 60s)
    --type string     kind of the --as value (only user is accepted here)
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --color string              auto|always|never
    --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
    --debug                     print telemetry upload details on stderr (development builds)

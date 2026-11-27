@@ -2,7 +2,7 @@ NAME:
    rancher inspect - Inspect a cluster, workload or project with its related objects
 
 USAGE:
-   rancher inspect [command [command options]]
+   rancher inspect [command] [flags]
 
 COMMANDS:
    cluster, clusters:                Inspect a cluster: status, agent connectivity, machine pools, members, machines, and registration
@@ -11,10 +11,10 @@ COMMANDS:
    project, projects:                Inspect a project: namespaces, members, resource quota, and usage
    user, users:                      Inspect a user: id and names, groups, and role bindings at global, cluster and project level
 
-OPTIONS:
+FLAGS:
    --help, -h  show help
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --color string              auto|always|never
    --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
    --debug                     print telemetry upload details on stderr (development builds)

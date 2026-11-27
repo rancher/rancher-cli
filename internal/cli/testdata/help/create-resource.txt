@@ -2,16 +2,16 @@ NAME:
    rancher create resource - Create a resource from a manifest file
 
 USAGE:
-   rancher create resource [options]
+   rancher create resource [flags]
 
-OPTIONS:
+FLAGS:
    --cluster id|name                    target cluster id|name (the manifest may supply it)
    --filename file, -f file             manifest file, or - for stdin
    --help, -h                           show help
    --namespace namespace, -n namespace  namespace to operate in
    --project string                     the manifest's namespace must be in this project (namespaced kinds; refused for a Namespace)
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

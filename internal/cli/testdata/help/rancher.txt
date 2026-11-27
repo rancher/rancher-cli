@@ -2,7 +2,7 @@ NAME:
    rancher - rancher-cli
 
 USAGE:
-   rancher [global options] [command [command options]]
+   rancher [global flags] [command] [flags]
 
 VERSION:
    v-test
@@ -36,7 +36,7 @@ COMMANDS:
    token:           Legacy exec-credential shim for Rancher-generated kubeconfigs
    usage:           Show CPU/memory requests, limits, and usage for namespaces, projects, nodes, or pods
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

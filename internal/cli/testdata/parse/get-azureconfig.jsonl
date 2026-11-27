@@ -19,6 +19,6 @@
 {"line":["get","azureconfig"],"kind":"runs","command":"get azureconfig","exit":0}
 {"line":["get","azureconfig","--help"],"kind":"help","command":"get azureconfig","exit":0,"helpPath":"get-azureconfig.txt"}
 {"line":["get","azureconfig","x"],"kind":"runs","command":"get azureconfig","args":["x"],"exit":0}
-{"line":["get","azureconfig","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","azureconfig","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","azureconfigs"],"kind":"runs","command":"get azureconfig","exit":0}
 {"line":["get","azureconfigs","--help"],"kind":"help","command":"get azureconfig","exit":0,"helpPath":"get-azureconfig.txt"}

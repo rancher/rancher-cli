@@ -19,7 +19,7 @@
 {"line":["get","storageclass"],"kind":"runs","command":"get storageclass","exit":0}
 {"line":["get","storageclass","--help"],"kind":"help","command":"get storageclass","exit":0,"helpPath":"get-storageclass.txt"}
 {"line":["get","storageclass","x"],"kind":"runs","command":"get storageclass","args":["x"],"exit":0}
-{"line":["get","storageclass","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","storageclass","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","storageclasses"],"kind":"runs","command":"get storageclass","exit":0}
 {"line":["get","sc"],"kind":"runs","command":"get storageclass","exit":0}
 {"line":["get","storageclasses","--help"],"kind":"help","command":"get storageclass","exit":0,"helpPath":"get-storageclass.txt"}

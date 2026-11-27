@@ -14,4 +14,4 @@
 {"line":["access","projects"],"kind":"runs","command":"access projects","exit":0}
 {"line":["access","projects","--help"],"kind":"help","command":"access projects","exit":0,"helpPath":"access-projects.txt"}
 {"line":["access","projects","x"],"kind":"runs","command":"access projects","args":["x"],"exit":0}
-{"line":["access","projects","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["access","projects","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}

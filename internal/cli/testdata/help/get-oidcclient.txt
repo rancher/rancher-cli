@@ -5,16 +5,16 @@ DESCRIPTION:
    A Rancher Prime feature; the connected server decides whether it is available.
 
 USAGE:
-   rancher get oidcclient [options] [name]
+   rancher get oidcclient [flags] [name]
 
-OPTIONS:
+FLAGS:
    --for condition                   wait for condition, e.g. state=active or condition=Ready (starts the wait)
    --help, -h                        show help
    --selector selector, -l selector  filter a list by Kubernetes label selector, e.g. app=web,tier!=cache (kubectl's -l)
    --timeout timeout                 wait timeout, e.g. 5m (default 120s; starts the wait)
    --wait                            wait for the resource to reach its default wait condition, or --for, before returning
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --color string              auto|always|never
    --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
    --debug                     print telemetry upload details on stderr (development builds)

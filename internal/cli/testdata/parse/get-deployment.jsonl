@@ -22,7 +22,7 @@
 {"line":["get","deployment"],"kind":"runs","command":"get deployment","exit":0}
 {"line":["get","deployment","--help"],"kind":"help","command":"get deployment","exit":0,"helpPath":"get-deployment.txt"}
 {"line":["get","deployment","x"],"kind":"runs","command":"get deployment","args":["x"],"exit":0}
-{"line":["get","deployment","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","deployment","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","deployments"],"kind":"runs","command":"get deployment","exit":0}
 {"line":["get","deploy"],"kind":"runs","command":"get deployment","exit":0}
 {"line":["get","deployments","--help"],"kind":"help","command":"get deployment","exit":0,"helpPath":"get-deployment.txt"}

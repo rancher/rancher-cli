@@ -2,7 +2,7 @@ NAME:
    rancher extension - Add a Rancher extension repository; list, install, upgrade and uninstall Rancher UI extensions
 
 USAGE:
-   rancher extension [command [command options]]
+   rancher extension [command] [flags]
 
 COMMANDS:
    add-repository:  Add a Rancher extension repository
@@ -11,10 +11,10 @@ COMMANDS:
    uninstall:       Uninstall a Rancher UI extension
    upgrade:         Upgrade an installed Rancher UI extension
 
-OPTIONS:
+FLAGS:
    --help, -h  show help
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

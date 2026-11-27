@@ -16,7 +16,7 @@
 {"line":["delete","limitrange"],"kind":"runs","command":"delete limitrange","exit":0}
 {"line":["delete","limitrange","--help"],"kind":"help","command":"delete limitrange","exit":0,"helpPath":"delete-limitrange.txt"}
 {"line":["delete","limitrange","x"],"kind":"runs","command":"delete limitrange","args":["x"],"exit":0}
-{"line":["delete","limitrange","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","limitrange","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["delete","limitranges"],"kind":"runs","command":"delete limitrange","exit":0}
 {"line":["delete","limits"],"kind":"runs","command":"delete limitrange","exit":0}
 {"line":["delete","limitranges","--help"],"kind":"help","command":"delete limitrange","exit":0,"helpPath":"delete-limitrange.txt"}

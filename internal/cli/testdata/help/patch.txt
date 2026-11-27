@@ -2,7 +2,7 @@ NAME:
    rancher patch - Patch resources
 
 USAGE:
-   rancher patch [command [command options]]
+   rancher patch [command] [flags]
 
 COMMANDS:
    amazonec2config, amazonec2configs:                                          Patch the amazonec2config
@@ -80,10 +80,10 @@ COMMANDS:
    user, users:                                                                Patch the user
    vmwarevsphereconfig, vmwarevsphereconfigs:                                  Patch the vmwarevsphereconfig
 
-OPTIONS:
+FLAGS:
    --help, -h  show help
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

@@ -22,6 +22,6 @@
 {"line":["get","role"],"kind":"runs","command":"get role","exit":0}
 {"line":["get","role","--help"],"kind":"help","command":"get role","exit":0,"helpPath":"get-role.txt"}
 {"line":["get","role","x"],"kind":"runs","command":"get role","args":["x"],"exit":0}
-{"line":["get","role","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","role","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","roles"],"kind":"runs","command":"get role","exit":0}
 {"line":["get","roles","--help"],"kind":"help","command":"get role","exit":0,"helpPath":"get-role.txt"}

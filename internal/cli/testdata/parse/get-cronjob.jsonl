@@ -22,6 +22,6 @@
 {"line":["get","cronjob"],"kind":"runs","command":"get cronjob","exit":0}
 {"line":["get","cronjob","--help"],"kind":"help","command":"get cronjob","exit":0,"helpPath":"get-cronjob.txt"}
 {"line":["get","cronjob","x"],"kind":"runs","command":"get cronjob","args":["x"],"exit":0}
-{"line":["get","cronjob","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","cronjob","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","cronjobs"],"kind":"runs","command":"get cronjob","exit":0}
 {"line":["get","cronjobs","--help"],"kind":"help","command":"get cronjob","exit":0,"helpPath":"get-cronjob.txt"}

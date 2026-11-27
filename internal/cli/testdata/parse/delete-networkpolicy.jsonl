@@ -16,7 +16,7 @@
 {"line":["delete","networkpolicy"],"kind":"runs","command":"delete networkpolicy","exit":0}
 {"line":["delete","networkpolicy","--help"],"kind":"help","command":"delete networkpolicy","exit":0,"helpPath":"delete-networkpolicy.txt"}
 {"line":["delete","networkpolicy","x"],"kind":"runs","command":"delete networkpolicy","args":["x"],"exit":0}
-{"line":["delete","networkpolicy","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","networkpolicy","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["delete","networkpolicies"],"kind":"runs","command":"delete networkpolicy","exit":0}
 {"line":["delete","netpol"],"kind":"runs","command":"delete networkpolicy","exit":0}
 {"line":["delete","networkpolicies","--help"],"kind":"help","command":"delete networkpolicy","exit":0,"helpPath":"delete-networkpolicy.txt"}

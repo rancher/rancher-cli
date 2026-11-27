@@ -8,7 +8,7 @@
 {"line":["get","clusterregistrationtoken"],"kind":"runs","command":"get clusterregistrationtoken","exit":0}
 {"line":["get","clusterregistrationtoken","--help"],"kind":"help","command":"get clusterregistrationtoken","exit":0,"helpPath":"get-clusterregistrationtoken.txt"}
 {"line":["get","clusterregistrationtoken","x"],"kind":"runs","command":"get clusterregistrationtoken","args":["x"],"exit":0}
-{"line":["get","clusterregistrationtoken","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","clusterregistrationtoken","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","clusterregistrationtokens"],"kind":"runs","command":"get clusterregistrationtoken","exit":0}
 {"line":["get","crt"],"kind":"runs","command":"get clusterregistrationtoken","exit":0}
 {"line":["get","clusterregistrationtokens","--help"],"kind":"help","command":"get clusterregistrationtoken","exit":0,"helpPath":"get-clusterregistrationtoken.txt"}

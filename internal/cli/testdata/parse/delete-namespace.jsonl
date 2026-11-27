@@ -13,7 +13,7 @@
 {"line":["delete","namespace"],"kind":"runs","command":"delete namespace","exit":0}
 {"line":["delete","namespace","--help"],"kind":"help","command":"delete namespace","exit":0,"helpPath":"delete-namespace.txt"}
 {"line":["delete","namespace","x"],"kind":"runs","command":"delete namespace","args":["x"],"exit":0}
-{"line":["delete","namespace","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","namespace","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["delete","namespaces"],"kind":"runs","command":"delete namespace","exit":0}
 {"line":["delete","ns"],"kind":"runs","command":"delete namespace","exit":0}
 {"line":["delete","namespaces","--help"],"kind":"help","command":"delete namespace","exit":0,"helpPath":"delete-namespace.txt"}

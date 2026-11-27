@@ -2,15 +2,15 @@ NAME:
    rancher config update-server - Change a configured server's URL or CA
 
 USAGE:
-   rancher config update-server [options] <name>
+   rancher config update-server [flags] <name>
 
-OPTIONS:
+FLAGS:
    --cacert path   PEM CA bundle, a path or the literal PEM
    --clear-cacert  return the entry to system roots
    --help, -h      show help
    --url url       new Rancher server url (scheme required)
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --color string              auto|always|never
    --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
    --debug                     print telemetry upload details on stderr (development builds)

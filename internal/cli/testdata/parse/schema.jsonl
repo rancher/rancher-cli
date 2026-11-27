@@ -31,7 +31,7 @@
 {"line":["schema"],"kind":"runs","command":"schema","exit":0}
 {"line":["schema","--help"],"kind":"help","command":"schema","exit":0,"helpPath":"schema.txt"}
 {"line":["schema","x"],"kind":"runs","command":"schema","args":["x"],"exit":0}
-{"line":["schema","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["schema","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["schema","-o","--yes"],"kind":"refused","command":"schema","flags":{"output":"--yes"},"exit":2,"stderr":["error (VALIDATION): flag -o got flag --yes as its value - empty shell variable? check that the value for -o is set, or use -o=<value> to pass a literal flag-like string"]}
 {"line":["schema","--config="],"kind":"runs","command":"schema","flags":{"config":""},"exit":0}
 {"line":["schema","--config",""],"kind":"runs","command":"schema","flags":{"config":""},"exit":0}

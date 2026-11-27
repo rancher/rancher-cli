@@ -2,17 +2,17 @@ NAME:
    rancher app - Install a chart from a repository as an app, upgrade an app, or uninstall an app (list charts with `rancher charts`, read apps with `rancher get app`)
 
 USAGE:
-   rancher app [command [command options]]
+   rancher app [command] [flags]
 
 COMMANDS:
    install:    Install a chart from a ClusterRepo as a Helm release
    uninstall:  Uninstall a Helm release that Rancher shows as an App
    upgrade:    Upgrade, downgrade or change the values of a Helm release that Rancher shows as an App
 
-OPTIONS:
+FLAGS:
    --help, -h  show help
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

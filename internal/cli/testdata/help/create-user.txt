@@ -2,9 +2,9 @@ NAME:
    rancher create user - Create a local user and bind its global roles
 
 USAGE:
-   rancher create user [options] <username>
+   rancher create user [flags] <username>
 
-OPTIONS:
+FLAGS:
    --description description              short description of the user
    --display-name string                  display name (default: the username)
    --enabled string                       account enabled state (server default true)
@@ -13,7 +13,7 @@ OPTIONS:
    --must-change-password                 require the user to set a new password at their next Rancher UI login
    --password-stdin                       read the new password from stdin (required; there is no --password flag because a flag value would be saved in shell history; the server enforces a minimum length, 12 by default; a newline inside the password is refused)
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

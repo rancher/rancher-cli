@@ -2,9 +2,9 @@ NAME:
    rancher app upgrade - Upgrade, downgrade or change the values of a Helm release that Rancher shows as an App
 
 USAGE:
-   rancher app upgrade [options] <release>
+   rancher app upgrade [flags] <release>
 
-OPTIONS:
+FLAGS:
    --chart name                         the app's chart name; an upgrade cannot change the chart
    --cleanup-on-fail                    Helm deletes the resources this upgrade created when it fails
    --cluster id|name                    target cluster id|name
@@ -27,7 +27,7 @@ OPTIONS:
    --version version                    exact chart version (default: the app's installed version)
    --wait                               wait until Helm's run finishes and report how it ended
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

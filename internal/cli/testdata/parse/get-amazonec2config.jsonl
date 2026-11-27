@@ -19,6 +19,6 @@
 {"line":["get","amazonec2config"],"kind":"runs","command":"get amazonec2config","exit":0}
 {"line":["get","amazonec2config","--help"],"kind":"help","command":"get amazonec2config","exit":0,"helpPath":"get-amazonec2config.txt"}
 {"line":["get","amazonec2config","x"],"kind":"runs","command":"get amazonec2config","args":["x"],"exit":0}
-{"line":["get","amazonec2config","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","amazonec2config","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","amazonec2configs"],"kind":"runs","command":"get amazonec2config","exit":0}
 {"line":["get","amazonec2configs","--help"],"kind":"help","command":"get amazonec2config","exit":0,"helpPath":"get-amazonec2config.txt"}

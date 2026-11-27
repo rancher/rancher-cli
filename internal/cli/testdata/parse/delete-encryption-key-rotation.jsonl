@@ -13,7 +13,7 @@
 {"line":["delete","encryption-key-rotation"],"kind":"runs","command":"delete encryption-key-rotation","exit":0}
 {"line":["delete","encryption-key-rotation","--help"],"kind":"help","command":"delete encryption-key-rotation","exit":0,"helpPath":"delete-encryption-key-rotation.txt"}
 {"line":["delete","encryption-key-rotation","x"],"kind":"runs","command":"delete encryption-key-rotation","args":["x"],"exit":0}
-{"line":["delete","encryption-key-rotation","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","encryption-key-rotation","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["delete","encryptionkeyrotations"],"kind":"runs","command":"delete encryption-key-rotation","exit":0}
 {"line":["delete","encryption-key-rotations"],"kind":"runs","command":"delete encryption-key-rotation","exit":0}
 {"line":["delete","encryptionkeyrotations","--help"],"kind":"help","command":"delete encryption-key-rotation","exit":0,"helpPath":"delete-encryption-key-rotation.txt"}

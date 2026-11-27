@@ -19,4 +19,4 @@
 {"line":["cluster","restore-etcd-snapshot"],"kind":"runs","command":"cluster restore-etcd-snapshot","exit":0}
 {"line":["cluster","restore-etcd-snapshot","--help"],"kind":"help","command":"cluster restore-etcd-snapshot","exit":0,"helpPath":"cluster-restore-etcd-snapshot.txt"}
 {"line":["cluster","restore-etcd-snapshot","x"],"kind":"runs","command":"cluster restore-etcd-snapshot","args":["x"],"exit":0}
-{"line":["cluster","restore-etcd-snapshot","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["cluster","restore-etcd-snapshot","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}

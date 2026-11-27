@@ -18,4 +18,4 @@
 {"line":["charts"],"kind":"runs","command":"charts","exit":0}
 {"line":["charts","--help"],"kind":"help","command":"charts","exit":0,"helpPath":"charts.txt"}
 {"line":["charts","x"],"kind":"runs","command":"charts","args":["x"],"exit":0}
-{"line":["charts","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["charts","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}

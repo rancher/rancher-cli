@@ -6,4 +6,4 @@
 {"line":["auth","logout"],"kind":"runs","command":"auth logout","exit":0}
 {"line":["auth","logout","--help"],"kind":"help","command":"auth logout","exit":0,"helpPath":"auth-logout.txt"}
 {"line":["auth","logout","x"],"kind":"runs","command":"auth logout","args":["x"],"exit":0}
-{"line":["auth","logout","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["auth","logout","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}

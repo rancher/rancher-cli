@@ -2,7 +2,7 @@ NAME:
    rancher delete - Delete resources
 
 USAGE:
-   rancher delete [command [command options]]
+   rancher delete [command] [flags]
 
 COMMANDS:
    amazonec2config, amazonec2configs:                                          Delete the amazonec2config
@@ -50,10 +50,10 @@ COMMANDS:
    user, users:                                                                Delete the user
    vmwarevsphereconfig, vmwarevsphereconfigs:                                  Delete the vmwarevsphereconfig
 
-OPTIONS:
+FLAGS:
    --help, -h  show help
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

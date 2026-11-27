@@ -16,7 +16,7 @@
 {"line":["delete","resourcequota"],"kind":"runs","command":"delete resourcequota","exit":0}
 {"line":["delete","resourcequota","--help"],"kind":"help","command":"delete resourcequota","exit":0,"helpPath":"delete-resourcequota.txt"}
 {"line":["delete","resourcequota","x"],"kind":"runs","command":"delete resourcequota","args":["x"],"exit":0}
-{"line":["delete","resourcequota","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","resourcequota","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["delete","resourcequotas"],"kind":"runs","command":"delete resourcequota","exit":0}
 {"line":["delete","quota"],"kind":"runs","command":"delete resourcequota","exit":0}
 {"line":["delete","resourcequotas","--help"],"kind":"help","command":"delete resourcequota","exit":0,"helpPath":"delete-resourcequota.txt"}

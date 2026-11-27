@@ -2,12 +2,12 @@ NAME:
    rancher extension add-repository - Add a Rancher extension repository
 
 USAGE:
-   rancher extension add-repository [options] <name>
+   rancher extension add-repository [flags] <name>
 
-OPTIONS:
+FLAGS:
    --help, -h  show help
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

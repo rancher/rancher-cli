@@ -2,12 +2,12 @@ NAME:
    rancher completion - Print a shell completion script (ignores -o; always the raw script)
 
 USAGE:
-   rancher completion [options] <bash|zsh|fish|pwsh>
+   rancher completion [flags] <bash|zsh|fish|pwsh>
 
-OPTIONS:
+FLAGS:
    --help, -h  show help
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --color string              auto|always|never
    --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
    --debug                     print telemetry upload details on stderr (development builds)

@@ -2,9 +2,9 @@ NAME:
    rancher patch job - Patch the job
 
 USAGE:
-   rancher patch job [options] <name>
+   rancher patch job [flags] <name>
 
-OPTIONS:
+FLAGS:
    --cluster id|name                    target cluster id|name
    --help, -h                           show help
    --namespace namespace, -n namespace  namespace to operate in
@@ -13,7 +13,7 @@ OPTIONS:
    --project string                     the object's namespace must be in this project
    --type string                        patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

@@ -5,13 +5,13 @@ DESCRIPTION:
    A Rancher Prime feature; the connected server decides whether it is available.
 
 USAGE:
-   rancher cluster resume-autoscaling [options] <cluster>
+   rancher cluster resume-autoscaling [flags] <cluster>
 
-OPTIONS:
+FLAGS:
    --help, -h                     show help
    --namespace string, -n string  Fleet workspace (namespace) of the provisioning cluster (default: fleet-default)
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

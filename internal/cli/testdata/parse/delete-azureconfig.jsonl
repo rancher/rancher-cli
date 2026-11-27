@@ -13,6 +13,6 @@
 {"line":["delete","azureconfig"],"kind":"runs","command":"delete azureconfig","exit":0}
 {"line":["delete","azureconfig","--help"],"kind":"help","command":"delete azureconfig","exit":0,"helpPath":"delete-azureconfig.txt"}
 {"line":["delete","azureconfig","x"],"kind":"runs","command":"delete azureconfig","args":["x"],"exit":0}
-{"line":["delete","azureconfig","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","azureconfig","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["delete","azureconfigs"],"kind":"runs","command":"delete azureconfig","exit":0}
 {"line":["delete","azureconfigs","--help"],"kind":"help","command":"delete azureconfig","exit":0,"helpPath":"delete-azureconfig.txt"}

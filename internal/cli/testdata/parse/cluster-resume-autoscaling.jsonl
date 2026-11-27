@@ -5,4 +5,4 @@
 {"line":["cluster","resume-autoscaling"],"kind":"runs","command":"cluster resume-autoscaling","exit":0}
 {"line":["cluster","resume-autoscaling","--help"],"kind":"help","command":"cluster resume-autoscaling","exit":0,"helpPath":"cluster-resume-autoscaling.txt"}
 {"line":["cluster","resume-autoscaling","x"],"kind":"runs","command":"cluster resume-autoscaling","args":["x"],"exit":0}
-{"line":["cluster","resume-autoscaling","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["cluster","resume-autoscaling","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}

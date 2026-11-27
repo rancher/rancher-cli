@@ -2,16 +2,16 @@ NAME:
    rancher project - Project namespace commands (project membership is managed with `rancher grant` and `rancher revoke`)
 
 USAGE:
-   rancher project [command [command options]]
+   rancher project [command] [flags]
 
 COMMANDS:
    add-namespace:     Add a namespace to a project
    remove-namespace:  Remove a namespace from its project and remove its project label
 
-OPTIONS:
+FLAGS:
    --help, -h  show help
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

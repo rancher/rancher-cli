@@ -2,9 +2,9 @@ NAME:
    rancher app install - Install a chart from a ClusterRepo as a Helm release
 
 USAGE:
-   rancher app install [options] <release>
+   rancher app install [flags] <release>
 
-OPTIONS:
+FLAGS:
    --chart name                         chart name in the repository
    --cluster id|name                    target cluster id|name
    --description description            release description
@@ -22,7 +22,7 @@ OPTIONS:
    --version version                    exact chart version (default: the version `rancher charts` shows)
    --wait                               wait until Helm's run finishes and report how it ended
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

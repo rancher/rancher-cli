@@ -2,12 +2,12 @@ NAME:
    rancher telemetry status - Show whether usage recording is on and what is recorded, and any active experiments
 
 USAGE:
-   rancher telemetry status [options]
+   rancher telemetry status [flags]
 
-OPTIONS:
+FLAGS:
    --help, -h  show help
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --color string              auto|always|never
    --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
    --debug                     print telemetry upload details on stderr (development builds)

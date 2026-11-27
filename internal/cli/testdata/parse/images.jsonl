@@ -16,7 +16,7 @@
 {"line":["images"],"kind":"runs","command":"images","exit":0}
 {"line":["images","--help"],"kind":"help","command":"images","exit":0,"helpPath":"images.txt"}
 {"line":["images","x"],"kind":"runs","command":"images","args":["x"],"exit":0}
-{"line":["images","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["images","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["images","--match","a,b"],"kind":"runs","command":"images","flags":{"match":["a,b"]},"exit":0}
 {"line":["images","--match","a,b","--match","c"],"kind":"runs","command":"images","flags":{"match":["a,b","c"]},"exit":0}
 {"line":["images","--match=a","--match","b"],"kind":"runs","command":"images","flags":{"match":["a","b"]},"exit":0}

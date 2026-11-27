@@ -2,17 +2,17 @@ NAME:
    rancher oidc-client - Manage OIDC client secrets (`rancher create oidc-client` creates the client itself)
 
 USAGE:
-   rancher oidc-client [command [command options]]
+   rancher oidc-client [command] [flags]
 
 COMMANDS:
    add-secret:     [Prime] Add a new client secret to an OIDC client
    remove-secret:  [Prime] Remove a client secret from an OIDC client
    rotate-secret:  [Prime] Regenerate a client secret on an OIDC client
 
-OPTIONS:
+FLAGS:
    --help, -h  show help
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

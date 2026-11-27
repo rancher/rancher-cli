@@ -19,7 +19,7 @@
 {"line":["get","namespace"],"kind":"runs","command":"get namespace","exit":0}
 {"line":["get","namespace","--help"],"kind":"help","command":"get namespace","exit":0,"helpPath":"get-namespace.txt"}
 {"line":["get","namespace","x"],"kind":"runs","command":"get namespace","args":["x"],"exit":0}
-{"line":["get","namespace","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","namespace","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","namespaces"],"kind":"runs","command":"get namespace","exit":0}
 {"line":["get","ns"],"kind":"runs","command":"get namespace","exit":0}
 {"line":["get","namespaces","--help"],"kind":"help","command":"get namespace","exit":0,"helpPath":"get-namespace.txt"}

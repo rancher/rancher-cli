@@ -2,7 +2,7 @@ NAME:
    rancher telemetry - Local usage recording: status, turn on, turn off, delete, list and send events
 
 USAGE:
-   rancher telemetry [command [command options]]
+   rancher telemetry [command] [flags]
 
 COMMANDS:
    off:     Turn usage recording off and delete what is recorded
@@ -12,10 +12,10 @@ COMMANDS:
    status:  Show whether usage recording is on and what is recorded, and any active experiments
    upload:  Send the stored usage events now (development builds with the telemetryupload experiment)
 
-OPTIONS:
+FLAGS:
    --help, -h  show help
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --color string              auto|always|never
    --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
    --debug                     print telemetry upload details on stderr (development builds)

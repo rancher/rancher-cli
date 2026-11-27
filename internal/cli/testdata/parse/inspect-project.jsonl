@@ -5,6 +5,6 @@
 {"line":["inspect","project"],"kind":"runs","command":"inspect project","exit":0}
 {"line":["inspect","project","--help"],"kind":"help","command":"inspect project","exit":0,"helpPath":"inspect-project.txt"}
 {"line":["inspect","project","x"],"kind":"runs","command":"inspect project","args":["x"],"exit":0}
-{"line":["inspect","project","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["inspect","project","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["inspect","projects"],"kind":"runs","command":"inspect project","exit":0}
 {"line":["inspect","projects","--help"],"kind":"help","command":"inspect project","exit":0,"helpPath":"inspect-project.txt"}

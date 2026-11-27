@@ -22,6 +22,6 @@
 {"line":["get","operation"],"kind":"runs","command":"get operation","exit":0}
 {"line":["get","operation","--help"],"kind":"help","command":"get operation","exit":0,"helpPath":"get-operation.txt"}
 {"line":["get","operation","x"],"kind":"runs","command":"get operation","args":["x"],"exit":0}
-{"line":["get","operation","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","operation","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","operations"],"kind":"runs","command":"get operation","exit":0}
 {"line":["get","operations","--help"],"kind":"help","command":"get operation","exit":0,"helpPath":"get-operation.txt"}

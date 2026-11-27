@@ -2,14 +2,14 @@ NAME:
    rancher skill uninstall - Remove the agent skills that rancher-cli installed
 
 USAGE:
-   rancher skill uninstall [options]
+   rancher skill uninstall [flags]
 
-OPTIONS:
+FLAGS:
    --agent all    target harness (or all; default all)
    --help, -h     show help
    --scope scope  install location scope to remove from: user or project (default user)
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --color string              auto|always|never
    --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
    --debug                     print telemetry upload details on stderr (development builds)

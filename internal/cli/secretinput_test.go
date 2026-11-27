@@ -291,7 +291,9 @@ func secretRows() []secretRow {
 		secretRow{flag: "from-literal", name: "no equals", argv: line(createSecretLine, "--from-literal", c), code: validation, message: "malformed --from-literal value"},
 		secretRow{flag: "from-literal", name: "empty key", argv: line(createSecretLine, "--from-literal", "="+c), code: validation, message: "malformed --from-literal value"},
 		secretRow{flag: "from-literal", name: "the second half of a value with a comma", argv: line(createSecretLine, "--from-literal", "pw=ab,"+c), code: validation, message: "malformed --from-literal value"},
-		secretRow{flag: "from-literal", name: "a flag given twice", argv: line(createSecretLine, "--from-literal", "a=b", "--from-literal", "k="+c), code: validation, message: "invalid value for flag -from-literal: can't duplicate this flag"},
+		secretRow{flag: "from-literal", name: "a flag given twice", argv: line(createSecretLine, "--from-literal", "a=b", "--from-literal", "k="+c), code: validation, message: "--from-literal may be given once"},
+		secretRow{flag: "from-literal", name: "a flag given twice, each typed with its value after =", argv: line(createSecretLine, "--from-literal="+c, "--from-literal="+c), code: validation, message: "--from-literal may be given once"},
+		secretRow{flag: "from-literal", name: "a flag given twice, the second typed with one dash and its value after =", argv: line(createSecretLine, "--from-literal="+c, "-from-literal="+c), code: validation, message: "-from-literal may be given once"},
 		secretRow{flag: "from-literal", name: "an extra argument", argv: line(createSecretLine, "--from-literal", "a=b", c), code: validation, message: "unexpected argument at position 2"},
 		secretRow{flag: "from-file", name: "no equals", argv: line(createCloudCredentialLine, "--from-file", c), code: validation, message: "the 1st --from-file must be <field>=<path>"},
 		secretRow{flag: "from-file", name: "empty field", argv: line(createCloudCredentialLine, "--from-file", "="+c), code: validation, message: "the 1st --from-file has an empty field name"},
@@ -357,7 +359,7 @@ func secretRows() []secretRow {
 		add(
 			secretRow{flag: "password-stdin", name: cmd.line + ": an empty password", argv: line(cmd.line, "--password-stdin"), code: validation, message: "the password read from stdin is empty"},
 			secretRow{flag: "password-stdin", name: cmd.line + ": the flag without the pipe", argv: line(cmd.line), stdin: c, code: validation, message: "--password-stdin is required"},
-			secretRow{flag: "password-stdin", name: cmd.line + ": the password typed after the flag with =", argv: line(cmd.line, "--password-stdin="+c), code: validation, message: "invalid value for flag -password-stdin: the value must be true or false"},
+			secretRow{flag: "password-stdin", name: cmd.line + ": the password typed after the flag with =", argv: line(cmd.line, "--password-stdin="+c), code: validation, message: "invalid value for flag --password-stdin: the value must be true or false"},
 			secretRow{flag: "password-stdin", name: cmd.line + ": the password typed as an argument", argv: line(cmd.line, "--password-stdin", c), code: validation, message: cmd.extra},
 			secretRow{flag: "password-stdin", name: cmd.line + ": the password typed after a flag that does not exist", argv: line(cmd.line, "--password", c), code: validation, message: "unknown flag at argument 7 after rancher"},
 		)
@@ -375,7 +377,7 @@ func secretRows() []secretRow {
 		secretRow{flag: "token-stdin", name: "a token with no id", argv: line(loginLine, "--token-stdin"), stdin: ":" + c, code: validation, message: "invalid token (expected non-empty id:secret)"},
 		secretRow{flag: "token-stdin", name: "a token the server refuses", argv: line(loginLine, "--token-stdin"), stdin: "id:" + c, code: string(clierr.CodeAuth), message: "the server rejected the credential"},
 		secretRow{flag: "token-stdin", name: "a token with no colon, not verified", argv: line(loginLine, "--token-stdin", "--no-verify"), stdin: c, code: validation, message: "invalid token (expected non-empty id:secret)"},
-		secretRow{flag: "token-stdin", name: "the token typed after the flag with =", argv: line(loginLine, "--token-stdin="+c), code: validation, message: "invalid value for flag -token-stdin: the value must be true or false"},
+		secretRow{flag: "token-stdin", name: "the token typed after the flag with =", argv: line(loginLine, "--token-stdin="+c), code: validation, message: "invalid value for flag --token-stdin: the value must be true or false"},
 		secretRow{flag: "token-stdin", name: "the token typed as an argument", argv: line(loginLine, "--token-stdin", c), code: validation, message: "unexpected argument at position 2"},
 	)
 
@@ -434,8 +436,8 @@ func secretRows() []secretRow {
 		secretRow{flag: "password-stdin", name: "an unknown flag typed at a group before the command name is named by position", argv: line("create -" + c + " user bob --password-stdin"), code: validation, message: "unknown flag at argument 4 after rancher"},
 		secretRow{flag: "password-stdin", name: "an unknown flag typed before the group name is named by position", argv: line("-" + c + " create user bob --password-stdin"), code: validation, message: "unknown flag at argument 3 after rancher"},
 		secretRow{flag: "url", name: "an unknown flag typed before a command with a secret input is named by position", argv: line("-" + c + " config add-server"), code: validation, message: "unknown flag at argument 3 after rancher"},
-		secretRow{flag: "password-stdin", name: "a value for a flag typed before the group name is not named", argv: line("--debug=" + c + " create user bob --password-stdin"), code: validation, message: "invalid value for flag -debug: the value must be true or false"},
-		secretRow{flag: "password-stdin", name: "a value for a flag typed at a group is not named", argv: line("create --debug=" + c + " user bob --password-stdin"), code: validation, message: "invalid value for flag -debug: the value must be true or false"},
+		secretRow{flag: "password-stdin", name: "a value for a flag typed before the group name is not named", argv: line("--debug=" + c + " create user bob --password-stdin"), code: validation, message: "invalid value for flag --debug: the value must be true or false"},
+		secretRow{flag: "password-stdin", name: "a value for a flag typed at a group is not named", argv: line("create --debug=" + c + " user bob --password-stdin"), code: validation, message: "invalid value for flag --debug: the value must be true or false"},
 		secretRow{flag: "from-literal", name: "a --color value that is the canary is not named", argv: line(createSecretLine, "--from-literal", "a=b", "--color", c), code: validation, message: "--color value is not one of auto|always|never"},
 		secretRow{flag: "password-stdin", name: "an enum flag given the canary is not named", argv: line(createUserLine, "--password-stdin", "--enabled", c), code: validation, message: "--enabled value is not one of true|false"},
 		secretRow{flag: "patch", name: "the patch type given the canary is not named", argv: line(patchLine, "-p", "[]", "--type", c), code: validation, message: "--type value is not one of json|merge"},
@@ -498,7 +500,7 @@ func currentPasswordRows() []secretRow {
 		secretRow{flag: "current-password-stdin", name: passwordLine + ": three lines, the canary on line 3", argv: line(passwordLine, both...), stdin: fixedCurrent + "\n" + fixedNew + "\n" + c, code: validation, message: "lines found: 3"},
 		secretRow{flag: "current-password-stdin", name: passwordLine + ": line 1 empty", argv: line(passwordLine, both...), stdin: "\n" + c, code: validation, message: "line 1 (the current password) is empty"},
 		secretRow{flag: "current-password-stdin", name: passwordLine + ": line 2 empty", argv: line(passwordLine, both...), stdin: c + "\n\n", code: validation, message: "line 2 (the new password) is empty"},
-		secretRow{flag: "current-password-stdin", name: passwordLine + ": the password typed after the flag with =", argv: line(passwordLine, "--current-password-stdin="+c, "--password-stdin"), code: validation, message: "invalid value for flag -current-password-stdin: the value must be true or false"},
+		secretRow{flag: "current-password-stdin", name: passwordLine + ": the password typed after the flag with =", argv: line(passwordLine, "--current-password-stdin="+c, "--password-stdin"), code: validation, message: "invalid value for flag --current-password-stdin: the value must be true or false"},
 		secretRow{flag: "current-password-stdin", name: passwordLine + ": the password typed as an argument", argv: line(passwordLine, "--current-password-stdin", "--password-stdin", c), stdin: fixedCurrent + "\n" + fixedNew, code: validation, message: "unexpected argument at position 2"},
 		secretRow{flag: "current-password-stdin", name: passwordLine + ": the password typed after a flag that does not exist", argv: line(passwordLine, "--current-password", c), code: validation, message: "unknown flag at argument 7 after rancher"},
 		secretRow{flag: "current-password-stdin", name: passwordLine + ": the password typed after a flag that does not exist, with =", argv: line(passwordLine, "--current-password="+c), code: validation, message: "unknown flag at argument 7 after rancher"},
@@ -1435,35 +1437,34 @@ func runSecretRow(t *testing.T, row secretRow) (stdout, stderr string, code int)
 	return runWithStdin(t, argv, row.stdin)
 }
 
-// TestUsageErrorTextLeavesTheValueOutForASecretInput asserts that the text
-// of a flag-parse error quotes the flag's value for an ordinary command, and
-// names only the flag, and keeps only a reason that quotes nothing, for a
-// command that takes a secret input, whatever the value holds.
-func TestUsageErrorTextLeavesTheValueOutForASecretInput(t *testing.T) {
+// TestUsageErrorTextQuotesNoValueForAnyCommand asserts that the text of a
+// flag error for a repeated flag, a bool flag with a bad value and a flag that
+// is missing its value is the same for an ordinary command, a command that
+// takes a secret input and a command with no descriptor (the root or a group),
+// and quotes no value: it names the flag as typed and keeps the reason, which
+// is one that quotes nothing.
+func TestUsageErrorTextQuotesNoValueForAnyCommand(t *testing.T) {
 	t.Parallel()
 	ordinary := &Command{Name: "a", descriptor: &runtime.Descriptor{Name: "a"}}
 	secret := &Command{Name: "b", descriptor: &runtime.Descriptor{Name: "b", SecretInput: true}}
 	undescribed := &Command{Name: "c"}
 
 	for _, tc := range []struct {
-		name             string
-		err              usageError
-		ordinary, secret string
+		name string
+		err  usageError
+		want string
 	}{
-		{"a flag given twice", usageError{class: repeatedFlag, flag: "from-literal", value: "k=v"}, `invalid value "k=v" for flag -from-literal: can't duplicate this flag`, "invalid value for flag -from-literal: can't duplicate this flag"},
-		{"a bool flag with a value", usageError{class: badBoolValue, flag: "password-stdin", value: "pw"}, `invalid value "pw" for flag -password-stdin: parse error`, "invalid value for flag -password-stdin: the value must be true or false"},
-		{"a value that holds the text around it", usageError{class: badBoolValue, flag: "z", value: "x for flag -y: parse error"}, `invalid value "x for flag -y: parse error" for flag -z: parse error`, "invalid value for flag -z: the value must be true or false"},
-		{"a flag typed without its value, which the command defines", usageError{class: missingFlagValue, word: "-p"}, "flag needs an argument: -p", "flag needs an argument: -p"},
+		{"a flag given twice", usageError{class: repeatedFlag, typed: "--from-literal"}, "--from-literal may be given once"},
+		{"a flag given twice, typed with one dash", usageError{class: repeatedFlag, typed: "-from-literal"}, "-from-literal may be given once"},
+		{"a bool flag with a value", usageError{class: badBoolValue, typed: "--password-stdin"}, "invalid value for flag --password-stdin: the value must be true or false"},
+		{"a bool flag with a value, typed with one dash", usageError{class: badBoolValue, typed: "-z"}, "invalid value for flag -z: the value must be true or false"},
+		{"a flag typed without its value, which the command defines", usageError{class: missingFlagValue, word: "-p"}, "flag needs an argument: -p"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tc.ordinary, usageErrorText(ordinary, tc.err))
-			wantUndescribed := tc.ordinary
-			if tc.err.class == repeatedFlag || tc.err.class == badBoolValue {
-				wantUndescribed = tc.secret
-			}
-			assert.Equal(t, wantUndescribed, usageErrorText(undescribed, tc.err), "the root or a group names the flag and not its value, and passes every other text")
-			assert.Equal(t, tc.secret, usageErrorText(secret, tc.err))
+			assert.Equal(t, tc.want, usageErrorText(ordinary, tc.err))
+			assert.Equal(t, tc.want, usageErrorText(undescribed, tc.err))
+			assert.Equal(t, tc.want, usageErrorText(secret, tc.err))
 		})
 	}
 }
@@ -1484,7 +1485,7 @@ func TestUnknownFlagTextGivesThePositionOfTheWord(t *testing.T) {
 	assert.Equal(t, "unknown flag", unknownFlagText("-x", []string{"---x"}), "a word with three dashes gives no position")
 
 	ordinary := &Command{Name: "a", descriptor: &runtime.Descriptor{Name: "a"}}
-	assert.Equal(t, "flag provided but not defined: -x", usageErrorText(ordinary, usageError{class: undefinedFlag, word: "x"}))
+	assert.Equal(t, "flag provided but not defined: -x", usageErrorText(ordinary, usageError{class: undefinedFlag, word: "x", typed: "-x"}))
 }
 
 // leafNamed returns the name of the descriptor of the leaf, or "" for nil.

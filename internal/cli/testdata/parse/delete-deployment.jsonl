@@ -16,7 +16,7 @@
 {"line":["delete","deployment"],"kind":"runs","command":"delete deployment","exit":0}
 {"line":["delete","deployment","--help"],"kind":"help","command":"delete deployment","exit":0,"helpPath":"delete-deployment.txt"}
 {"line":["delete","deployment","x"],"kind":"runs","command":"delete deployment","args":["x"],"exit":0}
-{"line":["delete","deployment","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","deployment","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["delete","deployments"],"kind":"runs","command":"delete deployment","exit":0}
 {"line":["delete","deploy"],"kind":"runs","command":"delete deployment","exit":0}
 {"line":["delete","deployments","--help"],"kind":"help","command":"delete deployment","exit":0,"helpPath":"delete-deployment.txt"}

@@ -2,9 +2,9 @@ NAME:
    rancher patch projectroletemplatebinding - Patch the projectroletemplatebinding
 
 USAGE:
-   rancher patch projectroletemplatebinding [options] <name>
+   rancher patch projectroletemplatebinding [flags] <name>
 
-OPTIONS:
+FLAGS:
    --cluster id|name                    cluster id|name of the project (only with --project)
    --help, -h                           show help
    --namespace namespace, -n namespace  the project's backing namespace on the local cluster; or pass --project with --cluster
@@ -13,7 +13,7 @@ OPTIONS:
    --project id|name                    project id|name (with --cluster) the projectroletemplatebinding is in
    --type string                        patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

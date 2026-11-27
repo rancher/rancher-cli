@@ -2,15 +2,15 @@ NAME:
    rancher delete encryption-key-rotation - Delete the encryption-key-rotation
 
 USAGE:
-   rancher delete encryption-key-rotation [options] <name>
+   rancher delete encryption-key-rotation [flags] <name>
 
-OPTIONS:
+FLAGS:
    --cluster id|name  cluster id|name of the encryption-key-rotation
    --help, -h         show help
    --timeout timeout  wait timeout, a positive duration, e.g. 10m (default 5m)
    --wait             wait until the encryption-key-rotation is gone before returning (default true; --wait=false returns once the server accepts the request)
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

@@ -30,4 +30,4 @@
 {"line":["access","who-can"],"kind":"runs","command":"access who-can","exit":0}
 {"line":["access","who-can","--help"],"kind":"help","command":"access who-can","exit":0,"helpPath":"access-who-can.txt"}
 {"line":["access","who-can","x"],"kind":"runs","command":"access who-can","args":["x"],"exit":0}
-{"line":["access","who-can","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["access","who-can","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}

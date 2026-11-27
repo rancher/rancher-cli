@@ -5,4 +5,4 @@
 {"line":["project","remove-namespace"],"kind":"runs","command":"project remove-namespace","exit":0}
 {"line":["project","remove-namespace","--help"],"kind":"help","command":"project remove-namespace","exit":0,"helpPath":"project-remove-namespace.txt"}
 {"line":["project","remove-namespace","x"],"kind":"runs","command":"project remove-namespace","args":["x"],"exit":0}
-{"line":["project","remove-namespace","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["project","remove-namespace","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}

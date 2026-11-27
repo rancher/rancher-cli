@@ -5,4 +5,4 @@
 {"line":["extension","list"],"kind":"runs","command":"extension list","exit":0}
 {"line":["extension","list","--help"],"kind":"help","command":"extension list","exit":0,"helpPath":"extension-list.txt"}
 {"line":["extension","list","x"],"kind":"runs","command":"extension list","args":["x"],"exit":0}
-{"line":["extension","list","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["extension","list","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}

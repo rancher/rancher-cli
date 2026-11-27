@@ -181,7 +181,7 @@ stderr:
 $ rancher get pod --bogus
 exit: 2
 stderr:
-> error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage
+> error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage
 >   hint: rancher schema
 
 $ rancher get pod --bogus -o json
@@ -193,7 +193,7 @@ stderr:
 >   "data": {
 >     "error": {
 >       "code": "VALIDATION",
->       "message": "flag provided but not defined: -bogus; pass --help for usage",
+>       "message": "flag provided but not defined: --bogus; pass --help for usage",
 >       "hint": "rancher schema",
 >       "retryable": false
 >     }

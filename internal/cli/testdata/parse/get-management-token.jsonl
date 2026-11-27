@@ -16,7 +16,7 @@
 {"line":["get","management-token"],"kind":"runs","command":"get management-token","exit":0}
 {"line":["get","management-token","--help"],"kind":"help","command":"get management-token","exit":0,"helpPath":"get-management-token.txt"}
 {"line":["get","management-token","x"],"kind":"runs","command":"get management-token","args":["x"],"exit":0}
-{"line":["get","management-token","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","management-token","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","managementtokens"],"kind":"runs","command":"get management-token","exit":0}
 {"line":["get","management-tokens"],"kind":"runs","command":"get management-token","exit":0}
 {"line":["get","v3token"],"kind":"runs","command":"get management-token","exit":0}

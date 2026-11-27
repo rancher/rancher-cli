@@ -2,9 +2,9 @@ NAME:
    rancher support-bundle - Collect diagnostics reachable through the API into one tar.gz for support
 
 USAGE:
-   rancher support-bundle [options]
+   rancher support-bundle [flags]
 
-OPTIONS:
+FLAGS:
    --clusters string   downstream cluster ids/names to include (comma-separated)
    --help, -h          show help
    --output-file file  write the tar.gz archive to a new file; an existing file or - is refused
@@ -12,7 +12,7 @@ OPTIONS:
    --tail lines        max log lines per target (default 10000)
    --targets targets   comma-separated log targets (server, agent, fleet-agent, kube-api-auth, webhook, api-extension), or all (the default)
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --color string              auto|always|never
    --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
    --debug                     print telemetry upload details on stderr (development builds)

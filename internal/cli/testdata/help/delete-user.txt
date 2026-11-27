@@ -2,14 +2,14 @@ NAME:
    rancher delete user - Delete the user
 
 USAGE:
-   rancher delete user [options] <id>
+   rancher delete user [flags] <id>
 
-OPTIONS:
+FLAGS:
    --help, -h         show help
    --timeout timeout  wait timeout, a positive duration, e.g. 10m (default 5m)
    --wait             wait until the user is gone before returning (default true; --wait=false returns once the server accepts the request)
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

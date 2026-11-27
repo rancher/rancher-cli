@@ -27,4 +27,4 @@
 {"line":["logs"],"kind":"runs","command":"logs","exit":0}
 {"line":["logs","--help"],"kind":"help","command":"logs","exit":0,"helpPath":"logs.txt"}
 {"line":["logs","x"],"kind":"runs","command":"logs","args":["x"],"exit":0}
-{"line":["logs","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["logs","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}

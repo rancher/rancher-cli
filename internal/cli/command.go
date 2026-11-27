@@ -31,7 +31,8 @@ type Flag struct {
 	Name    string
 	Aliases []string
 	// Usage is the flag's description. A text between backticks in it is
-	// the placeholder of the flag's help row.
+	// the placeholder of the help row of a flag that takes a value; the row
+	// of a bool flag prints the usage as written.
 	Usage string
 	Kind  flagKind
 	// Once marks a flag that may be typed once on a command line.

@@ -19,6 +19,6 @@
 {"line":["get","clusterrolebinding"],"kind":"runs","command":"get clusterrolebinding","exit":0}
 {"line":["get","clusterrolebinding","--help"],"kind":"help","command":"get clusterrolebinding","exit":0,"helpPath":"get-clusterrolebinding.txt"}
 {"line":["get","clusterrolebinding","x"],"kind":"runs","command":"get clusterrolebinding","args":["x"],"exit":0}
-{"line":["get","clusterrolebinding","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","clusterrolebinding","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","clusterrolebindings"],"kind":"runs","command":"get clusterrolebinding","exit":0}
 {"line":["get","clusterrolebindings","--help"],"kind":"help","command":"get clusterrolebinding","exit":0,"helpPath":"get-clusterrolebinding.txt"}

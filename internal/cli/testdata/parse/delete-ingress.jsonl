@@ -16,7 +16,7 @@
 {"line":["delete","ingress"],"kind":"runs","command":"delete ingress","exit":0}
 {"line":["delete","ingress","--help"],"kind":"help","command":"delete ingress","exit":0,"helpPath":"delete-ingress.txt"}
 {"line":["delete","ingress","x"],"kind":"runs","command":"delete ingress","args":["x"],"exit":0}
-{"line":["delete","ingress","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","ingress","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["delete","ingresses"],"kind":"runs","command":"delete ingress","exit":0}
 {"line":["delete","ing"],"kind":"runs","command":"delete ingress","exit":0}
 {"line":["delete","ingresses","--help"],"kind":"help","command":"delete ingress","exit":0,"helpPath":"delete-ingress.txt"}

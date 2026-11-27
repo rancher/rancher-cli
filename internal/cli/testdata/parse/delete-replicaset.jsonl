@@ -16,7 +16,7 @@
 {"line":["delete","replicaset"],"kind":"runs","command":"delete replicaset","exit":0}
 {"line":["delete","replicaset","--help"],"kind":"help","command":"delete replicaset","exit":0,"helpPath":"delete-replicaset.txt"}
 {"line":["delete","replicaset","x"],"kind":"runs","command":"delete replicaset","args":["x"],"exit":0}
-{"line":["delete","replicaset","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","replicaset","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["delete","replicasets"],"kind":"runs","command":"delete replicaset","exit":0}
 {"line":["delete","rs"],"kind":"runs","command":"delete replicaset","exit":0}
 {"line":["delete","replicasets","--help"],"kind":"help","command":"delete replicaset","exit":0,"helpPath":"delete-replicaset.txt"}

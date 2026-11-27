@@ -2,9 +2,9 @@ NAME:
    rancher access can - Ask the cluster's authorizer whether a subject can perform a verb on a resource
 
 USAGE:
-   rancher access can [options] <verb> [resource]
+   rancher access can [flags] <verb> [resource]
 
-OPTIONS:
+FLAGS:
    --as string                    subject to ask about: username, user id, or user principal; group principal; system:serviceaccount:<ns>:<name>; omitted = you
    --cluster string               cluster name or id the question is about
    --group string                 API group when the resource name exists in several groups
@@ -16,7 +16,7 @@ OPTIONS:
    --timeout string               time limit for the whole command, e.g. 2m (default 60s)
    --type string                  kind of a bare --as value when ambiguous
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --color string              auto|always|never
    --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
    --debug                     print telemetry upload details on stderr (development builds)

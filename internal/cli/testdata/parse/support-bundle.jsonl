@@ -17,4 +17,4 @@
 {"line":["support-bundle"],"kind":"runs","command":"support-bundle","exit":0}
 {"line":["support-bundle","--help"],"kind":"help","command":"support-bundle","exit":0,"helpPath":"support-bundle.txt"}
 {"line":["support-bundle","x"],"kind":"runs","command":"support-bundle","args":["x"],"exit":0}
-{"line":["support-bundle","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["support-bundle","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}

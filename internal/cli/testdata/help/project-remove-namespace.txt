@@ -2,13 +2,13 @@ NAME:
    rancher project remove-namespace - Remove a namespace from its project and remove its project label
 
 USAGE:
-   rancher project remove-namespace [options] <namespace>
+   rancher project remove-namespace [flags] <namespace>
 
-OPTIONS:
+FLAGS:
    --cluster id|name  cluster id|name of the namespace
    --help, -h         show help
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

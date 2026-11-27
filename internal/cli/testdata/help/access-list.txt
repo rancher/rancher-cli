@@ -2,9 +2,9 @@ NAME:
    rancher access list - List the rules a subject holds in a namespace, as the cluster's authorizer reports them
 
 USAGE:
-   rancher access list [options]
+   rancher access list [flags]
 
-OPTIONS:
+FLAGS:
    --all-namespaces, -A           list rules in every namespace you can list
    --as string                    username, user id, or user principal, or system:serviceaccount:<ns>:<name>; omitted = you
    --cluster string               cluster name or id
@@ -14,7 +14,7 @@ OPTIONS:
    --timeout string               time limit for the whole command, e.g. 2m (default 60s)
    --type string                  kind of a bare --as value when ambiguous (group is rejected here)
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --color string              auto|always|never
    --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
    --debug                     print telemetry upload details on stderr (development builds)

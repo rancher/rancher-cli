@@ -5,9 +5,9 @@ DESCRIPTION:
    A Rancher Prime feature; the connected server decides whether it is available.
 
 USAGE:
-   rancher create oidc-client [options] <name>
+   rancher create oidc-client [flags] <name>
 
-OPTIONS:
+FLAGS:
    --description string                       description of the client
    --help, -h                                 show help
    --redirect-uri URI [ --redirect-uri URI ]  allowed redirect URI (repeatable)
@@ -16,7 +16,7 @@ OPTIONS:
    --timeout timeout                          wait timeout for the server to provision the client, e.g. 90s (default 60s)
    --token-ttl string                         access token expiration, a duration of whole seconds above zero, e.g. 1h (default 1h)
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

@@ -8,4 +8,4 @@
 {"line":["skill","uninstall"],"kind":"runs","command":"skill uninstall","exit":0}
 {"line":["skill","uninstall","--help"],"kind":"help","command":"skill uninstall","exit":0,"helpPath":"skill-uninstall.txt"}
 {"line":["skill","uninstall","x"],"kind":"runs","command":"skill uninstall","args":["x"],"exit":0}
-{"line":["skill","uninstall","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["skill","uninstall","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}

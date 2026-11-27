@@ -2,12 +2,12 @@ NAME:
    rancher config delete-server - Delete a configured server and its stored credentials
 
 USAGE:
-   rancher config delete-server [options] <name>
+   rancher config delete-server [flags] <name>
 
-OPTIONS:
+FLAGS:
    --help, -h  show help
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --color string              auto|always|never
    --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
    --debug                     print telemetry upload details on stderr (development builds)

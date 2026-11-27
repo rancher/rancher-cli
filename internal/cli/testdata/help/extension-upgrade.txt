@@ -2,16 +2,16 @@ NAME:
    rancher extension upgrade - Upgrade an installed Rancher UI extension
 
 USAGE:
-   rancher extension upgrade [options] <chart>
+   rancher extension upgrade [flags] <chart>
 
-OPTIONS:
+FLAGS:
    --help, -h         show help
    --repo name        ClusterRepo name the extension came from (default: the ClusterRepo named in the App; another one is refused)
    --timeout timeout  wait timeout, e.g. 10m (default 55m, at most 55m; starts the wait)
    --version version  exact chart version (default: the first version that passes the checks of the Rancher UI)
    --wait             wait until Helm's run finishes and report how it ended
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

@@ -2,9 +2,9 @@ NAME:
    rancher create cluster - Create a provisioning cluster (--import, --custom, or --machine-config for a node-driver cluster)
 
 USAGE:
-   rancher create cluster [options] <name>
+   rancher create cluster [flags] <name>
 
-OPTIONS:
+FLAGS:
    --cloud-credential id       cloud credential id for a node-driver cluster; a display name is refused
    --controlplane              machine pool: control-plane role
    --custom                    custom cluster; nodes join separately via a registration command
@@ -17,7 +17,7 @@ OPTIONS:
    --quantity string           number of nodes in the machine pool (default: 1)
    --worker                    machine pool: worker role
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

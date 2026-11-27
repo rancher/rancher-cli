@@ -2,9 +2,9 @@ NAME:
    rancher get machine - List machines or show one
 
 USAGE:
-   rancher get machine [options] [name]
+   rancher get machine [flags] [name]
 
-OPTIONS:
+FLAGS:
    --for condition                      wait for condition, e.g. state=active or condition=Ready (starts the wait)
    --help, -h                           show help
    --namespace namespace, -n namespace  namespace of the CAPI object: for a cluster Rancher provisions, the namespace of its provisioning cluster (default: fleet-default); otherwise the namespace the CAPI cluster was created in
@@ -12,7 +12,7 @@ OPTIONS:
    --timeout timeout                    wait timeout, e.g. 5m (default 120s; starts the wait)
    --wait                               wait for the resource to reach its default wait condition, or --for, before returning
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --color string              auto|always|never
    --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
    --debug                     print telemetry upload details on stderr (development builds)

@@ -16,7 +16,7 @@
 {"line":["delete","k3k-cluster"],"kind":"runs","command":"delete k3k-cluster","exit":0}
 {"line":["delete","k3k-cluster","--help"],"kind":"help","command":"delete k3k-cluster","exit":0,"helpPath":"delete-k3k-cluster.txt"}
 {"line":["delete","k3k-cluster","x"],"kind":"runs","command":"delete k3k-cluster","args":["x"],"exit":0}
-{"line":["delete","k3k-cluster","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","k3k-cluster","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["delete","k3kclusters"],"kind":"runs","command":"delete k3k-cluster","exit":0}
 {"line":["delete","k3k-clusters"],"kind":"runs","command":"delete k3k-cluster","exit":0}
 {"line":["delete","k3kclusters","--help"],"kind":"help","command":"delete k3k-cluster","exit":0,"helpPath":"delete-k3k-cluster.txt"}

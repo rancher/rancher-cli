@@ -2,22 +2,22 @@ NAME:
    rancher inspect cluster - Inspect a cluster: status, agent connectivity, machine pools, members, machines, and registration
 
 USAGE:
-   rancher inspect cluster [options] <name>
+   rancher inspect cluster [flags] <name>
 
-OPTIONS:
-   --address address                                                                           with --registration: the node address the node command registers (Node Public IP in the Rancher UI), or several separated by ","
-   --controlplane                                                                              with --registration: add the control plane role to the node command (no role flag adds all three)
-   --etcd                                                                                      with --registration: add the etcd role to the node command (no role flag adds all three)
-   --help, -h                                                                                  show help
-   --internal-address address                                                                  with --registration: the node internal address the node command registers (Node Private IP in the Rancher UI), or several separated by ","
-   --label key=value [ --label key=value ]                                                     with --registration: a node label key=value for the node command (repeatable)
-   --node-name name                                                                            with --registration: the node name the node command registers (a lowercase DNS subdomain)
-   --registration rancher get clusterregistrationtoken default-token --namespace <cluster-id>  show the registration commands (they contain the cluster registration token and are left out by default); also available with: rancher get clusterregistrationtoken default-token --namespace <cluster-id>
-   --taint key=value:effect [ --taint key=value:effect ]                                       with --registration: a node taint key=value:effect for the node command, effect NoSchedule, PreferNoSchedule or NoExecute (repeatable)
-   --windows                                                                                   with --registration: compose the Windows node commands instead of the Linux ones, where the Rancher UI shows them
-   --worker                                                                                    with --registration: add the worker role to the node command (no role flag adds all three)
+FLAGS:
+   --address address                                      with --registration: the node address the node command registers (Node Public IP in the Rancher UI), or several separated by ","
+   --controlplane                                         with --registration: add the control plane role to the node command (no role flag adds all three)
+   --etcd                                                 with --registration: add the etcd role to the node command (no role flag adds all three)
+   --help, -h                                             show help
+   --internal-address address                             with --registration: the node internal address the node command registers (Node Private IP in the Rancher UI), or several separated by ","
+   --label key=value [ --label key=value ]                with --registration: a node label key=value for the node command (repeatable)
+   --node-name name                                       with --registration: the node name the node command registers (a lowercase DNS subdomain)
+   --registration                                         show the registration commands (they contain the cluster registration token and are left out by default); also available with: `rancher get clusterregistrationtoken default-token --namespace <cluster-id>`
+   --taint key=value:effect [ --taint key=value:effect ]  with --registration: a node taint key=value:effect for the node command, effect NoSchedule, PreferNoSchedule or NoExecute (repeatable)
+   --windows                                              with --registration: compose the Windows node commands instead of the Linux ones, where the Rancher UI shows them
+   --worker                                               with --registration: add the worker role to the node command (no role flag adds all three)
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --color string              auto|always|never
    --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
    --debug                     print telemetry upload details on stderr (development builds)

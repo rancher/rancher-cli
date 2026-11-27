@@ -19,6 +19,6 @@
 {"line":["get","node"],"kind":"runs","command":"get node","exit":0}
 {"line":["get","node","--help"],"kind":"help","command":"get node","exit":0,"helpPath":"get-node.txt"}
 {"line":["get","node","x"],"kind":"runs","command":"get node","args":["x"],"exit":0}
-{"line":["get","node","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","node","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","nodes"],"kind":"runs","command":"get node","exit":0}
 {"line":["get","nodes","--help"],"kind":"help","command":"get node","exit":0,"helpPath":"get-node.txt"}

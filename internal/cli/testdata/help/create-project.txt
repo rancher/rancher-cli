@@ -2,9 +2,9 @@ NAME:
    rancher create project - Create a project in a cluster
 
 USAGE:
-   rancher create project [options] [id]
+   rancher create project [flags] [id]
 
-OPTIONS:
+FLAGS:
    --cluster id|name                             target cluster id|name
    --container-default-resource-limit key=value  default container resource requests and limits as key=value pairs
    --description description                     short description for the project
@@ -13,7 +13,7 @@ OPTIONS:
    --namespace-default-quota key=value           default resource quota for each namespace as key=value pairs (same keys as --quota-limit)
    --quota-limit key=value                       project resource quota limit as key=value pairs, e.g. limitsCpu=2,limitsMemory=4Gi
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

@@ -635,8 +635,8 @@ func completeCurrentWord(ctx context.Context, cmd *Command, bareWord func(w io.W
 // flag that accepts it as its value (lineRefusal refuses it in any position).
 // Anywhere on the command line: a bool flag typed with "=" and an empty value
 // (`--dry-run=`) or one of only whitespace, which lineRefusal refuses, a
-// second typing of a flag that may be typed once (the run fails with "can't
-// duplicate this flag"), and a bare "-": a command line with an argument
+// second typing of a flag that may be typed once (the run fails with
+// "may be given once"), and a bare "-": a command line with an argument
 // after it is refused before the command runs, and the argument being
 // completed would be that argument. maxWords is 0 at the root or a group (an
 // argument that names a subcommand enters it, so no argument names none) and

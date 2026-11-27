@@ -19,7 +19,7 @@
 {"line":["get","certificate-rotation"],"kind":"runs","command":"get certificate-rotation","exit":0}
 {"line":["get","certificate-rotation","--help"],"kind":"help","command":"get certificate-rotation","exit":0,"helpPath":"get-certificate-rotation.txt"}
 {"line":["get","certificate-rotation","x"],"kind":"runs","command":"get certificate-rotation","args":["x"],"exit":0}
-{"line":["get","certificate-rotation","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","certificate-rotation","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","certificaterotations"],"kind":"runs","command":"get certificate-rotation","exit":0}
 {"line":["get","certificate-rotations"],"kind":"runs","command":"get certificate-rotation","exit":0}
 {"line":["get","certificaterotations","--help"],"kind":"help","command":"get certificate-rotation","exit":0,"helpPath":"get-certificate-rotation.txt"}

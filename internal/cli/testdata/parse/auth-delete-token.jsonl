@@ -6,4 +6,4 @@
 {"line":["auth","delete-token"],"kind":"runs","command":"auth delete-token","exit":0}
 {"line":["auth","delete-token","--help"],"kind":"help","command":"auth delete-token","exit":0,"helpPath":"auth-delete-token.txt"}
 {"line":["auth","delete-token","x"],"kind":"runs","command":"auth delete-token","args":["x"],"exit":0}
-{"line":["auth","delete-token","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["auth","delete-token","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}

@@ -16,7 +16,7 @@
 {"line":["delete","projectroletemplatebinding"],"kind":"runs","command":"delete projectroletemplatebinding","exit":0}
 {"line":["delete","projectroletemplatebinding","--help"],"kind":"help","command":"delete projectroletemplatebinding","exit":0,"helpPath":"delete-projectroletemplatebinding.txt"}
 {"line":["delete","projectroletemplatebinding","x"],"kind":"runs","command":"delete projectroletemplatebinding","args":["x"],"exit":0}
-{"line":["delete","projectroletemplatebinding","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","projectroletemplatebinding","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["delete","projectroletemplatebindings"],"kind":"runs","command":"delete projectroletemplatebinding","exit":0}
 {"line":["delete","prtb"],"kind":"runs","command":"delete projectroletemplatebinding","exit":0}
 {"line":["delete","projectroletemplatebindings","--help"],"kind":"help","command":"delete projectroletemplatebinding","exit":0,"helpPath":"delete-projectroletemplatebinding.txt"}

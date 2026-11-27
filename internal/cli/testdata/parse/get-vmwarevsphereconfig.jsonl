@@ -19,6 +19,6 @@
 {"line":["get","vmwarevsphereconfig"],"kind":"runs","command":"get vmwarevsphereconfig","exit":0}
 {"line":["get","vmwarevsphereconfig","--help"],"kind":"help","command":"get vmwarevsphereconfig","exit":0,"helpPath":"get-vmwarevsphereconfig.txt"}
 {"line":["get","vmwarevsphereconfig","x"],"kind":"runs","command":"get vmwarevsphereconfig","args":["x"],"exit":0}
-{"line":["get","vmwarevsphereconfig","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","vmwarevsphereconfig","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","vmwarevsphereconfigs"],"kind":"runs","command":"get vmwarevsphereconfig","exit":0}
 {"line":["get","vmwarevsphereconfigs","--help"],"kind":"help","command":"get vmwarevsphereconfig","exit":0,"helpPath":"get-vmwarevsphereconfig.txt"}

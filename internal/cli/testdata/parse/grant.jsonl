@@ -16,4 +16,4 @@
 {"line":["grant"],"kind":"runs","command":"grant","exit":0}
 {"line":["grant","--help"],"kind":"help","command":"grant","exit":0,"helpPath":"grant.txt"}
 {"line":["grant","x"],"kind":"runs","command":"grant","args":["x"],"exit":0}
-{"line":["grant","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["grant","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}

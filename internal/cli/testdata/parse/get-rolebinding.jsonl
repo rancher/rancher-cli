@@ -22,6 +22,6 @@
 {"line":["get","rolebinding"],"kind":"runs","command":"get rolebinding","exit":0}
 {"line":["get","rolebinding","--help"],"kind":"help","command":"get rolebinding","exit":0,"helpPath":"get-rolebinding.txt"}
 {"line":["get","rolebinding","x"],"kind":"runs","command":"get rolebinding","args":["x"],"exit":0}
-{"line":["get","rolebinding","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","rolebinding","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","rolebindings"],"kind":"runs","command":"get rolebinding","exit":0}
 {"line":["get","rolebindings","--help"],"kind":"help","command":"get rolebinding","exit":0,"helpPath":"get-rolebinding.txt"}

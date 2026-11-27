@@ -10,6 +10,6 @@
 {"line":["delete","globalrolebinding"],"kind":"runs","command":"delete globalrolebinding","exit":0}
 {"line":["delete","globalrolebinding","--help"],"kind":"help","command":"delete globalrolebinding","exit":0,"helpPath":"delete-globalrolebinding.txt"}
 {"line":["delete","globalrolebinding","x"],"kind":"runs","command":"delete globalrolebinding","args":["x"],"exit":0}
-{"line":["delete","globalrolebinding","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","globalrolebinding","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["delete","globalrolebindings"],"kind":"runs","command":"delete globalrolebinding","exit":0}
 {"line":["delete","globalrolebindings","--help"],"kind":"help","command":"delete globalrolebinding","exit":0,"helpPath":"delete-globalrolebinding.txt"}

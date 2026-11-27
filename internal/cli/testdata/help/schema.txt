@@ -2,9 +2,9 @@ NAME:
    rancher schema - Print the schema manifest, optionally filtered to one command
 
 USAGE:
-   rancher schema [options] [command] [subcommand]
+   rancher schema [flags] [command] [subcommand]
 
-OPTIONS:
+FLAGS:
    --all              print the complete schema manifest in structured output (table output still shows the table of contents)
    --contract string  show only commands with this contract
    --destructive      show only destructive commands, including commands that are destructive only for some inputs (destructive true or dependsOnInput)
@@ -14,7 +14,7 @@ OPTIONS:
    --search string    case-insensitive substring search over command names, aliases, usage, and descriptions
    --verb string      show only commands with this verb (the first word of the command name)
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --color string              auto|always|never
    --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
    --debug                     print telemetry upload details on stderr (development builds)

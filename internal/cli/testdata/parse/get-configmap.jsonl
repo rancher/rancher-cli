@@ -22,7 +22,7 @@
 {"line":["get","configmap"],"kind":"runs","command":"get configmap","exit":0}
 {"line":["get","configmap","--help"],"kind":"help","command":"get configmap","exit":0,"helpPath":"get-configmap.txt"}
 {"line":["get","configmap","x"],"kind":"runs","command":"get configmap","args":["x"],"exit":0}
-{"line":["get","configmap","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","configmap","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","configmaps"],"kind":"runs","command":"get configmap","exit":0}
 {"line":["get","cm"],"kind":"runs","command":"get configmap","exit":0}
 {"line":["get","configmaps","--help"],"kind":"help","command":"get configmap","exit":0,"helpPath":"get-configmap.txt"}

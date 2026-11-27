@@ -203,11 +203,7 @@ func unknownCommandOutcome(c *Command, name string, after []string) outcome {
 
 // usageErrorOutcome renders the flag error ue of the command c.
 func usageErrorOutcome(c *Command, ue usageError) outcome {
-	msg := usageErrorText(c, ue) + "; pass --help for usage"
-	detail, hint := usageErrorGuidance(c, ue)
-	if detail != "" {
-		msg += "; " + detail
-	}
+	msg, hint := usageErrorMessage(c, ue)
 	ce := clierr.New(clierr.CodeValidation, msg).WithHint(hint)
 	renderRawArgvError(c, ce)
 	return outcome{kind: outcomeUsageError, cmd: c, class: ue.class, err: exit(ce)}

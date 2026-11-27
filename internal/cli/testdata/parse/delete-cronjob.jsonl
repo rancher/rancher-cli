@@ -16,6 +16,6 @@
 {"line":["delete","cronjob"],"kind":"runs","command":"delete cronjob","exit":0}
 {"line":["delete","cronjob","--help"],"kind":"help","command":"delete cronjob","exit":0,"helpPath":"delete-cronjob.txt"}
 {"line":["delete","cronjob","x"],"kind":"runs","command":"delete cronjob","args":["x"],"exit":0}
-{"line":["delete","cronjob","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","cronjob","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["delete","cronjobs"],"kind":"runs","command":"delete cronjob","exit":0}
 {"line":["delete","cronjobs","--help"],"kind":"help","command":"delete cronjob","exit":0,"helpPath":"delete-cronjob.txt"}

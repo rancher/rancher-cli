@@ -42,4 +42,4 @@
 {"line":["create","cluster"],"kind":"runs","command":"create cluster","exit":0}
 {"line":["create","cluster","--help"],"kind":"help","command":"create cluster","exit":0,"helpPath":"create-cluster.txt"}
 {"line":["create","cluster","x"],"kind":"runs","command":"create cluster","args":["x"],"exit":0}
-{"line":["create","cluster","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","cluster","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}

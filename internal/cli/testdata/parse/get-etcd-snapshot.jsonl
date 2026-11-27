@@ -19,7 +19,7 @@
 {"line":["get","etcd-snapshot"],"kind":"runs","command":"get etcd-snapshot","exit":0}
 {"line":["get","etcd-snapshot","--help"],"kind":"help","command":"get etcd-snapshot","exit":0,"helpPath":"get-etcd-snapshot.txt"}
 {"line":["get","etcd-snapshot","x"],"kind":"runs","command":"get etcd-snapshot","args":["x"],"exit":0}
-{"line":["get","etcd-snapshot","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","etcd-snapshot","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","etcdsnapshots"],"kind":"runs","command":"get etcd-snapshot","exit":0}
 {"line":["get","etcd-snapshots"],"kind":"runs","command":"get etcd-snapshot","exit":0}
 {"line":["get","etcdsnapshots","--help"],"kind":"help","command":"get etcd-snapshot","exit":0,"helpPath":"get-etcd-snapshot.txt"}

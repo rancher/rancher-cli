@@ -2,15 +2,15 @@ NAME:
    rancher delete certificate-rotation - Delete the certificate-rotation
 
 USAGE:
-   rancher delete certificate-rotation [options] <name>
+   rancher delete certificate-rotation [flags] <name>
 
-OPTIONS:
+FLAGS:
    --cluster id|name  cluster id|name of the certificate-rotation
    --help, -h         show help
    --timeout timeout  wait timeout, a positive duration, e.g. 10m (default 5m)
    --wait             wait until the certificate-rotation is gone before returning (default true; --wait=false returns once the server accepts the request)
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

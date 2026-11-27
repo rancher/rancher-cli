@@ -22,15 +22,15 @@
 {"line":["inspect","cluster","--node-name=v"],"kind":"runs","command":"inspect cluster","flags":{"node-name":"v"},"exit":0}
 {"line":["inspect","cluster","-node-name","v"],"kind":"runs","command":"inspect cluster","flags":{"node-name":"v"},"exit":0}
 {"line":["inspect","cluster","--node-name"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --node-name; pass --help for usage","  hint: rancher schema"]}
-{"line":["inspect","cluster","--node-name","v","--node-name","w"],"kind":"error","command":"","errorClass":"repeated flag","exit":2,"stderr":["error (VALIDATION): invalid value \"w\" for flag -node-name: can't duplicate this flag; pass --help for usage; --node-name may be given once; give all its entries in one comma-separated value","  hint: rancher schema"]}
+{"line":["inspect","cluster","--node-name","v","--node-name","w"],"kind":"error","command":"","errorClass":"repeated flag","exit":2,"stderr":["error (VALIDATION): --node-name may be given once; pass --help for usage","  hint: rancher schema"]}
 {"line":["inspect","cluster","--address","v"],"kind":"runs","command":"inspect cluster","flags":{"address":"v"},"exit":0}
 {"line":["inspect","cluster","--address=v"],"kind":"runs","command":"inspect cluster","flags":{"address":"v"},"exit":0}
 {"line":["inspect","cluster","-address","v"],"kind":"runs","command":"inspect cluster","flags":{"address":"v"},"exit":0}
-{"line":["inspect","cluster","--address","v","--address","w"],"kind":"error","command":"","errorClass":"repeated flag","exit":2,"stderr":["error (VALIDATION): invalid value \"w\" for flag -address: can't duplicate this flag; pass --help for usage; --address may be given once; give all its entries in one comma-separated value","  hint: rancher schema"]}
+{"line":["inspect","cluster","--address","v","--address","w"],"kind":"error","command":"","errorClass":"repeated flag","exit":2,"stderr":["error (VALIDATION): --address may be given once; pass --help for usage","  hint: rancher schema"]}
 {"line":["inspect","cluster","--internal-address","v"],"kind":"runs","command":"inspect cluster","flags":{"internal-address":"v"},"exit":0}
 {"line":["inspect","cluster","--internal-address=v"],"kind":"runs","command":"inspect cluster","flags":{"internal-address":"v"},"exit":0}
 {"line":["inspect","cluster","-internal-address","v"],"kind":"runs","command":"inspect cluster","flags":{"internal-address":"v"},"exit":0}
-{"line":["inspect","cluster","--internal-address","v","--internal-address","w"],"kind":"error","command":"","errorClass":"repeated flag","exit":2,"stderr":["error (VALIDATION): invalid value \"w\" for flag -internal-address: can't duplicate this flag; pass --help for usage; --internal-address may be given once; give all its entries in one comma-separated value","  hint: rancher schema"]}
+{"line":["inspect","cluster","--internal-address","v","--internal-address","w"],"kind":"error","command":"","errorClass":"repeated flag","exit":2,"stderr":["error (VALIDATION): --internal-address may be given once; pass --help for usage","  hint: rancher schema"]}
 {"line":["inspect","cluster","--label","v"],"kind":"runs","command":"inspect cluster","flags":{"label":["v"]},"exit":0}
 {"line":["inspect","cluster","--label=v"],"kind":"runs","command":"inspect cluster","flags":{"label":["v"]},"exit":0}
 {"line":["inspect","cluster","-label","v"],"kind":"runs","command":"inspect cluster","flags":{"label":["v"]},"exit":0}
@@ -45,7 +45,7 @@
 {"line":["inspect","cluster"],"kind":"runs","command":"inspect cluster","exit":0}
 {"line":["inspect","cluster","--help"],"kind":"help","command":"inspect cluster","exit":0,"helpPath":"inspect-cluster.txt"}
 {"line":["inspect","cluster","x"],"kind":"runs","command":"inspect cluster","args":["x"],"exit":0}
-{"line":["inspect","cluster","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["inspect","cluster","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["inspect","clusters"],"kind":"runs","command":"inspect cluster","exit":0}
 {"line":["inspect","clusters","--help"],"kind":"help","command":"inspect cluster","exit":0,"helpPath":"inspect-cluster.txt"}
 {"line":["inspect","cluster","--label","a,b"],"kind":"runs","command":"inspect cluster","flags":{"label":["a,b"]},"exit":0}

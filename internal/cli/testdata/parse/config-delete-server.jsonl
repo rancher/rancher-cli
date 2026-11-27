@@ -1,4 +1,4 @@
 {"line":["config","delete-server"],"kind":"runs","command":"config delete-server","exit":0}
 {"line":["config","delete-server","--help"],"kind":"help","command":"config delete-server","exit":0,"helpPath":"config-delete-server.txt"}
 {"line":["config","delete-server","x"],"kind":"runs","command":"config delete-server","args":["x"],"exit":0}
-{"line":["config","delete-server","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["config","delete-server","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}

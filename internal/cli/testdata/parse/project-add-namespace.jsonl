@@ -5,4 +5,4 @@
 {"line":["project","add-namespace"],"kind":"runs","command":"project add-namespace","exit":0}
 {"line":["project","add-namespace","--help"],"kind":"help","command":"project add-namespace","exit":0,"helpPath":"project-add-namespace.txt"}
 {"line":["project","add-namespace","x"],"kind":"runs","command":"project add-namespace","args":["x"],"exit":0}
-{"line":["project","add-namespace","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["project","add-namespace","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}

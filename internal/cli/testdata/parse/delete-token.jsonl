@@ -10,6 +10,6 @@
 {"line":["delete","token"],"kind":"runs","command":"delete token","exit":0}
 {"line":["delete","token","--help"],"kind":"help","command":"delete token","exit":0,"helpPath":"delete-token.txt"}
 {"line":["delete","token","x"],"kind":"runs","command":"delete token","args":["x"],"exit":0}
-{"line":["delete","token","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","token","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["delete","tokens"],"kind":"runs","command":"delete token","exit":0}
 {"line":["delete","tokens","--help"],"kind":"help","command":"delete token","exit":0,"helpPath":"delete-token.txt"}

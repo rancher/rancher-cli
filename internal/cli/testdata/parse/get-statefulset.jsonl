@@ -22,7 +22,7 @@
 {"line":["get","statefulset"],"kind":"runs","command":"get statefulset","exit":0}
 {"line":["get","statefulset","--help"],"kind":"help","command":"get statefulset","exit":0,"helpPath":"get-statefulset.txt"}
 {"line":["get","statefulset","x"],"kind":"runs","command":"get statefulset","args":["x"],"exit":0}
-{"line":["get","statefulset","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","statefulset","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","statefulsets"],"kind":"runs","command":"get statefulset","exit":0}
 {"line":["get","sts"],"kind":"runs","command":"get statefulset","exit":0}
 {"line":["get","statefulsets","--help"],"kind":"help","command":"get statefulset","exit":0,"helpPath":"get-statefulset.txt"}

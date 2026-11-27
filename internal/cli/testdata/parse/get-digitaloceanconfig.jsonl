@@ -19,6 +19,6 @@
 {"line":["get","digitaloceanconfig"],"kind":"runs","command":"get digitaloceanconfig","exit":0}
 {"line":["get","digitaloceanconfig","--help"],"kind":"help","command":"get digitaloceanconfig","exit":0,"helpPath":"get-digitaloceanconfig.txt"}
 {"line":["get","digitaloceanconfig","x"],"kind":"runs","command":"get digitaloceanconfig","args":["x"],"exit":0}
-{"line":["get","digitaloceanconfig","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","digitaloceanconfig","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","digitaloceanconfigs"],"kind":"runs","command":"get digitaloceanconfig","exit":0}
 {"line":["get","digitaloceanconfigs","--help"],"kind":"help","command":"get digitaloceanconfig","exit":0,"helpPath":"get-digitaloceanconfig.txt"}

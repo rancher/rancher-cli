@@ -2,14 +2,14 @@ NAME:
    rancher delete management-token - Delete the management-token
 
 USAGE:
-   rancher delete management-token [options] <name>
+   rancher delete management-token [flags] <name>
 
-OPTIONS:
+FLAGS:
    --help, -h         show help
    --timeout timeout  wait timeout, a positive duration, e.g. 10m (default 5m)
    --wait             wait until the management-token is gone before returning (default true; --wait=false returns once the server accepts the request)
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

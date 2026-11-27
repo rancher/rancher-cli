@@ -2,13 +2,13 @@ NAME:
    rancher inspect project - Inspect a project: namespaces, members, resource quota, and usage
 
 USAGE:
-   rancher inspect project [options] <name>
+   rancher inspect project [flags] <name>
 
-OPTIONS:
+FLAGS:
    --cluster id|name  target cluster id|name
    --help, -h         show help
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --color string              auto|always|never
    --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
    --debug                     print telemetry upload details on stderr (development builds)

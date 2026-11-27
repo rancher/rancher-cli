@@ -16,7 +16,7 @@
 {"line":["delete","pod"],"kind":"runs","command":"delete pod","exit":0}
 {"line":["delete","pod","--help"],"kind":"help","command":"delete pod","exit":0,"helpPath":"delete-pod.txt"}
 {"line":["delete","pod","x"],"kind":"runs","command":"delete pod","args":["x"],"exit":0}
-{"line":["delete","pod","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","pod","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["delete","pods"],"kind":"runs","command":"delete pod","exit":0}
 {"line":["delete","po"],"kind":"runs","command":"delete pod","exit":0}
 {"line":["delete","pods","--help"],"kind":"help","command":"delete pod","exit":0,"helpPath":"delete-pod.txt"}

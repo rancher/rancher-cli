@@ -22,7 +22,7 @@
 {"line":["get","poddisruptionbudget"],"kind":"runs","command":"get poddisruptionbudget","exit":0}
 {"line":["get","poddisruptionbudget","--help"],"kind":"help","command":"get poddisruptionbudget","exit":0,"helpPath":"get-poddisruptionbudget.txt"}
 {"line":["get","poddisruptionbudget","x"],"kind":"runs","command":"get poddisruptionbudget","args":["x"],"exit":0}
-{"line":["get","poddisruptionbudget","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","poddisruptionbudget","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","poddisruptionbudgets"],"kind":"runs","command":"get poddisruptionbudget","exit":0}
 {"line":["get","pdb"],"kind":"runs","command":"get poddisruptionbudget","exit":0}
 {"line":["get","poddisruptionbudgets","--help"],"kind":"help","command":"get poddisruptionbudget","exit":0,"helpPath":"get-poddisruptionbudget.txt"}

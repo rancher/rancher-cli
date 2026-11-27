@@ -11,4 +11,4 @@
 {"line":["access","clusters"],"kind":"runs","command":"access clusters","exit":0}
 {"line":["access","clusters","--help"],"kind":"help","command":"access clusters","exit":0,"helpPath":"access-clusters.txt"}
 {"line":["access","clusters","x"],"kind":"runs","command":"access clusters","args":["x"],"exit":0}
-{"line":["access","clusters","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["access","clusters","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}

@@ -2,9 +2,9 @@ NAME:
    rancher node drain - Drain a node: Rancher cordons it and evicts its pods
 
 USAGE:
-   rancher node drain [options] <node>
+   rancher node drain [flags] <node>
 
-OPTIONS:
+FLAGS:
    --cluster id|name       target cluster id|name
    --delete-emptydir-data  also evict pods with emptyDir volumes; their emptyDir data is deleted
    --drain-timeout string  how long Rancher's drain may run, a duration such as 5m, from 1s to 3h in whole seconds (default 2m, as in Rancher; a large node can need more)
@@ -14,7 +14,7 @@ OPTIONS:
    --timeout timeout       wait timeout, a positive duration (default --drain-timeout plus 1m)
    --wait                  wait until Rancher reports the drain done or failed (default true; --wait=false returns once the server accepts the request)
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

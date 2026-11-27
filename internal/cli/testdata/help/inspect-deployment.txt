@@ -2,14 +2,14 @@ NAME:
    rancher inspect deployment - Inspect a deployment and the pods it selects
 
 USAGE:
-   rancher inspect deployment [options] <name>
+   rancher inspect deployment [flags] <name>
 
-OPTIONS:
+FLAGS:
    --cluster id|name                    target cluster id|name
    --help, -h                           show help
    --namespace namespace, -n namespace  namespace to operate in
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --color string              auto|always|never
    --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
    --debug                     print telemetry upload details on stderr (development builds)

@@ -2,9 +2,9 @@ NAME:
    rancher create machine-config - Create a machine config for the machine pool of a node-driver cluster
 
 USAGE:
-   rancher create machine-config [options] <amazonec2config|azureconfig|digitaloceanconfig|harvesterconfig|vmwarevsphereconfig> <name>
+   rancher create machine-config [flags] <amazonec2config|azureconfig|digitaloceanconfig|harvesterconfig|vmwarevsphereconfig> <name>
 
-OPTIONS:
+FLAGS:
    --help, -h                               show help
    --image image                            digitaloceanconfig: droplet image slug
    --ipv6                                   digitaloceanconfig: enable IPv6 (omit to keep the driver default)
@@ -15,7 +15,7 @@ OPTIONS:
    --size size                              digitaloceanconfig: droplet size slug (e.g. s-2vcpu-4gb)
    --tags tags                              digitaloceanconfig: comma-separated droplet tags
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

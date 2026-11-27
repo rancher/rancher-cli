@@ -13,6 +13,6 @@
 {"line":["delete","managedchart"],"kind":"runs","command":"delete managedchart","exit":0}
 {"line":["delete","managedchart","--help"],"kind":"help","command":"delete managedchart","exit":0,"helpPath":"delete-managedchart.txt"}
 {"line":["delete","managedchart","x"],"kind":"runs","command":"delete managedchart","args":["x"],"exit":0}
-{"line":["delete","managedchart","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","managedchart","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["delete","managedcharts"],"kind":"runs","command":"delete managedchart","exit":0}
 {"line":["delete","managedcharts","--help"],"kind":"help","command":"delete managedchart","exit":0,"helpPath":"delete-managedchart.txt"}

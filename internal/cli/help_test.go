@@ -38,7 +38,7 @@ func TestStyledHelpGroupCardBoldsHeadersAndAlignsCommands(t *testing.T) {
 	t.Parallel()
 	styled := renderHelp(t, "always", "auth")
 
-	for _, header := range []string{"NAME:", "USAGE:", "COMMANDS:", "OPTIONS:", "GLOBAL OPTIONS:"} {
+	for _, header := range []string{"NAME:", "USAGE:", "COMMANDS:", "FLAGS:", "GLOBAL FLAGS:"} {
 		assert.Contains(t, styled, style.Style{Enabled: true}.Bold(header), "header %q must be bold", header)
 	}
 	assert.Contains(t, styled, "   login:", "command rows are colon-aligned, not comma-joined")
@@ -55,7 +55,7 @@ func TestStyledHelpLeafCardBoldsHeaders(t *testing.T) {
 	t.Parallel()
 	styled := renderHelp(t, "always", "auth", "login")
 
-	for _, header := range []string{"NAME:", "USAGE:", "OPTIONS:", "GLOBAL OPTIONS:"} {
+	for _, header := range []string{"NAME:", "USAGE:", "FLAGS:", "GLOBAL FLAGS:"} {
 		assert.Contains(t, styled, style.Style{Enabled: true}.Bold(header), "header %q must be bold", header)
 	}
 	assert.NotContains(t, styled, "COMMANDS:", "a leaf card has no COMMANDS section")
@@ -72,7 +72,7 @@ func TestStyledHelpRootCardBoldsHeaders(t *testing.T) {
 	t.Parallel()
 	styled := renderHelp(t, "always")
 
-	for _, header := range []string{"NAME:", "USAGE:", "VERSION:", "COMMANDS:", "GLOBAL OPTIONS:"} {
+	for _, header := range []string{"NAME:", "USAGE:", "VERSION:", "COMMANDS:", "GLOBAL FLAGS:"} {
 		assert.Contains(t, styled, style.Style{Enabled: true}.Bold(header), "header %q must be bold", header)
 	}
 	nameLine := lineContaining(t, styled, "rancher - rancher-cli")
@@ -86,7 +86,7 @@ func TestStyledHelpRootCardBoldsHeaders(t *testing.T) {
 	assert.NotContains(t, authLine, "\x1b[", "a command row's name and usage stay plain")
 
 	globalOptLine := lineContaining(t, styled, "--color")
-	assert.Contains(t, globalOptLine, "auto|always|never", "the global options list includes --color's own row")
+	assert.Contains(t, globalOptLine, "auto|always|never", "the global flags list includes --color's own row")
 }
 
 // TestStyledHelpDescriptionPrecedesUsage asserts the layout change: when a
@@ -264,7 +264,7 @@ var helpRowPattern = regexp.MustCompile(`^   (\S+)`)
 // helpSectionFirstTokens returns the first token of every row under the
 // named section header (up to the next blank line), with a trailing ':'
 // or ',' removed: the canonical command name of a COMMANDS row, the long
-// flag of an OPTIONS row.
+// flag of a FLAGS row.
 func helpSectionFirstTokens(t *testing.T, text, header string) []string {
 	t.Helper()
 	_, after, ok := strings.Cut(text, header+"\n")
@@ -294,20 +294,20 @@ func TestStyledHelpListsCommandsAndFlagsAlphabetically(t *testing.T) {
 	commands := helpSectionFirstTokens(t, root, "COMMANDS:")
 	assert.True(t, slices.IsSorted(commands), "root commands: %v", commands)
 	assert.Equal(t, "access", commands[0])
-	globals := helpSectionFirstTokens(t, root, "GLOBAL OPTIONS:")
-	assert.True(t, slices.IsSorted(globals), "root global options: %v", globals)
+	globals := helpSectionFirstTokens(t, root, "GLOBAL FLAGS:")
+	assert.True(t, slices.IsSorted(globals), "root global flags: %v", globals)
 	assert.Equal(t, "--allow-deprecated", globals[0])
 
 	group := renderHelp(t, "never", "access")
 	assert.True(t, slices.IsSorted(helpSectionFirstTokens(t, group, "COMMANDS:")))
 
 	leaf := renderHelp(t, "never", "access", "can")
-	options := helpSectionFirstTokens(t, leaf, "OPTIONS:")
-	assert.True(t, slices.IsSorted(options), "leaf options: %v", options)
-	assert.Equal(t, "--as", options[0])
-	assert.Contains(t, options, "--help")
-	leafGlobals := helpSectionFirstTokens(t, leaf, "GLOBAL OPTIONS:")
-	assert.True(t, slices.IsSorted(leafGlobals), "leaf global options: %v", leafGlobals)
+	flags := helpSectionFirstTokens(t, leaf, "FLAGS:")
+	assert.True(t, slices.IsSorted(flags), "leaf flags: %v", flags)
+	assert.Equal(t, "--as", flags[0])
+	assert.Contains(t, flags, "--help")
+	leafGlobals := helpSectionFirstTokens(t, leaf, "GLOBAL FLAGS:")
+	assert.True(t, slices.IsSorted(leafGlobals), "leaf global flags: %v", leafGlobals)
 
 	built, err := BuildRoot("v-test")
 	require.NoError(t, err)

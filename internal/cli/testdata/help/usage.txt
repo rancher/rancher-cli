@@ -2,9 +2,9 @@ NAME:
    rancher usage - Show CPU/memory requests, limits, and usage for namespaces, projects, nodes, or pods
 
 USAGE:
-   rancher usage [options]
+   rancher usage [flags]
 
-OPTIONS:
+FLAGS:
    --by string                          Group results by namespace, project, node, or pod (default: namespace)
    --cluster id|name                    target cluster id|name
    --help, -h                           show help
@@ -12,7 +12,7 @@ OPTIONS:
    --node string                        Limit results to one node
    --project string                     keep only the project's namespaces (not with --by node)
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --color string              auto|always|never
    --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
    --debug                     print telemetry upload details on stderr (development builds)

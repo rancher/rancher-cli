@@ -122,9 +122,10 @@ type usageError struct {
 	// word is the name after the dashes of an undefined flag, and the argument
 	// as typed of a flag that is missing its value.
 	word string
-	// flag is the name a flag with a bad value was typed with, first its
-	// first name, and value the value as typed.
-	flag, first, value string
+	// typed is the flag as typed, with the whitespace around it cut off and
+	// everything from the first "=" on: it never holds a value. It is set for
+	// an undefined flag and for a flag with a bad value or a second typing.
+	typed string
 }
 
 // parsedLine is a command line parsed once: the commands it reaches, the
@@ -431,7 +432,7 @@ func (w *walker) readFlagWord(lv *lineLevel, in []inWord, k int, c classifiedWor
 		if w.completion {
 			return k, 0, true
 		}
-		lv.usageErr = usageError{class: undefinedFlag, word: c.name}
+		lv.usageErr = usageError{class: undefinedFlag, word: c.name, typed: typedFlag(c)}
 		return k, undefinedFlag, false
 	case f.isBool:
 		fw.blank, fw.empty = boolValueKind(fw.tailWord)
@@ -440,10 +441,10 @@ func (w *walker) readFlagWord(lv *lineLevel, in []inWord, k int, c classifiedWor
 		if val == "" {
 			val = "true"
 		}
-		bad := usageError{class: badBoolValue, flag: c.name, first: f.names[0], value: val}
+		bad := usageError{class: badBoolValue, typed: typedFlag(c)}
 		switch f.apply(val) {
 		case setRepeated:
-			lv.usageErr = usageError{class: repeatedFlag, flag: c.name, first: f.names[0], value: val}
+			lv.usageErr = usageError{class: repeatedFlag, typed: typedFlag(c)}
 			return k, repeatedFlag, false
 		case setRejected:
 			lv.usageErr = bad
@@ -472,10 +473,17 @@ func (w *walker) readFlagWord(lv *lineLevel, in []inWord, k int, c classifiedWor
 		lv.add(fw)
 	}
 	if f.apply(val) == setRepeated {
-		lv.usageErr = usageError{class: repeatedFlag, flag: c.name, first: f.names[0], value: val}
+		lv.usageErr = usageError{class: repeatedFlag, typed: typedFlag(c)}
 		return k, repeatedFlag, false
 	}
 	return k, 0, false
+}
+
+// typedFlag is the flag word c as typed, up to the first "=": the dashes and
+// the name, never a value.
+func typedFlag(c classifiedWord) string {
+	typed, _, _ := strings.Cut(c.trimmed, "=")
+	return typed
 }
 
 // blankWord records that parsing met a bool flag typed with "=" and a value

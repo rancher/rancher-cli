@@ -16,6 +16,6 @@
 {"line":["get","authconfig"],"kind":"runs","command":"get authconfig","exit":0}
 {"line":["get","authconfig","--help"],"kind":"help","command":"get authconfig","exit":0,"helpPath":"get-authconfig.txt"}
 {"line":["get","authconfig","x"],"kind":"runs","command":"get authconfig","args":["x"],"exit":0}
-{"line":["get","authconfig","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","authconfig","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","authconfigs"],"kind":"runs","command":"get authconfig","exit":0}
 {"line":["get","authconfigs","--help"],"kind":"help","command":"get authconfig","exit":0,"helpPath":"get-authconfig.txt"}

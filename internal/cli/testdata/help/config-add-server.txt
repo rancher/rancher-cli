@@ -2,14 +2,14 @@ NAME:
    rancher config add-server - Add a Rancher server entry
 
 USAGE:
-   rancher config add-server [options] <name>
+   rancher config add-server [flags] <name>
 
-OPTIONS:
+FLAGS:
    --cacert path  PEM CA bundle, a path or the literal PEM
    --help, -h     show help
    --url url      Rancher server url (scheme required)
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --color string              auto|always|never
    --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
    --debug                     print telemetry upload details on stderr (development builds)

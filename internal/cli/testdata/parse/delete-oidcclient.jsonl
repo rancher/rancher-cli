@@ -10,6 +10,6 @@
 {"line":["delete","oidcclient"],"kind":"runs","command":"delete oidcclient","exit":0}
 {"line":["delete","oidcclient","--help"],"kind":"help","command":"delete oidcclient","exit":0,"helpPath":"delete-oidcclient.txt"}
 {"line":["delete","oidcclient","x"],"kind":"runs","command":"delete oidcclient","args":["x"],"exit":0}
-{"line":["delete","oidcclient","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","oidcclient","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["delete","oidcclients"],"kind":"runs","command":"delete oidcclient","exit":0}
 {"line":["delete","oidcclients","--help"],"kind":"help","command":"delete oidcclient","exit":0,"helpPath":"delete-oidcclient.txt"}

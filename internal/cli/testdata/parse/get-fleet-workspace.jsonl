@@ -16,7 +16,7 @@
 {"line":["get","fleet-workspace"],"kind":"runs","command":"get fleet-workspace","exit":0}
 {"line":["get","fleet-workspace","--help"],"kind":"help","command":"get fleet-workspace","exit":0,"helpPath":"get-fleet-workspace.txt"}
 {"line":["get","fleet-workspace","x"],"kind":"runs","command":"get fleet-workspace","args":["x"],"exit":0}
-{"line":["get","fleet-workspace","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","fleet-workspace","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","fleetworkspaces"],"kind":"runs","command":"get fleet-workspace","exit":0}
 {"line":["get","fleet-workspaces"],"kind":"runs","command":"get fleet-workspace","exit":0}
 {"line":["get","fleetworkspaces","--help"],"kind":"help","command":"get fleet-workspace","exit":0,"helpPath":"get-fleet-workspace.txt"}

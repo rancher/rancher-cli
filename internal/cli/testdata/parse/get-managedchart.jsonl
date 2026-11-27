@@ -19,6 +19,6 @@
 {"line":["get","managedchart"],"kind":"runs","command":"get managedchart","exit":0}
 {"line":["get","managedchart","--help"],"kind":"help","command":"get managedchart","exit":0,"helpPath":"get-managedchart.txt"}
 {"line":["get","managedchart","x"],"kind":"runs","command":"get managedchart","args":["x"],"exit":0}
-{"line":["get","managedchart","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","managedchart","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","managedcharts"],"kind":"runs","command":"get managedchart","exit":0}
 {"line":["get","managedcharts","--help"],"kind":"help","command":"get managedchart","exit":0,"helpPath":"get-managedchart.txt"}

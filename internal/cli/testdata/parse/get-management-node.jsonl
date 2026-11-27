@@ -19,7 +19,7 @@
 {"line":["get","management-node"],"kind":"runs","command":"get management-node","exit":0}
 {"line":["get","management-node","--help"],"kind":"help","command":"get management-node","exit":0,"helpPath":"get-management-node.txt"}
 {"line":["get","management-node","x"],"kind":"runs","command":"get management-node","args":["x"],"exit":0}
-{"line":["get","management-node","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","management-node","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","managementnodes"],"kind":"runs","command":"get management-node","exit":0}
 {"line":["get","management-nodes"],"kind":"runs","command":"get management-node","exit":0}
 {"line":["get","managementnodes","--help"],"kind":"help","command":"get management-node","exit":0,"helpPath":"get-management-node.txt"}

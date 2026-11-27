@@ -13,7 +13,7 @@
 {"line":["delete","clusterroletemplatebinding"],"kind":"runs","command":"delete clusterroletemplatebinding","exit":0}
 {"line":["delete","clusterroletemplatebinding","--help"],"kind":"help","command":"delete clusterroletemplatebinding","exit":0,"helpPath":"delete-clusterroletemplatebinding.txt"}
 {"line":["delete","clusterroletemplatebinding","x"],"kind":"runs","command":"delete clusterroletemplatebinding","args":["x"],"exit":0}
-{"line":["delete","clusterroletemplatebinding","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","clusterroletemplatebinding","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["delete","clusterroletemplatebindings"],"kind":"runs","command":"delete clusterroletemplatebinding","exit":0}
 {"line":["delete","crtb"],"kind":"runs","command":"delete clusterroletemplatebinding","exit":0}
 {"line":["delete","clusterroletemplatebindings","--help"],"kind":"help","command":"delete clusterroletemplatebinding","exit":0,"helpPath":"delete-clusterroletemplatebinding.txt"}

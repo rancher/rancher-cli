@@ -2,16 +2,16 @@ NAME:
    rancher access projects - List the projects a subject can see into, and the Rancher memberships behind them
 
 USAGE:
-   rancher access projects [options]
+   rancher access projects [flags]
 
-OPTIONS:
+FLAGS:
    --as string       username, user id, or user principal; omitted = you
    --cluster string  restrict to one cluster, by id or unique display name; omitted = every cluster you can list
    --help, -h        show help
    --timeout string  time limit for the whole command, e.g. 2m (default 60s)
    --type string     kind of the --as value (only user is accepted here)
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --color string              auto|always|never
    --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
    --debug                     print telemetry upload details on stderr (development builds)

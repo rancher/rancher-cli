@@ -53,4 +53,4 @@
 {"line":["cluster","set-upgrade-strategy"],"kind":"runs","command":"cluster set-upgrade-strategy","exit":0}
 {"line":["cluster","set-upgrade-strategy","--help"],"kind":"help","command":"cluster set-upgrade-strategy","exit":0,"helpPath":"cluster-set-upgrade-strategy.txt"}
 {"line":["cluster","set-upgrade-strategy","x"],"kind":"runs","command":"cluster set-upgrade-strategy","args":["x"],"exit":0}
-{"line":["cluster","set-upgrade-strategy","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["cluster","set-upgrade-strategy","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}

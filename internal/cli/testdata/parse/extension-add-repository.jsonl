@@ -1,4 +1,4 @@
 {"line":["extension","add-repository"],"kind":"runs","command":"extension add-repository","exit":0}
 {"line":["extension","add-repository","--help"],"kind":"help","command":"extension add-repository","exit":0,"helpPath":"extension-add-repository.txt"}
 {"line":["extension","add-repository","x"],"kind":"runs","command":"extension add-repository","args":["x"],"exit":0}
-{"line":["extension","add-repository","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["extension","add-repository","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}

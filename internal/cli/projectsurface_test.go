@@ -26,12 +26,12 @@ func surfaceRun(t *testing.T, scriptArgs []string) string {
 	return out.String()
 }
 
-// helpSections splits a leaf's help into its OPTIONS and GLOBAL OPTIONS
+// helpSections splits a leaf's help into its FLAGS and GLOBAL FLAGS
 // text.
-func helpSections(help string) (options, globals string) {
-	before, globals, _ := strings.Cut(help, "GLOBAL OPTIONS:")
-	_, options, _ = strings.Cut(before, "OPTIONS:")
-	return options, globals
+func helpSections(help string) (own, globals string) {
+	before, globals, _ := strings.Cut(help, "GLOBAL FLAGS:")
+	_, own, _ = strings.Cut(before, "FLAGS:")
+	return own, globals
 }
 
 // listsFlag reports whether a help section has a row for the flag name: a
@@ -52,9 +52,9 @@ func folded(s string) string { return strings.Join(strings.Fields(s), " ") }
 // TestProjectFlagIsShownWhereTaken asserts, for every registered command,
 // that the help, the flag-name completion and the schema agree with the
 // declaration: a command that takes --project lists it under its own
-// OPTIONS and offers it, each with the description the command declares;
+// FLAGS and offers it, each with the description the command declares;
 // a command that does not take it neither lists nor offers it, not even
-// under GLOBAL OPTIONS.
+// under GLOBAL FLAGS.
 func TestProjectFlagIsShownWhereTaken(t *testing.T) {
 	t.Setenv(config.EnvConfigDir, t.TempDir())
 	t.Setenv(config.EnvCredentialStore, "file")
@@ -79,7 +79,7 @@ func TestProjectFlagIsShownWhereTaken(t *testing.T) {
 				desc = f.Desc
 			}
 		}
-		options, globals := helpSections(surfaceRun(t, slices.Concat(words, []string{"--help"})))
+		own, globals := helpSections(surfaceRun(t, slices.Concat(words, []string{"--help"})))
 		completion := surfaceRun(t, slices.Concat([]string{"--rancher-completion-proto=2"}, words, []string{"--rancher-completion-cur=--pro", "--generate-shell-completion"}))
 		offered := ""
 		for line := range strings.SplitSeq(completion, "\n") {
@@ -88,16 +88,16 @@ func TestProjectFlagIsShownWhereTaken(t *testing.T) {
 			}
 		}
 		_, inSchema := schema[d.Name][runtime.FlagProject]
-		assert.False(t, listsFlag(globals, runtime.FlagProject), "%s: GLOBAL OPTIONS never lists --project on a command", d.Name)
+		assert.False(t, listsFlag(globals, runtime.FlagProject), "%s: GLOBAL FLAGS never lists --project on a command", d.Name)
 		assert.Equal(t, takes, inSchema, "%s: schema", d.Name)
 		if !takes {
-			assert.False(t, listsFlag(options, runtime.FlagProject), "%s: help", d.Name)
+			assert.False(t, listsFlag(own, runtime.FlagProject), "%s: help", d.Name)
 			assert.Empty(t, offered, "%s: completion", d.Name)
 			continue
 		}
 		taking++
-		assert.True(t, listsFlag(options, runtime.FlagProject), "%s: help lists --project", d.Name)
-		assert.Contains(t, folded(options), folded(strings.ReplaceAll(desc, "`", "")), "%s: help carries the command's description", d.Name)
+		assert.True(t, listsFlag(own, runtime.FlagProject), "%s: help lists --project", d.Name)
+		assert.Contains(t, folded(own), folded(strings.ReplaceAll(desc, "`", "")), "%s: help carries the command's description", d.Name)
 		assert.Equal(t, "--project:"+desc, offered, "%s: completion offers --project with the command's description", d.Name)
 		assert.Equal(t, desc, schema[d.Name][runtime.FlagProject].Desc, "%s: schema description", d.Name)
 	}

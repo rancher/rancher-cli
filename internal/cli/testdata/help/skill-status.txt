@@ -2,15 +2,15 @@ NAME:
    rancher skill status - Report, for each harness, the installed skill version and whether its files are unchanged
 
 USAGE:
-   rancher skill status [options]
+   rancher skill status [flags]
 
-OPTIONS:
+FLAGS:
    --agent all          target harness (or all; default all)
    --help, -h           show help
    --require-installed  fail when a selected target is absent
    --scope scope        install location scope to check: user or project (default user)
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --color string              auto|always|never
    --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
    --debug                     print telemetry upload details on stderr (development builds)

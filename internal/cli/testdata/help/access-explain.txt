@@ -2,9 +2,9 @@ NAME:
    rancher access explain - Explain the cluster's authorizer's decision for a subject, a verb, and a resource
 
 USAGE:
-   rancher access explain [options] <verb> [resource]
+   rancher access explain [flags] <verb> [resource]
 
-OPTIONS:
+FLAGS:
    --as string                    subject to explain instead of you: a Rancher user (user id, username, or user principal), a group principal, or a service account
    --cluster string               cluster name or id the question is about
    --group string                 API group when the resource name exists in several groups
@@ -15,7 +15,7 @@ OPTIONS:
    --timeout string               time limit for the whole command, e.g. 2m (default 60s)
    --type string                  how to read a bare --as value: user or group
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --color string              auto|always|never
    --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
    --debug                     print telemetry upload details on stderr (development builds)

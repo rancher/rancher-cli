@@ -22,6 +22,6 @@
 {"line":["get","job"],"kind":"runs","command":"get job","exit":0}
 {"line":["get","job","--help"],"kind":"help","command":"get job","exit":0,"helpPath":"get-job.txt"}
 {"line":["get","job","x"],"kind":"runs","command":"get job","args":["x"],"exit":0}
-{"line":["get","job","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","job","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","jobs"],"kind":"runs","command":"get job","exit":0}
 {"line":["get","jobs","--help"],"kind":"help","command":"get job","exit":0,"helpPath":"get-job.txt"}

@@ -16,7 +16,7 @@
 {"line":["delete","poddisruptionbudget"],"kind":"runs","command":"delete poddisruptionbudget","exit":0}
 {"line":["delete","poddisruptionbudget","--help"],"kind":"help","command":"delete poddisruptionbudget","exit":0,"helpPath":"delete-poddisruptionbudget.txt"}
 {"line":["delete","poddisruptionbudget","x"],"kind":"runs","command":"delete poddisruptionbudget","args":["x"],"exit":0}
-{"line":["delete","poddisruptionbudget","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","poddisruptionbudget","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["delete","poddisruptionbudgets"],"kind":"runs","command":"delete poddisruptionbudget","exit":0}
 {"line":["delete","pdb"],"kind":"runs","command":"delete poddisruptionbudget","exit":0}
 {"line":["delete","poddisruptionbudgets","--help"],"kind":"help","command":"delete poddisruptionbudget","exit":0,"helpPath":"delete-poddisruptionbudget.txt"}

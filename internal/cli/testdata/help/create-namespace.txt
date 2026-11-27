@@ -2,14 +2,14 @@ NAME:
    rancher create namespace - Create a namespace, optionally inside a project
 
 USAGE:
-   rancher create namespace [options] <name>
+   rancher create namespace [flags] <name>
 
-OPTIONS:
+FLAGS:
    --cluster id|name  target cluster id|name
    --help, -h         show help
    --project string   add the namespace to this project when it is created
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

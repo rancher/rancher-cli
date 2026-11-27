@@ -16,6 +16,6 @@
 {"line":["get","nodedriver"],"kind":"runs","command":"get nodedriver","exit":0}
 {"line":["get","nodedriver","--help"],"kind":"help","command":"get nodedriver","exit":0,"helpPath":"get-nodedriver.txt"}
 {"line":["get","nodedriver","x"],"kind":"runs","command":"get nodedriver","args":["x"],"exit":0}
-{"line":["get","nodedriver","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","nodedriver","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","nodedrivers"],"kind":"runs","command":"get nodedriver","exit":0}
 {"line":["get","nodedrivers","--help"],"kind":"help","command":"get nodedriver","exit":0,"helpPath":"get-nodedriver.txt"}

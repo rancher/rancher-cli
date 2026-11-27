@@ -112,7 +112,7 @@ func sortedCommands(cmds []*Command) []*Command {
 }
 
 // sortedFlags returns the flags ordered by their first (long) name, so
-// OPTIONS and GLOBAL OPTIONS read alphabetically. A copy: the command's
+// FLAGS and GLOBAL FLAGS read alphabetically. A copy: the command's
 // own flag slice keeps its declaration order.
 func sortedFlags(flags []*Flag) []*Flag {
 	out := slices.Clone(flags)
@@ -120,7 +120,7 @@ func sortedFlags(flags []*Flag) []*Flag {
 	return out
 }
 
-// leafFlags is a leaf's OPTIONS: its own flags, plus --project with what it
+// leafFlags is a leaf's FLAGS: its own flags, plus --project with what it
 // does for this command when the command takes it. --project is parsed as
 // the global flag, so it is never one of the leaf's own flags.
 func leafFlags(cmd *Command) []*Flag {
@@ -131,9 +131,9 @@ func leafFlags(cmd *Command) []*Flag {
 	return flags
 }
 
-// leafGlobalFlags is a command's GLOBAL OPTIONS: the global flags the command
+// leafGlobalFlags is a command's GLOBAL FLAGS: the global flags the command
 // accepts, without --project (a command that takes it lists it under
-// OPTIONS, and every other command refuses it).
+// FLAGS, and every other command refuses it).
 func leafGlobalFlags(cmd *Command) []*Flag {
 	return slices.DeleteFunc(slices.Clone(cmd.VisiblePersistentFlags()), func(f *Flag) bool {
 		name := f.Names()[0]
@@ -141,7 +141,7 @@ func leafGlobalFlags(cmd *Command) []*Flag {
 	})
 }
 
-// groupGlobalFlags is a command group's GLOBAL OPTIONS: the global flags a
+// groupGlobalFlags is a command group's GLOBAL FLAGS: the global flags a
 // command under the group accepts, --project included when one of them
 // takes it.
 func groupGlobalFlags(cmd *Command) []*Flag {
@@ -180,19 +180,19 @@ var rootCommandHelpTemplate = `{{bold "NAME:"}}
    {{colorPrimeDescription . (wrap .Description 3)}}{{end}}
 
 {{bold "USAGE:"}}
-   {{.FullName}} {{if .VisibleFlags}}[global options]{{end}}{{if .VisibleCommands}} [command [command options]]{{end}}{{if .ArgsUsage}} {{.ArgsUsage}}{{end}}{{if .Version}}
+   {{.FullName}} {{if .VisibleFlags}}[global flags]{{end}}{{if .VisibleCommands}} [command] [flags]{{end}}{{if .ArgsUsage}} {{.ArgsUsage}}{{end}}{{if .Version}}
 
 {{bold "VERSION:"}}
    {{.Version}}{{end}}{{if .VisibleCommands}}
 
 {{bold "COMMANDS:"}}` + commandsBlock + `{{end}}{{if .VisibleFlags}}
 
-{{bold "GLOBAL OPTIONS:"}}` + flagsBlock + `{{end}}
+{{bold "GLOBAL FLAGS:"}}` + flagsBlock + `{{end}}
 `
 
 // commandHelpTemplate is the page of a leaf (a command with no visible
 // subcommands): bold section headers, the DESCRIPTION block above USAGE, and
-// --project listed under OPTIONS by the commands that take it and nowhere by
+// --project listed under FLAGS by the commands that take it and nowhere by
 // the rest.
 var commandHelpTemplate = `{{bold "NAME:"}}
    {{template "helpNameTemplate" .}}{{if .Description}}
@@ -203,9 +203,9 @@ var commandHelpTemplate = `{{bold "NAME:"}}
 {{bold "USAGE:"}}
    {{template "usageTemplate" .}}{{if leafFlags .}}
 
-{{bold "OPTIONS:"}}` + leafFlagsBlock + `{{end}}{{if leafGlobalFlags .}}
+{{bold "FLAGS:"}}` + leafFlagsBlock + `{{end}}{{if leafGlobalFlags .}}
 
-{{bold "GLOBAL OPTIONS:"}}` + leafGlobalFlagsBlock + `{{end}}
+{{bold "GLOBAL FLAGS:"}}` + leafGlobalFlagsBlock + `{{end}}
 `
 
 // subcommandHelpTemplate is the page of a group (a command with visible
@@ -218,11 +218,11 @@ var subcommandHelpTemplate = `{{bold "NAME:"}}
    {{colorPrimeDescription . (wrap .Description 3)}}{{end}}
 
 {{bold "USAGE:"}}
-   {{.FullName}}{{if .VisibleCommands}} [command [command options]]{{end}}{{if .ArgsUsage}} {{.ArgsUsage}}{{end}}{{if .VisibleCommands}}
+   {{.FullName}}{{if .VisibleCommands}} [command] [flags]{{end}}{{if .ArgsUsage}} {{.ArgsUsage}}{{end}}{{if .VisibleCommands}}
 
 {{bold "COMMANDS:"}}` + commandsBlock + `{{end}}{{if .VisibleFlags}}
 
-{{bold "OPTIONS:"}}` + flagsBlock + `{{end}}{{if groupGlobalFlags .}}
+{{bold "FLAGS:"}}` + flagsBlock + `{{end}}{{if groupGlobalFlags .}}
 
-{{bold "GLOBAL OPTIONS:"}}` + groupGlobalFlagsBlock + `{{end}}
+{{bold "GLOBAL FLAGS:"}}` + groupGlobalFlagsBlock + `{{end}}
 `

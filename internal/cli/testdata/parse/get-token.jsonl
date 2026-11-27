@@ -16,6 +16,6 @@
 {"line":["get","token"],"kind":"runs","command":"get token","exit":0}
 {"line":["get","token","--help"],"kind":"help","command":"get token","exit":0,"helpPath":"get-token.txt"}
 {"line":["get","token","x"],"kind":"runs","command":"get token","args":["x"],"exit":0}
-{"line":["get","token","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","token","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","tokens"],"kind":"runs","command":"get token","exit":0}
 {"line":["get","tokens","--help"],"kind":"help","command":"get token","exit":0,"helpPath":"get-token.txt"}

@@ -566,20 +566,11 @@ var allNamespacesEntry = hintEntry[usageErrorInput]{
 	},
 }
 
-// onceFlagEntry names the remedy for a flag declared Once given twice: one
-// instance carrying every entry.
-var onceFlagEntry = hintEntry[usageErrorInput]{
-	match: func(in usageErrorInput) bool { return in.err.class == repeatedFlag },
-	detail: func(in usageErrorInput) string {
-		return fmt.Sprintf("--%s may be given once; give all its entries in one comma-separated value", in.err.first)
-	},
-}
-
 // usageErrorHints is the registration table for targeted flag-parse
 // guidance: the first matching entry's detail is appended to the message;
 // callers fall back to just the base message plus the generic schema hint
 // when nothing matches. Register new targeted entries here, not in the seam.
-var usageErrorHints = []hintEntry[usageErrorInput]{allNamespacesEntry, onceFlagEntry}
+var usageErrorHints = []hintEntry[usageErrorInput]{allNamespacesEntry}
 
 // usageErrorGuidance returns the flag error message detail (possibly "")
 // and hint for err.
@@ -612,77 +603,60 @@ func renderRawArgvError(c *Command, ce *clierr.Error) {
 }
 
 // text is the message of the flag error: the undefined flag, the flag that
-// is missing its value, or the flag with a value it cannot take.
+// is missing its value, the flag given twice that may be given once, or the
+// bool flag with a value it cannot take. It names the flag as typed and quotes
+// no value.
 func (e usageError) text() string {
 	switch e.class {
 	case undefinedFlag:
-		return "flag provided but not defined: -" + e.word
+		return "flag provided but not defined: " + e.typed
 	case missingFlagValue:
 		return "flag needs an argument: " + e.word
 	case repeatedFlag:
-		return fmt.Sprintf("invalid value %q for flag -%s: can't duplicate this flag", e.value, e.flag)
+		return e.typed + " may be given once"
 	default:
-		return fmt.Sprintf("invalid value %q for flag -%s: parse error", e.value, e.flag)
+		return "invalid value for flag " + e.typed + ": the value must be true or false"
 	}
 }
 
-// usageErrorText is the text of the flag error ue of command c. A command
-// that takes a secret input fails closed: any text built from the command
-// line may hold a typed argument that is the secret. Only these forms get
-// through:
-//   - a flag that is missing its value, which is given only for a flag the
-//     command defines, and holds no typed argument;
-//   - an undefined flag, which becomes the position of the argument (see
-//     unknownFlagText);
-//   - an invalid value, which becomes the flag and, for the two reasons that
-//     quote nothing, the reason.
-//
-// A command with no descriptor (the root or a group) reports a flag typed
-// before the command name, whose command is not known yet, or a flag of a
-// command that has no descriptor: an undefined flag gets the position text
-// unless the line's command is a leaf that takes no secret input (see
-// unknownFlagTextAt), and an invalid value gets the text that names the flag
-// and not the value. A missing value passes through. A command with a
-// descriptor that takes no secret input names the typed argument.
+// usageErrorMessage is the message and the hint of the flag error ue of
+// command c: the text of usageErrorText, then the detail of the guidance, if
+// any, then "pass --help for usage", which ends every flag error message.
+func usageErrorMessage(c *Command, ue usageError) (msg, hint string) {
+	msg = usageErrorText(c, ue)
+	detail, hint := usageErrorGuidance(c, ue)
+	if detail != "" {
+		msg += "; " + detail
+	}
+	return msg + "; pass --help for usage", hint
+}
+
+// usageErrorText is the text of the flag error ue of command c. No flag error
+// text quotes a typed value: the flag as typed ends at any "=". A command that
+// takes a secret input fails closed all the same, because the text of an
+// undefined flag may be a typed argument that is the secret. An undefined flag
+// gets the position text (see unknownFlagText) where the argument may be a
+// secret or no command is known: a command that takes a secret input, and the
+// root or a group, whose command is the leaf the rest of the command line names
+// (see unknownFlagTextAt). A flag that the command refuses gets its refusal. The
+// other flag errors, a flag that is missing its value, a repeated flag and a
+// bad bool value, name only a flag the command defines, or no argument.
 func usageErrorText(c *Command, ue usageError) string {
 	msg := ue.text()
+	if ue.class != undefinedFlag {
+		return msg
+	}
 	d, described := commandDescriptor(c)
-	if described {
-		if name, isUnknown := strings.CutPrefix(msg, "flag provided but not defined: -"); isUnknown {
-			if text, refused := refusedFlagText(d, name, rawArgv); refused {
-				return text
-			}
-		}
-	}
-	if described && !d.SecretInput {
-		return msg
-	}
 	if !described {
-		switch ue.class {
-		case undefinedFlag:
-			return unknownFlagTextAt(c.Root(), ue.word, rawArgv, msg)
-		case missingFlagValue:
-			return msg
-		}
-		return invalidValueText(ue)
+		return unknownFlagTextAt(c.Root(), ue.word, rawArgv, msg)
 	}
-	switch ue.class {
-	case missingFlagValue:
-		return msg
-	case undefinedFlag:
+	if text, refused := refusedFlagText(d, ue.word, rawArgv); refused {
+		return text
+	}
+	if d.SecretInput {
 		return unknownFlagText(ue.word, rawArgv)
 	}
-	return invalidValueText(ue)
-}
-
-// invalidValueText is the text of a flag with a value it cannot take, without
-// the value: the flag, and the reason, which is one that quotes nothing.
-func invalidValueText(ue usageError) string {
-	out := "invalid value for flag -" + ue.flag
-	if ue.class == repeatedFlag {
-		return out + ": can't duplicate this flag"
-	}
-	return out + ": the value must be true or false"
+	return msg
 }
 
 // unknownFlagTextAt is the text for the undefined flag name that the root or a

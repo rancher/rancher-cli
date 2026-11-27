@@ -2,9 +2,9 @@ NAME:
    rancher delete horizontalpodautoscaler - Delete the horizontalpodautoscaler
 
 USAGE:
-   rancher delete horizontalpodautoscaler [options] <name>
+   rancher delete horizontalpodautoscaler [flags] <name>
 
-OPTIONS:
+FLAGS:
    --cluster id|name                    target cluster id|name
    --help, -h                           show help
    --namespace namespace, -n namespace  namespace to operate in
@@ -12,7 +12,7 @@ OPTIONS:
    --timeout timeout                    wait timeout, a positive duration, e.g. 10m (default 5m)
    --wait                               wait until the horizontalpodautoscaler is gone before returning (default true; --wait=false returns once the server accepts the request)
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

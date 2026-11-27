@@ -16,7 +16,7 @@
 {"line":["delete","service"],"kind":"runs","command":"delete service","exit":0}
 {"line":["delete","service","--help"],"kind":"help","command":"delete service","exit":0,"helpPath":"delete-service.txt"}
 {"line":["delete","service","x"],"kind":"runs","command":"delete service","args":["x"],"exit":0}
-{"line":["delete","service","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","service","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["delete","services"],"kind":"runs","command":"delete service","exit":0}
 {"line":["delete","svc"],"kind":"runs","command":"delete service","exit":0}
 {"line":["delete","services","--help"],"kind":"help","command":"delete service","exit":0,"helpPath":"delete-service.txt"}

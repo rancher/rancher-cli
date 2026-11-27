@@ -37,16 +37,16 @@ func TestHelpNamesTheIDOnKindsWithAHandle(t *testing.T) {
 			continue
 		}
 		count++
-		assert.Equal(t, "rancher get "+k.Name+" [options] [id]", usage(t, "get", k.Name), k.Name)
-		assert.Equal(t, "rancher patch "+k.Name+" [options] <id>", usage(t, "patch", k.Name), k.Name)
+		assert.Equal(t, "rancher get "+k.Name+" [flags] [id]", usage(t, "get", k.Name), k.Name)
+		assert.Equal(t, "rancher patch "+k.Name+" [flags] <id>", usage(t, "patch", k.Name), k.Name)
 		if k.Deletable {
-			assert.Equal(t, "rancher delete "+k.Name+" [options] <id>", usage(t, "delete", k.Name), k.Name)
+			assert.Equal(t, "rancher delete "+k.Name+" [flags] <id>", usage(t, "delete", k.Name), k.Name)
 		}
 	}
 	assert.Equal(t, 7, count)
-	assert.Equal(t, "rancher get cluster [options] [name]", usage(t, "get", "cluster"))
-	assert.Equal(t, "rancher patch cluster [options] <name>", usage(t, "patch", "cluster"))
-	assert.Equal(t, "rancher delete clusterroletemplatebinding [options] <name>", usage(t, "delete", "clusterroletemplatebinding"))
+	assert.Equal(t, "rancher get cluster [flags] [name]", usage(t, "get", "cluster"))
+	assert.Equal(t, "rancher patch cluster [flags] <name>", usage(t, "patch", "cluster"))
+	assert.Equal(t, "rancher delete clusterroletemplatebinding [flags] <name>", usage(t, "delete", "clusterroletemplatebinding"))
 }
 
 var _ engine.ProjectNameLister = (*clientFactory)(nil)

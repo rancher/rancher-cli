@@ -2,16 +2,16 @@ NAME:
    rancher node - Drain a node of a cluster or stop a drain (read nodes with `rancher get node --cluster <cluster>` and the drain state with `rancher get management-node --cluster <cluster>`)
 
 USAGE:
-   rancher node [command [command options]]
+   rancher node [command] [flags]
 
 COMMANDS:
    drain:       Drain a node: Rancher cordons it and evicts its pods
    stop-drain:  Stop a running drain of a node; the node stays cordoned
 
-OPTIONS:
+FLAGS:
    --help, -h  show help
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

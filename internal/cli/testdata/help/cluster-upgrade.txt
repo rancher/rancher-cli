@@ -2,16 +2,16 @@ NAME:
    rancher cluster upgrade - Upgrade the Kubernetes version of an RKE2 or K3s cluster
 
 USAGE:
-   rancher cluster upgrade [options] <cluster>
+   rancher cluster upgrade [flags] <cluster>
 
-OPTIONS:
+FLAGS:
    --help, -h                     show help
    --k8s-version version          Kubernetes version to upgrade to, for example v1.31.4+rke2r1
    --namespace string, -n string  Fleet workspace (namespace) of the provisioning cluster (default: fleet-default)
    --timeout timeout              wait timeout, a positive duration, e.g. 1h (default 30m)
    --wait                         wait until Rancher reports the operation done before returning (default true; --wait=false returns once the server accepts the request)
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never

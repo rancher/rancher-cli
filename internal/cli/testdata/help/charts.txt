@@ -2,16 +2,16 @@ NAME:
    rancher charts - List the charts and versions the repositories of a cluster offer
 
 USAGE:
-   rancher charts [options]
+   rancher charts [flags]
 
-OPTIONS:
+FLAGS:
    --all-versions        list every version of each chart, not only the newest
    --cluster id|name     target cluster id|name
    --help, -h            show help
    --include-deprecated  also list deprecated versions
    --repo name           list only the ClusterRepo name
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --color string              auto|always|never
    --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
    --debug                     print telemetry upload details on stderr (development builds)

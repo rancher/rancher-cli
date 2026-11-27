@@ -16,4 +16,4 @@
 {"line":["revoke"],"kind":"runs","command":"revoke","exit":0}
 {"line":["revoke","--help"],"kind":"help","command":"revoke","exit":0,"helpPath":"revoke.txt"}
 {"line":["revoke","x"],"kind":"runs","command":"revoke","args":["x"],"exit":0}
-{"line":["revoke","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["revoke","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}

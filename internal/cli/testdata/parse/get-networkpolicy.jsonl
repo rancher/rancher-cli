@@ -22,7 +22,7 @@
 {"line":["get","networkpolicy"],"kind":"runs","command":"get networkpolicy","exit":0}
 {"line":["get","networkpolicy","--help"],"kind":"help","command":"get networkpolicy","exit":0,"helpPath":"get-networkpolicy.txt"}
 {"line":["get","networkpolicy","x"],"kind":"runs","command":"get networkpolicy","args":["x"],"exit":0}
-{"line":["get","networkpolicy","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","networkpolicy","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","networkpolicies"],"kind":"runs","command":"get networkpolicy","exit":0}
 {"line":["get","netpol"],"kind":"runs","command":"get networkpolicy","exit":0}
 {"line":["get","networkpolicies","--help"],"kind":"help","command":"get networkpolicy","exit":0,"helpPath":"get-networkpolicy.txt"}

@@ -13,7 +13,7 @@
 {"line":["delete","etcd-snapshot-restore"],"kind":"runs","command":"delete etcd-snapshot-restore","exit":0}
 {"line":["delete","etcd-snapshot-restore","--help"],"kind":"help","command":"delete etcd-snapshot-restore","exit":0,"helpPath":"delete-etcd-snapshot-restore.txt"}
 {"line":["delete","etcd-snapshot-restore","x"],"kind":"runs","command":"delete etcd-snapshot-restore","args":["x"],"exit":0}
-{"line":["delete","etcd-snapshot-restore","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","etcd-snapshot-restore","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["delete","etcdsnapshotrestores"],"kind":"runs","command":"delete etcd-snapshot-restore","exit":0}
 {"line":["delete","etcd-snapshot-restores"],"kind":"runs","command":"delete etcd-snapshot-restore","exit":0}
 {"line":["delete","etcdsnapshotrestores","--help"],"kind":"help","command":"delete etcd-snapshot-restore","exit":0,"helpPath":"delete-etcd-snapshot-restore.txt"}

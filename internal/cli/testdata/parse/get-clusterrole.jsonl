@@ -19,6 +19,6 @@
 {"line":["get","clusterrole"],"kind":"runs","command":"get clusterrole","exit":0}
 {"line":["get","clusterrole","--help"],"kind":"help","command":"get clusterrole","exit":0,"helpPath":"get-clusterrole.txt"}
 {"line":["get","clusterrole","x"],"kind":"runs","command":"get clusterrole","args":["x"],"exit":0}
-{"line":["get","clusterrole","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","clusterrole","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","clusterroles"],"kind":"runs","command":"get clusterrole","exit":0}
 {"line":["get","clusterroles","--help"],"kind":"help","command":"get clusterrole","exit":0,"helpPath":"get-clusterrole.txt"}

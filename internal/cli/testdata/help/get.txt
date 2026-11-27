@@ -2,7 +2,7 @@ NAME:
    rancher get - Get resources
 
 USAGE:
-   rancher get [command [command options]]
+   rancher get [command] [flags]
 
 COMMANDS:
    amazonec2config, amazonec2configs:                                          List amazonec2configs or show one
@@ -81,10 +81,10 @@ COMMANDS:
    user, users:                                                                List users or show one
    vmwarevsphereconfig, vmwarevsphereconfigs:                                  List vmwarevsphereconfigs or show one
 
-OPTIONS:
+FLAGS:
    --help, -h  show help
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --color string              auto|always|never
    --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
    --debug                     print telemetry upload details on stderr (development builds)

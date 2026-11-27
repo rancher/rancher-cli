@@ -115,8 +115,8 @@ func TestCommandLineRowsGiveTheirResult(t *testing.T) {
 
 	const (
 		dashHint = bareDashHint
-		getPod   = "rancher get pod [options] [name]"
-		root     = "rancher [global options] [command [command options]]"
+		getPod   = "rancher get pod [flags] [name]"
+		root     = "rancher [global flags] [command] [flags]"
 	)
 	local := []string{"--cluster", "local"}
 	get := append([]string{"get", "pods"}, local...)
@@ -153,7 +153,7 @@ func TestCommandLineRowsGiveTheirResult(t *testing.T) {
 		{"help typed before the dash at a leaf", line("get", "pods", "--help", "-", "x"), helpCard(getPod)},
 		{"the version typed before the dash", line("--version", "-", "get"), versionOut},
 		{"an unknown command before the dash", line("-o", "json", "get", "nosuch", "-", "x"), unknownCommand("nosuch")},
-		{"an undefined flag before the dash", line("get", "pods", "--bogus", "-", "x"), undefinedFlagError("flag provided but not defined: -bogus")},
+		{"an undefined flag before the dash", line("get", "pods", "--bogus", "-", "x"), undefinedFlagError("flag provided but not defined: --bogus")},
 		{"an undefined flag after the dash", line("get", "pods", "-", "--bogus"), droppedRefused("--bogus")},
 		{"a bool flag with a space as the value", line("delete", "namespace", "ns1", "--cluster", "local", "--apply", "--yes= ", "-o", "json"), emptyBoolRefused("--yes")},
 		{"a bool flag with a tab as the value", line("create", "namespace", "ns1", "--cluster", "local", "--apply=\t", "-o", "json"), emptyBoolRefused("--apply")},
@@ -167,7 +167,7 @@ func TestCommandLineRowsGiveTheirResult(t *testing.T) {
 		{"an empty help value", with(get, "--help="), helpCard(getPod)},
 		{"a blank bool value ahead of the command, then help", with(line("--dry-run= "), append(get, "--help")...), emptyBoolRefused("--dry-run")},
 		{"an unknown command then a blank bool value", line("nosuch", "--yes= "), unknownCommand("nosuch")},
-		{"an undefined flag then a blank bool value", with(get, "--bogus", "--yes= "), undefinedFlagError("flag provided but not defined: -bogus")},
+		{"an undefined flag then a blank bool value", with(get, "--bogus", "--yes= "), undefinedFlagError("flag provided but not defined: --bogus")},
 		{"a blank bool value then an unknown command", line("--yes= ", "nosuch"), emptyBoolRefused("--yes")},
 		{"a blank bool value then the version flag", line("--yes= ", "--version"), emptyBoolRefused("--yes")},
 		{"a blank bool value then an undefined flag", with(get, "--yes= ", "--bogus"), emptyBoolRefused("--yes")},
@@ -191,8 +191,8 @@ func TestCommandLineRowsGiveTheirResult(t *testing.T) {
 		{"a padded command name", line(" get", "pods"), unknownCommand(" get")},
 		{"a dash and a symbol is an argument", with(get, "-€"), refused("--namespace is required when you give the name of one pod", "")},
 		{"a dash and a symbol, a dash and a word", with(get, "-€", "-", "x"), refused("get pod takes at most 1 argument ([name]); unexpected arguments '-' 'x'", "rancher get pod --help")},
-		{"an undefined flag after a bool value as its own word", with(get, "--dry-run", "false", "--bogus"), undefinedFlagError("flag provided but not defined: -bogus")},
-		{"an undefined flag then help after a bool value", with(get, "--dry-run", "false", "--bogus", "--help"), undefinedFlagError("flag provided but not defined: -bogus")},
+		{"an undefined flag after a bool value as its own word", with(get, "--dry-run", "false", "--bogus"), undefinedFlagError("flag provided but not defined: --bogus")},
+		{"an undefined flag then help after a bool value", with(get, "--dry-run", "false", "--bogus", "--help"), undefinedFlagError("flag provided but not defined: --bogus")},
 		{"help then an undefined flag", with(get, "--help", "--dry-run", "false", "--bogus"), helpCard(getPod)},
 		{"a dash then help", with(get, "-", "--help"), droppedRefused("--help")},
 		{"a dash, a word, then help", with(get, "-", "x", "--help"), droppedRefused("x", "--help")},

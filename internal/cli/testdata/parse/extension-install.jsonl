@@ -16,4 +16,4 @@
 {"line":["extension","install"],"kind":"runs","command":"extension install","exit":0}
 {"line":["extension","install","--help"],"kind":"help","command":"extension install","exit":0,"helpPath":"extension-install.txt"}
 {"line":["extension","install","x"],"kind":"runs","command":"extension install","args":["x"],"exit":0}
-{"line":["extension","install","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["extension","install","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}

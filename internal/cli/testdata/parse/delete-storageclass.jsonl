@@ -13,7 +13,7 @@
 {"line":["delete","storageclass"],"kind":"runs","command":"delete storageclass","exit":0}
 {"line":["delete","storageclass","--help"],"kind":"help","command":"delete storageclass","exit":0,"helpPath":"delete-storageclass.txt"}
 {"line":["delete","storageclass","x"],"kind":"runs","command":"delete storageclass","args":["x"],"exit":0}
-{"line":["delete","storageclass","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","storageclass","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["delete","storageclasses"],"kind":"runs","command":"delete storageclass","exit":0}
 {"line":["delete","sc"],"kind":"runs","command":"delete storageclass","exit":0}
 {"line":["delete","storageclasses","--help"],"kind":"help","command":"delete storageclass","exit":0,"helpPath":"delete-storageclass.txt"}

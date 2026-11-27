@@ -1,4 +1,4 @@
 {"line":["config","edit"],"kind":"runs","command":"config edit","exit":0}
 {"line":["config","edit","--help"],"kind":"help","command":"config edit","exit":0,"helpPath":"config-edit.txt"}
 {"line":["config","edit","x"],"kind":"runs","command":"config edit","args":["x"],"exit":0}
-{"line":["config","edit","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["config","edit","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}

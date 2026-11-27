@@ -6,7 +6,7 @@
 {"line":["get","pod","","","-"],"kind":"runs","command":"get pod","args":["","","-"],"exit":0}
 {"line":["get","pod","","","-","x"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: 'x'","  hint: put - last, or after -- when it is meant as an argument"]}
 {"line":["get","pod","","-"],"kind":"runs","command":"get pod","args":["","-"],"exit":0}
-{"line":["get","pod","","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","pod","","get"],"kind":"runs","command":"get pod","args":["","get"],"exit":0}
 {"line":["get","pod","","--help"],"kind":"help","command":"get pod","exit":0,"helpPath":"get-pod.txt"}
 {"line":["get","pod"," ","-","x"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: 'x'","  hint: put - last, or after -- when it is meant as an argument"]}
@@ -30,10 +30,10 @@
 {"line":["get","pod","-1","--help"],"kind":"runs","command":"get pod","args":["-1","--help"],"exit":0}
 {"line":["get","pod","-\u20ac"],"kind":"runs","command":"get pod","args":["-\u20ac"],"exit":0}
 {"line":["get","pod","-\u00e9"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -\u00e9; pass --help for usage","  hint: rancher schema"]}
-{"line":["get","pod","---x"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --x; pass --help for usage","  hint: rancher schema"]}
-{"line":["get","pod","---yes"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --yes; pass --help for usage","  hint: rancher schema"]}
-{"line":["get","pod","---help"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --help; pass --help for usage","  hint: rancher schema"]}
-{"line":["get","pod","--=x"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","---x"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: ---x; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","---yes"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: ---yes; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","---help"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: ---help; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--=x"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","pod","-="],"kind":"runs","command":"get pod","args":["-="],"exit":0}
 {"line":["get","pod","--help"],"kind":"help","command":"get pod","exit":0,"helpPath":"get-pod.txt"}
 {"line":["get","pod","-h"],"kind":"help","command":"get pod","exit":0,"helpPath":"get-pod.txt"}
@@ -43,17 +43,17 @@
 {"line":["get","pod","--help= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --help= has an empty value; a bool flag typed with = takes true or false","  hint: write --help or --help=true|false"]}
 {"line":["get","pod","-h="],"kind":"help","command":"get pod","exit":0,"helpPath":"get-pod.txt"}
 {"line":["get","pod","--help=true"],"kind":"help","command":"get pod","exit":0,"helpPath":"get-pod.txt"}
-{"line":["get","pod","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --version; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","pod","-v"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -v; pass --help for usage","  hint: rancher schema"]}
-{"line":["get","pod","--version=false"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
-{"line":["get","pod","--version= "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
-{"line":["get","pod","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--version=false"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--version= "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","pod","--yes"],"kind":"runs","command":"get pod","flags":{"yes":true},"exit":0}
 {"line":["get","pod","--yes="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
 {"line":["get","pod","--yes= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
 {"line":["get","pod","--yes=\t"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
 {"line":["get","pod","--yes=false"],"kind":"runs","command":"get pod","flags":{"yes":false},"exit":0}
-{"line":["get","pod","--yes=maybe"],"kind":"error","command":"","errorClass":"bad bool value","exit":2,"stderr":["error (VALIDATION): invalid value \"maybe\" for flag -yes: parse error; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--yes=maybe"],"kind":"error","command":"","errorClass":"bad bool value","exit":2,"stderr":["error (VALIDATION): invalid value for flag --yes: the value must be true or false; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","pod","--yes","false"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): get pod: 'false' was typed after the bool flag --yes; a bool flag takes its value only as --yes=<value>. To pass an argument such as true or false, put it before the flags or after --","  hint: rancher get pod --help"]}
 {"line":["get","pod","--output"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --output; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","pod","-o","json"],"kind":"runs","command":"get pod","flags":{"output":"json"},"exit":0}
@@ -76,9 +76,9 @@
 {"line":["--help=false","get","pod"],"kind":"runs","command":"get pod","exit":0}
 {"line":["get","--help=false","pod"],"kind":"runs","command":"get pod","exit":0}
 {"line":["--version","get","pod"],"kind":"version","command":"","exit":0,"stdout":["rancher version v-test"]}
-{"line":["get","--version","pod"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
-{"line":["--bogus","get","pod"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
-{"line":["get","--bogus","pod"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","--version","pod"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --version; pass --help for usage","  hint: rancher schema"]}
+{"line":["--bogus","get","pod"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","--bogus","pod"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["--yes= ","get","pod"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
 {"line":["get","--yes= ","pod"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
 {"line":["--yes=","get","pod"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
@@ -101,8 +101,8 @@
 {"line":["get","pod","x","-1"],"kind":"runs","command":"get pod","args":["x","-1"],"exit":0}
 {"line":["get","pod","x","--help"],"kind":"help","command":"get pod","exit":0,"helpPath":"get-pod.txt"}
 {"line":["get","pod","x","--help=false"],"kind":"runs","command":"get pod","args":["x"],"flags":{"help":false},"exit":0}
-{"line":["get","pod","x","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
-{"line":["get","pod","x","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","x","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","x","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","pod","x",""],"kind":"runs","command":"get pod","args":["x",""],"exit":0}
 {"line":["get","pod","x"," "],"kind":"runs","command":"get pod","args":["x"," "],"exit":0}
 {"line":["get","pod","-","-"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: '-'","  hint: put - last, or after -- when it is meant as an argument"]}
@@ -161,38 +161,38 @@
 {"line":["get","pod","--help=false","-1"],"kind":"runs","command":"get pod","args":["-1"],"flags":{"help":false},"exit":0}
 {"line":["get","pod","--help=false","--help"],"kind":"help","command":"get pod","exit":0,"helpPath":"get-pod.txt"}
 {"line":["get","pod","--help=false","--help=false"],"kind":"runs","command":"get pod","flags":{"help":false},"exit":0}
-{"line":["get","pod","--help=false","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
-{"line":["get","pod","--help=false","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--help=false","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--help=false","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","pod","--help=false",""],"kind":"runs","command":"get pod","args":[""],"flags":{"help":false},"exit":0}
 {"line":["get","pod","--help=false"," "],"kind":"runs","command":"get pod","args":[" "],"flags":{"help":false},"exit":0}
-{"line":["get","pod","--version","x"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
-{"line":["get","pod","--version","-"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
-{"line":["get","pod","--version"," - "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
-{"line":["get","pod","--version","--"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
-{"line":["get","pod","--version","-1"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
-{"line":["get","pod","--version","--help"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
-{"line":["get","pod","--version","--help=false"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
-{"line":["get","pod","--version","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
-{"line":["get","pod","--version","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
-{"line":["get","pod","--version",""],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
-{"line":["get","pod","--version"," "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
-{"line":["get","pod","--bogus","x"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
-{"line":["get","pod","--bogus","-"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
-{"line":["get","pod","--bogus"," - "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
-{"line":["get","pod","--bogus","--"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
-{"line":["get","pod","--bogus","-1"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
-{"line":["get","pod","--bogus","--help"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
-{"line":["get","pod","--bogus","--help=false"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
-{"line":["get","pod","--bogus","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
-{"line":["get","pod","--bogus","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
-{"line":["get","pod","--bogus",""],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
-{"line":["get","pod","--bogus"," "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--version","x"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--version","-"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--version"," - "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--version","--"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--version","-1"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--version","--help"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--version","--help=false"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--version","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--version","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--version",""],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--version"," "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--bogus","x"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--bogus","-"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--bogus"," - "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--bogus","--"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--bogus","-1"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--bogus","--help"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--bogus","--help=false"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--bogus","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--bogus","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--bogus",""],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--bogus"," "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","pod","","x"],"kind":"runs","command":"get pod","args":["","x"],"exit":0}
 {"line":["get","pod",""," - "],"kind":"runs","command":"get pod","args":[""," - "],"exit":0}
 {"line":["get","pod","","--"],"kind":"runs","command":"get pod","args":[""],"exit":0}
 {"line":["get","pod","","-1"],"kind":"runs","command":"get pod","args":["","-1"],"exit":0}
 {"line":["get","pod","","--help=false"],"kind":"runs","command":"get pod","args":[""],"flags":{"help":false},"exit":0}
-{"line":["get","pod","","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --version; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","pod","",""],"kind":"runs","command":"get pod","args":["",""],"exit":0}
 {"line":["get","pod",""," "],"kind":"runs","command":"get pod","args":[""," "],"exit":0}
 {"line":["get","pod"," ","x"],"kind":"runs","command":"get pod","args":[" ","x"],"exit":0}
@@ -202,8 +202,8 @@
 {"line":["get","pod"," ","-1"],"kind":"runs","command":"get pod","args":[" ","-1"],"exit":0}
 {"line":["get","pod"," ","--help"],"kind":"help","command":"get pod","exit":0,"helpPath":"get-pod.txt"}
 {"line":["get","pod"," ","--help=false"],"kind":"runs","command":"get pod","args":[" "],"flags":{"help":false},"exit":0}
-{"line":["get","pod"," ","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
-{"line":["get","pod"," ","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod"," ","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod"," ","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["get","pod"," ",""],"kind":"runs","command":"get pod","args":[" ",""],"exit":0}
 {"line":["get","pod"," "," "],"kind":"runs","command":"get pod","args":[" "," "],"exit":0}
 {"line":["get","pod","--debug"],"kind":"runs","command":"get pod","flags":{"debug":true},"exit":0}

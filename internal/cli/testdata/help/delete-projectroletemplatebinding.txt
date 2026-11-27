@@ -2,9 +2,9 @@ NAME:
    rancher delete projectroletemplatebinding - Delete the projectroletemplatebinding
 
 USAGE:
-   rancher delete projectroletemplatebinding [options] <name>
+   rancher delete projectroletemplatebinding [flags] <name>
 
-OPTIONS:
+FLAGS:
    --cluster id|name                    cluster id|name of the project (only with --project)
    --help, -h                           show help
    --namespace namespace, -n namespace  the project's backing namespace on the local cluster; or pass --project with --cluster
@@ -12,7 +12,7 @@ OPTIONS:
    --timeout timeout                    wait timeout, a positive duration, e.g. 10m (default 5m)
    --wait                               wait until the projectroletemplatebinding is gone before returning (default true; --wait=false returns once the server accepts the request)
 
-GLOBAL OPTIONS:
+GLOBAL FLAGS:
    --allow-deprecated          allow writing to a deprecated resource
    --apply                     apply the change
    --color string              auto|always|never
