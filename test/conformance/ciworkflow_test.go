@@ -516,13 +516,13 @@ var makeFlagsWithOptionalNumber = []string{"-j", "-l", "--jobs", "--load-average
 
 // makeSafeTarget reports whether a make target is a script that does not
 // reach scripts/test: the e2e scripts, the Rancher API field comparison, the
-// extension sources check and its update, the admission text check, build and
-// lint. Every other target, a variable
+// extension sources check and its update, the rancher-ai-mcp kinds check and its update,
+// the admission text check, build and lint. Every other target, a variable
 // included, counts as a possible race pass run, because every file in
 // scripts/ is a make target and ci, test and validate reach scripts/test.
 func makeSafeTarget(target string) bool {
 	return target == "e2e" || strings.HasPrefix(target, "e2e-") || strings.HasPrefix(target, "rancher-api-fields") ||
-		strings.HasPrefix(target, "extension-sources") || target == "admission-text-check" || target == "build" || target == "lint"
+		strings.HasPrefix(target, "extension-sources") || strings.HasPrefix(target, "mcp-kinds") || target == "admission-text-check" || target == "build" || target == "lint"
 }
 
 // commandArguments returns the words of the rest of a command: the redirects
@@ -735,7 +735,7 @@ func TestRaceTimeoutMatcherRules(t *testing.T) {
 		"make e2e", "make e2e\n", "make -j4 e2e", "make -j 4 e2e", "make --jobs 4 e2e", "make --jobs=4 e2e",
 		"make --load-average 2 e2e", "make -j e2e", "make -C . e2e", "make build", "make lint",
 		"make e2e-fidelity", "make e2e-fidelity-update", "make rancher-api-fields", "make rancher-api-fields-update",
-		"make extension-sources", "make extension-sources-update",
+		"make extension-sources", "make extension-sources-update", "make mcp-kinds", "make mcp-kinds-update",
 		"make admission-text-check", "make e2e && make admission-text-check",
 		"make e2e && make e2e", "make e2e 2>&1", "scripts/fuzz", "./scripts/fuzz --selftest",
 		"bash scripts/e2e", "go test ./...", "go test -race -count=1 ./internal/cli/completions/", "echo make-it",
@@ -1959,4 +1959,21 @@ func TestFidelityWorkflowChecksTheExtensionSources(t *testing.T) {
 		}
 	}
 	assert.True(t, found, "e2e-fidelity.yaml has no step that runs make extension-sources")
+}
+
+// TestFidelityWorkflowChecksTheMCPKinds asserts e2e-fidelity.yaml holds a job
+// whose step runs `make mcp-kinds`, the weekly comparison of the fixture of the
+// rancher-ai-mcp kind keys with upstream.
+func TestFidelityWorkflowChecksTheMCPKinds(t *testing.T) {
+	t.Parallel()
+	wf := readWorkflow(t, ".github/workflows/e2e-fidelity.yaml")
+	found := false
+	for _, job := range wf.Jobs {
+		for _, step := range job.Steps {
+			if strings.TrimSpace(step.Run) == "make mcp-kinds" {
+				found = true
+			}
+		}
+	}
+	assert.True(t, found, "e2e-fidelity.yaml has no step that runs make mcp-kinds")
 }

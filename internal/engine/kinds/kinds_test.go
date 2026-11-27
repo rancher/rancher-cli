@@ -3,6 +3,7 @@ package kinds
 import (
 	"encoding/json"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -15,56 +16,74 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// cliOnlyKinds are table rows with no rancher-ai-mcp tool counterpart at
-// the recorded vocabulary snapshot (mcp-kinds-050e375.json): the
-// provisioning surface predates MCP provisioning tools. Revisit when the
-// MCP vocabulary grows provisioning kinds - a key appearing in BOTH this
-// set and a future fixture must fail, so stale exemptions cannot linger.
+// cliOnlyKinds are table rows with no rancher-ai-mcp counterpart in the
+// fixture testdata/mcp-kinds.json. TestConformsToMCPVocabulary fails when a
+// key in this set is in the fixture or is not a row of the table. An
+// exemption cannot outlive the kind it covers.
 var cliOnlyKinds = map[string]bool{
 	"amazonec2config": true, "azureconfig": true, "digitaloceanconfig": true,
 	"harvesterconfig": true, "vmwarevsphereconfig": true,
 	"clusterregistrationtoken": true,
 	"managementtoken":          true, // deprecated legacy v3 Token; no MCP tool counterpart
-	"nodedriver":               true,
-	"oidcclient":               true, // first Prime-capability kind row; no MCP tool counterpart yet
-	"helmop":                   true, // no MCP tool counterpart
-	"fleetworkspace":           true, // no MCP tool counterpart
-	"clusterrepo":              true, // no rancher-ai-mcp tool counterpart
-	"app":                      true, // no rancher-ai-mcp tool counterpart
-	"operation":                true, // no rancher-ai-mcp tool counterpart
-	"etcdsnapshot":             true, // no rancher-ai-mcp tool counterpart
-	"managedchart":             true, // no rancher-ai-mcp tool counterpart
-	"authconfig":               true, // no rancher-ai-mcp tool counterpart
+	"managementnode":           true, // no rancher-ai-mcp counterpart
+	"token":                    true, // no rancher-ai-mcp counterpart
 
-	"horizontalpodautoscaler": true, // no rancher-ai-mcp tool counterpart
-	"limitrange":              true, // no rancher-ai-mcp tool counterpart
-	"networkpolicy":           true, // no rancher-ai-mcp tool counterpart
-	"poddisruptionbudget":     true, // no rancher-ai-mcp tool counterpart
-	"resourcequota":           true, // no rancher-ai-mcp tool counterpart
-	"storageclass":            true, // no rancher-ai-mcp tool counterpart
-	"role":                    true, // no rancher-ai-mcp tool counterpart
-	"rolebinding":             true, // no rancher-ai-mcp tool counterpart
-	"clusterrole":             true, // no rancher-ai-mcp tool counterpart
-	"clusterrolebinding":      true, // no rancher-ai-mcp tool counterpart
-	"managementnode":          true, // no rancher-ai-mcp tool counterpart
-
-	"etcdsnapshotsave":      true, // no rancher-ai-mcp tool counterpart
-	"etcdsnapshotrestore":   true, // no rancher-ai-mcp tool counterpart
-	"encryptionkeyrotation": true, // no rancher-ai-mcp tool counterpart
-	"certificaterotation":   true, // no rancher-ai-mcp tool counterpart
-	"uiplugin":              true, // no rancher-ai-mcp tool counterpart
+	"etcdsnapshotsave":      true, // no rancher-ai-mcp counterpart
+	"etcdsnapshotrestore":   true, // no rancher-ai-mcp counterpart
+	"encryptionkeyrotation": true, // no rancher-ai-mcp counterpart
+	"certificaterotation":   true, // no rancher-ai-mcp counterpart
 }
 
+// mcpNotYetKinds are the keys of the fixture testdata/mcp-kinds.json that
+// have no row in the kind table: kinds rancher-ai-mcp knows that the CLI has
+// no row for yet. TestConformsToMCPVocabulary skips them and fails when one
+// gains a row or leaves the fixture. The list shrinks as rows are added.
+var mcpNotYetKinds = map[string]bool{
+	"aiagentconfig": true, "auditpolicy": true, "bundlenamespacemapping": true,
+	"clusterproxyconfig": true, "crd": true, "csidriver": true, "csinode": true,
+	"customresourcedefinition": true, "endpointslice": true, "flowschema": true,
+	"gitreporestriction": true, "group": true, "groupmember": true,
+	"imagescan": true, "ingressclass": true, "kontainerdriver": true,
+	"mutatingwebhookconfiguration": true, "node.metrics.k8s.io": true,
+	"nodepool": true, "nodetemplate": true, "pod.metrics.k8s.io": true,
+	"podsecurityadmissionconfigurationtemplate": true, "priorityclass": true,
+	"prioritylevelconfiguration": true, "projectnetworkpolicy": true,
+	"proxyendpoint": true, "rancherusernotification": true,
+	"runtimeclass": true, "userattribute": true,
+	"validatingadmissionpolicy": true, "validatingadmissionpolicybinding": true,
+	"validatingwebhookconfiguration": true, "virtualmachine": true,
+	"virtualmachineclusterpreference": true, "virtualmachineinstance": true,
+	"virtualmachinepreference": true, "volumeattachment": true, "vpa": true,
+}
+
+// mcpKindsFixture is the file testdata/mcp-kinds.json: the map of kind keys
+// of rancher-ai-mcp at one upstream commit.
+type mcpKindsFixture struct {
+	Commit string `json:"commit"`
+	Kinds  map[string]struct {
+		Group    string `json:"group"`
+		Version  string `json:"version"`
+		Resource string `json:"resource"`
+	} `json:"kinds"`
+}
+
+var fortyHexDigits = regexp.MustCompile(`^[0-9a-f]{40}$`)
+
+// TestConformsToMCPVocabulary asserts the kind table agrees with the fixture
+// of rancher-ai-mcp kind keys. Each row not in cliOnlyKinds has a fixture
+// entry with the same group and resource, and the same version when the row
+// names one (a row with an empty version, such as kubeconfig, is resolved
+// through API discovery at call time). Each fixture key has a row, unless it
+// is in mcpNotYetKinds, and neither list holds a stale key.
 func TestConformsToMCPVocabulary(t *testing.T) {
 	t.Parallel()
-	b, err := os.ReadFile("testdata/mcp-kinds-050e375.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var want map[string]struct{ Group, Version, Resource string }
-	if err := json.Unmarshal(b, &want); err != nil {
-		t.Fatal(err)
-	}
+	b, err := os.ReadFile("testdata/mcp-kinds.json")
+	require.NoError(t, err)
+	var fixture mcpKindsFixture
+	require.NoError(t, json.Unmarshal(b, &fixture))
+	require.Regexp(t, fortyHexDigits, fixture.Commit, "the fixture's commit is the 40 lowercase hex digits of an upstream commit")
+	want := fixture.Kinds
+	require.NotEmpty(t, want)
 	have := map[string]Kind{}
 	for _, k := range All() {
 		have[k.Key] = k
@@ -73,26 +92,37 @@ func TestConformsToMCPVocabulary(t *testing.T) {
 		}
 		w, ok := want[k.Key]
 		if !ok {
-			t.Errorf("kind %q not in the MCP fixture - vocabulary drift", k.Key)
+			t.Errorf("kind %q not in the fixture of rancher-ai-mcp kind keys - vocabulary drift", k.Key)
 			continue
 		}
-		if k.GVR.Group != w.Group || k.GVR.Version != w.Version || k.GVR.Resource != w.Resource {
+		if k.GVR.Group != w.Group || k.GVR.Resource != w.Resource || (k.GVR.Version != "" && k.GVR.Version != w.Version) {
 			t.Errorf("kind %q GVR %v diverges from MCP %+v", k.Key, k.GVR, w)
 		}
 	}
 	// Bidirectional: every fixture key must exist in the table - a dropped
-	// kind must fail conformance, not silently shrink the surface.
+	// kind must fail conformance, not silently shrink the surface. A key
+	// rancher-ai-mcp has and the CLI has no row for is listed in
+	// mcpNotYetKinds.
 	for key := range want {
-		if _, ok := have[key]; !ok {
-			t.Errorf("fixture kind %q missing from the table", key)
+		if _, ok := have[key]; !ok && !mcpNotYetKinds[key] {
+			t.Errorf("fixture kind %q missing from the table - add a row, or list it in mcpNotYetKinds", key)
 		}
 	}
-	// Staleness guard: a cliOnlyKinds exemption must not linger once the MCP
-	// vocabulary actually grows to cover that kind - if it appears in the
-	// fixture, the exemption is stale and must be removed.
+	// Staleness guards: an exemption must not outlive its reason.
 	for key := range cliOnlyKinds {
 		if _, ok := want[key]; ok {
-			t.Errorf("cliOnlyKinds %q now present in the MCP fixture - remove the stale exemption", key)
+			t.Errorf("cliOnlyKinds %q is in the fixture of rancher-ai-mcp kind keys - remove the stale exemption", key)
+		}
+		if _, ok := have[key]; !ok {
+			t.Errorf("cliOnlyKinds %q has no row in the table - remove it", key)
+		}
+	}
+	for key := range mcpNotYetKinds {
+		if _, ok := have[key]; ok {
+			t.Errorf("mcpNotYetKinds %q has a row in the table now - remove it from the list", key)
+		}
+		if _, ok := want[key]; !ok {
+			t.Errorf("mcpNotYetKinds %q is not in the fixture of rancher-ai-mcp kind keys - remove it from the list", key)
 		}
 	}
 }

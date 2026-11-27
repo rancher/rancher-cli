@@ -1,0 +1,371 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Checks that the fixture of the kind keys of github.com/rancher/rancher-ai-mcp,
+# internal/engine/kinds/testdata/mcp-kinds.json, still equals the map
+# K8sKindsToGVRs in pkg/converter/grv.go on the main branch of that repository.
+# TestConformsToMCPVocabulary reads the fixture and holds the kind table to it.
+#
+# The fixture is {"commit": "<40 hex digits>", "kinds": {"<key>": {"group",
+# "version", "resource"}}}. The script resolves the commit main points to with
+# git ls-remote, downloads grv.go at that commit, reads the map with go/parser
+# (the file is parsed, never compiled, and the module is not imported; a key or
+# a value may be a string literal, a constant of the file or a concatenation of
+# those) and compares the "kinds" object. The commit is not compared: a newer
+# commit with the same map passes. A difference prints one line for each added,
+# removed and changed key and the script exits 1.
+#
+# MCP_KINDS_UPDATE=1 (make mcp-kinds-update) writes the fixture, with the commit
+# that was read, instead of comparing it. A key that upstream added then fails
+# TestConformsToMCPVocabulary until it is listed in mcpNotYetKinds or gets a row
+# in the kind table; the diff of the fixture is review material, like the schema
+# golden.
+#
+# Needs network access to github.com and raw.githubusercontent.com, git, curl and
+# the Go toolchain. It needs no credential, no Docker and no Go module download.
+#
+# Hooks, for tests only:
+#   MCP_KINDS_SOURCE_FILE  a local grv.go that stands in for the download, and
+#   MCP_KINDS_COMMIT       the commit to record for it. The two are used
+#                          together and the script refuses one without the
+#                          other. With them the script makes no network call.
+#   MCP_KINDS_FIXTURE      the path of the fixture, read or written in place of
+#                          the repository file.
+# A relative path in MCP_KINDS_SOURCE_FILE or MCP_KINDS_FIXTURE is relative to
+# the directory the script is started in.
+
+# The two hook paths are made absolute before the script changes to the
+# repository root.
+absolute() {
+  case $1 in
+    "" | /*) printf '%s' "$1" ;;
+    *) printf '%s/%s' "$PWD" "$1" ;;
+  esac
+}
+fixture=$(absolute "${MCP_KINDS_FIXTURE:-}")
+source_file=$(absolute "${MCP_KINDS_SOURCE_FILE:-}")
+
+cd "$(dirname "$0")/.."
+
+fixture=${fixture:-internal/engine/kinds/testdata/mcp-kinds.json}
+repository=https://github.com/rancher/rancher-ai-mcp
+raw=https://raw.githubusercontent.com/rancher/rancher-ai-mcp
+source_path=pkg/converter/grv.go
+
+update=${MCP_KINDS_UPDATE:-}
+commit=${MCP_KINDS_COMMIT:-}
+if [ -n "$source_file" ] && [ -z "$commit" ]; then
+  echo "error: MCP_KINDS_SOURCE_FILE is set without MCP_KINDS_COMMIT; set both or neither" >&2
+  exit 1
+fi
+if [ -z "$source_file" ] && [ -n "$commit" ]; then
+  echo "error: MCP_KINDS_COMMIT is set without MCP_KINDS_SOURCE_FILE; set both or neither" >&2
+  exit 1
+fi
+
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+# run runs a command with its output saved in a file; on failure it prints what
+# it was doing, the command and its output, then exits.
+run() {
+  local what=$1 log
+  shift
+  log="$work/run.log"
+  if ! "$@" >"$log" 2>&1; then
+    echo "error: $what failed: $*" >&2
+    cat "$log" >&2
+    exit 1
+  fi
+}
+
+if [ -z "$source_file" ]; then
+  # Three tries 5 seconds apart. A connection that moves under 1000 bytes a
+  # second for 30 seconds is dropped.
+  line=
+  answered=
+  for try in 1 2 3; do
+    if line=$(GIT_HTTP_LOW_SPEED_LIMIT=1000 GIT_HTTP_LOW_SPEED_TIME=30 git ls-remote "$repository" refs/heads/main 2>"$work/git.err"); then
+      answered=1
+      break
+    fi
+    if [ "$try" -lt 3 ]; then
+      sleep 5
+    fi
+  done
+  if [ -z "$answered" ]; then
+    echo "error: cannot read the main branch of $repository: $(cat "$work/git.err")" >&2
+    exit 1
+  fi
+  commit=${line%%[[:space:]]*}
+  source_file="$work/grv.go"
+  if ! [[ $commit =~ ^[0-9a-f]{40}$ ]]; then
+    echo "error: git ls-remote $repository refs/heads/main printed no commit: $line" >&2
+    exit 1
+  fi
+  if ! curl -fsS --retry 3 --retry-delay 5 --max-time 60 -o "$source_file" "$raw/$commit/$source_path" 2>"$work/curl.err"; then
+    echo "error: cannot download $raw/$commit/$source_path: $(cat "$work/curl.err")" >&2
+    exit 1
+  fi
+fi
+if ! [[ $commit =~ ^[0-9a-f]{40}$ ]]; then
+  echo "error: the commit is not 40 lowercase hex digits: $commit" >&2
+  exit 1
+fi
+
+# The temporary module must not use this repository's go.work or a vendor
+# directory.
+export GOWORK=off GOFLAGS=-mod=mod
+
+mkdir -p "$work/read"
+cat >"$work/read/main.go" <<'GOEOF'
+// Command read prints, or compares with a fixture, the map K8sKindsToGVRs of a
+// Go file of rancher-ai-mcp. It takes the file, the commit to record, the
+// fixture path and the mode (check or update) as arguments. The file is
+// parsed, never compiled.
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"maps"
+	"os"
+	"slices"
+	"strconv"
+)
+
+const mapName = "K8sKindsToGVRs"
+
+type gvr struct {
+	Group    string `json:"group"`
+	Version  string `json:"version"`
+	Resource string `json:"resource"`
+}
+
+type fixture struct {
+	Commit string         `json:"commit"`
+	Kinds  map[string]gvr `json:"kinds"`
+}
+
+// resolver reads the string expressions of one file: literals, constants of
+// the file and concatenations.
+type resolver struct {
+	exprs     map[string]ast.Expr
+	values    map[string]string
+	resolving map[string]bool
+}
+
+func (r *resolver) text(e ast.Expr) (string, error) {
+	switch x := e.(type) {
+	case *ast.BasicLit:
+		if x.Kind != token.STRING {
+			return "", fmt.Errorf("unsupported expression: the literal %s is not a string", x.Value)
+		}
+		return strconv.Unquote(x.Value)
+	case *ast.ParenExpr:
+		return r.text(x.X)
+	case *ast.BinaryExpr:
+		if x.Op != token.ADD {
+			return "", fmt.Errorf("unsupported expression: the operator %s", x.Op)
+		}
+		left, err := r.text(x.X)
+		if err != nil {
+			return "", err
+		}
+		right, err := r.text(x.Y)
+		if err != nil {
+			return "", err
+		}
+		return left + right, nil
+	case *ast.Ident:
+		if v, ok := r.values[x.Name]; ok {
+			return v, nil
+		}
+		expr, ok := r.exprs[x.Name]
+		if !ok {
+			return "", fmt.Errorf("unknown constant %s", x.Name)
+		}
+		if r.resolving[x.Name] {
+			return "", fmt.Errorf("the constant %s refers to itself", x.Name)
+		}
+		r.resolving[x.Name] = true
+		v, err := r.text(expr)
+		delete(r.resolving, x.Name)
+		if err != nil {
+			return "", fmt.Errorf("constant %s: %w", x.Name, err)
+		}
+		r.values[x.Name] = v
+		return v, nil
+	}
+	return "", fmt.Errorf("unsupported expression of type %T", e)
+}
+
+func readKinds(path string) (map[string]gvr, error) {
+	f, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read %s: %w", path, err)
+	}
+	r := &resolver{exprs: map[string]ast.Expr{}, values: map[string]string{}, resolving: map[string]bool{}}
+	var table *ast.CompositeLit
+	for _, d := range f.Decls {
+		g, ok := d.(*ast.GenDecl)
+		if !ok {
+			continue
+		}
+		for _, s := range g.Specs {
+			vs, ok := s.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			for i, n := range vs.Names {
+				switch {
+				case g.Tok == token.CONST && i < len(vs.Values):
+					r.exprs[n.Name] = vs.Values[i]
+				case g.Tok == token.VAR && n.Name == mapName && i < len(vs.Values):
+					lit, ok := vs.Values[i].(*ast.CompositeLit)
+					if !ok {
+						return nil, fmt.Errorf("%s is not a map literal", mapName)
+					}
+					table = lit
+				}
+			}
+		}
+	}
+	if table == nil {
+		return nil, fmt.Errorf("%s has no variable %s", path, mapName)
+	}
+	kinds := map[string]gvr{}
+	for _, el := range table.Elts {
+		kv, ok := el.(*ast.KeyValueExpr)
+		if !ok {
+			return nil, fmt.Errorf("%s has an entry that is not key: value", mapName)
+		}
+		key, err := r.text(kv.Key)
+		if err != nil {
+			return nil, fmt.Errorf("cannot read a key of %s: %w", mapName, err)
+		}
+		if _, dup := kinds[key]; dup {
+			return nil, fmt.Errorf("%s names the key %q twice", mapName, key)
+		}
+		value, ok := kv.Value.(*ast.CompositeLit)
+		if !ok {
+			return nil, fmt.Errorf("%s key %q: the value is not a composite literal", mapName, key)
+		}
+		var g gvr
+		for _, fe := range value.Elts {
+			fkv, ok := fe.(*ast.KeyValueExpr)
+			if !ok {
+				return nil, fmt.Errorf("%s key %q: a field is not named", mapName, key)
+			}
+			name, ok := fkv.Key.(*ast.Ident)
+			if !ok {
+				return nil, fmt.Errorf("%s key %q: a field name is not an identifier", mapName, key)
+			}
+			v, err := r.text(fkv.Value)
+			if err != nil {
+				return nil, fmt.Errorf("cannot read the %s of key %q in %s: %w", name.Name, key, mapName, err)
+			}
+			switch name.Name {
+			case "Group":
+				g.Group = v
+			case "Version":
+				g.Version = v
+			case "Resource":
+				g.Resource = v
+			default:
+				return nil, fmt.Errorf("%s key %q: unknown field %s", mapName, key, name.Name)
+			}
+		}
+		kinds[key] = g
+	}
+	if len(kinds) == 0 {
+		return nil, fmt.Errorf("%s is empty", mapName)
+	}
+	return kinds, nil
+}
+
+func show(g gvr) string {
+	return fmt.Sprintf("group %q version %q resource %q", g.Group, g.Version, g.Resource)
+}
+
+func run(args []string) (int, error) {
+	if len(args) != 4 {
+		return 1, errors.New("usage: read <grv.go> <commit> <fixture> check|update")
+	}
+	source, commit, path, mode := args[0], args[1], args[2], args[3]
+	kinds, err := readKinds(source)
+	if err != nil {
+		return 1, err
+	}
+	if mode == "update" {
+		var buf bytes.Buffer
+		enc := json.NewEncoder(&buf)
+		enc.SetIndent("", "  ")
+		// encoding/json writes map keys sorted.
+		if err := enc.Encode(fixture{Commit: commit, Kinds: kinds}); err != nil {
+			return 1, err
+		}
+		if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+			return 1, fmt.Errorf("cannot write %s: %w", path, err)
+		}
+		fmt.Printf("wrote %s: %d kinds at commit %s\n", path, len(kinds), commit)
+		return 0, nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 1, fmt.Errorf("cannot read the fixture: %w (make mcp-kinds-update writes it)", err)
+	}
+	var have fixture
+	if err := json.Unmarshal(data, &have); err != nil {
+		return 1, fmt.Errorf("cannot decode %s: %w", path, err)
+	}
+	differ := false
+	for _, key := range slices.Sorted(maps.Keys(kinds)) {
+		old, ok := have.Kinds[key]
+		switch {
+		case !ok:
+			fmt.Printf("added in rancher-ai-mcp: %s: %s\n", key, show(kinds[key]))
+			differ = true
+		case old != kinds[key]:
+			fmt.Printf("changed in rancher-ai-mcp: %s: was %s, now %s\n", key, show(old), show(kinds[key]))
+			differ = true
+		}
+	}
+	for _, key := range slices.Sorted(maps.Keys(have.Kinds)) {
+		if _, ok := kinds[key]; !ok {
+			fmt.Printf("removed from rancher-ai-mcp: %s: was %s\n", key, show(have.Kinds[key]))
+			differ = true
+		}
+	}
+	if differ {
+		fmt.Printf("%s differs from %s at commit %s; make mcp-kinds-update rewrites it\n", path, mapName, commit)
+		return 1, nil
+	}
+	fmt.Printf("%s equals %s at commit %s (%d kinds)\n", path, mapName, commit, len(kinds))
+	return 0, nil
+}
+
+func main() {
+	code, err := run(os.Args[1:])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+	}
+	os.Exit(code)
+}
+GOEOF
+(
+  cd "$work/read"
+  run "creating a temporary Go module" go mod init mcpkindsread
+  run "building the Go program that reads grv.go" go build -o read .
+)
+
+mode=check
+if [ -n "$update" ]; then
+  mode=update
+fi
+"$work/read/read" "$source_file" "$commit" "$fixture" "$mode"

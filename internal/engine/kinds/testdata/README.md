@@ -1,3 +1,25 @@
+# rancher-ai-mcp kind fixture
+
+`mcp-kinds.json` holds the map `K8sKindsToGVRs` of `pkg/converter/grv.go` in
+github.com/rancher/rancher-ai-mcp, the Model Context Protocol (MCP) server for
+Rancher. The map has the lower-case Kubernetes kind names the server resolves,
+each with the group, version and resource it resolves to.
+`TestConformsToMCPVocabulary` holds the kind table to it.
+
+- The file is `{"commit": "<40 hex digits>", "kinds": {"<key>": {"group",
+  "version", "resource"}}}`: the commit of rancher-ai-mcp the map was read at,
+  then the kinds sorted by key. The indent is two spaces and the file ends with
+  a newline.
+- `make mcp-kinds` compares the `kinds` object with the main branch of
+  rancher-ai-mcp and ignores the commit. `make mcp-kinds-update` writes the
+  file; never edit it by hand.
+- After an update, a key added to the map fails the test until it gets a row in
+  the kind table or an entry in `mcpNotYetKinds`
+  (`internal/engine/kinds/kinds_test.go`).
+- A key dropped from the map fails the test until you remove its row, or keep
+  the row and add the key to `cliOnlyKinds`, or, when the key has no row,
+  remove it from `mcpNotYetKinds`.
+
 # Auth config fixtures
 
 `authconfig-fixtures.json` holds the AuthConfig objects that the tests of the

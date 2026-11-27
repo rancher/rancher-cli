@@ -1,0 +1,495 @@
+{
+  "commit": "a733a69073448f10345dd749544bec6e80a2175f",
+  "kinds": {
+    "aiagentconfig": {
+      "group": "ai.cattle.io",
+      "version": "v1alpha1",
+      "resource": "aiagentconfigs"
+    },
+    "app": {
+      "group": "catalog.cattle.io",
+      "version": "v1",
+      "resource": "apps"
+    },
+    "auditpolicy": {
+      "group": "auditlog.cattle.io",
+      "version": "v1",
+      "resource": "auditpolicies"
+    },
+    "authconfig": {
+      "group": "management.cattle.io",
+      "version": "v3",
+      "resource": "authconfigs"
+    },
+    "bundle": {
+      "group": "fleet.cattle.io",
+      "version": "v1alpha1",
+      "resource": "bundles"
+    },
+    "bundledeployment": {
+      "group": "fleet.cattle.io",
+      "version": "v1alpha1",
+      "resource": "bundledeployments"
+    },
+    "bundlenamespacemapping": {
+      "group": "fleet.cattle.io",
+      "version": "v1alpha1",
+      "resource": "bundlenamespacemappings"
+    },
+    "capicluster": {
+      "group": "cluster.x-k8s.io",
+      "version": "",
+      "resource": "clusters"
+    },
+    "capimachine": {
+      "group": "cluster.x-k8s.io",
+      "version": "",
+      "resource": "machines"
+    },
+    "capimachinedeployment": {
+      "group": "cluster.x-k8s.io",
+      "version": "",
+      "resource": "machinedeployments"
+    },
+    "capimachineset": {
+      "group": "cluster.x-k8s.io",
+      "version": "",
+      "resource": "machinesets"
+    },
+    "clustergroup": {
+      "group": "fleet.cattle.io",
+      "version": "v1alpha1",
+      "resource": "clustergroups"
+    },
+    "clusterproxyconfig": {
+      "group": "management.cattle.io",
+      "version": "v3",
+      "resource": "clusterproxyconfigs"
+    },
+    "clusterrepo": {
+      "group": "catalog.cattle.io",
+      "version": "v1",
+      "resource": "clusterrepos"
+    },
+    "clusterrole": {
+      "group": "rbac.authorization.k8s.io",
+      "version": "v1",
+      "resource": "clusterroles"
+    },
+    "clusterrolebinding": {
+      "group": "rbac.authorization.k8s.io",
+      "version": "v1",
+      "resource": "clusterrolebindings"
+    },
+    "clusterroletemplatebinding": {
+      "group": "management.cattle.io",
+      "version": "v3",
+      "resource": "clusterroletemplatebindings"
+    },
+    "configmap": {
+      "group": "",
+      "version": "v1",
+      "resource": "configmaps"
+    },
+    "crd": {
+      "group": "apiextensions.k8s.io",
+      "version": "v1",
+      "resource": "customresourcedefinitions"
+    },
+    "cronjob": {
+      "group": "batch",
+      "version": "v1",
+      "resource": "cronjobs"
+    },
+    "csidriver": {
+      "group": "storage.k8s.io",
+      "version": "v1",
+      "resource": "csidrivers"
+    },
+    "csinode": {
+      "group": "storage.k8s.io",
+      "version": "v1",
+      "resource": "csinodes"
+    },
+    "customresourcedefinition": {
+      "group": "apiextensions.k8s.io",
+      "version": "v1",
+      "resource": "customresourcedefinitions"
+    },
+    "daemonset": {
+      "group": "apps",
+      "version": "v1",
+      "resource": "daemonsets"
+    },
+    "deployment": {
+      "group": "apps",
+      "version": "v1",
+      "resource": "deployments"
+    },
+    "endpointslice": {
+      "group": "discovery.k8s.io",
+      "version": "v1",
+      "resource": "endpointslices"
+    },
+    "etcdsnapshot": {
+      "group": "rke.cattle.io",
+      "version": "v1",
+      "resource": "etcdsnapshots"
+    },
+    "event": {
+      "group": "",
+      "version": "v1",
+      "resource": "events"
+    },
+    "feature": {
+      "group": "management.cattle.io",
+      "version": "v3",
+      "resource": "features"
+    },
+    "fleetcluster": {
+      "group": "fleet.cattle.io",
+      "version": "v1alpha1",
+      "resource": "clusters"
+    },
+    "fleetworkspace": {
+      "group": "management.cattle.io",
+      "version": "v3",
+      "resource": "fleetworkspaces"
+    },
+    "flowschema": {
+      "group": "flowcontrol.apiserver.k8s.io",
+      "version": "v1",
+      "resource": "flowschemas"
+    },
+    "gitrepo": {
+      "group": "fleet.cattle.io",
+      "version": "v1alpha1",
+      "resource": "gitrepos"
+    },
+    "gitreporestriction": {
+      "group": "fleet.cattle.io",
+      "version": "v1alpha1",
+      "resource": "gitreporestrictions"
+    },
+    "globalrole": {
+      "group": "management.cattle.io",
+      "version": "v3",
+      "resource": "globalroles"
+    },
+    "globalrolebinding": {
+      "group": "management.cattle.io",
+      "version": "v3",
+      "resource": "globalrolebindings"
+    },
+    "group": {
+      "group": "management.cattle.io",
+      "version": "v3",
+      "resource": "groups"
+    },
+    "groupmember": {
+      "group": "management.cattle.io",
+      "version": "v3",
+      "resource": "groupmembers"
+    },
+    "helmop": {
+      "group": "fleet.cattle.io",
+      "version": "v1alpha1",
+      "resource": "helmops"
+    },
+    "horizontalpodautoscaler": {
+      "group": "autoscaling",
+      "version": "v2",
+      "resource": "horizontalpodautoscalers"
+    },
+    "imagescan": {
+      "group": "fleet.cattle.io",
+      "version": "v1alpha1",
+      "resource": "imagescans"
+    },
+    "ingress": {
+      "group": "networking.k8s.io",
+      "version": "v1",
+      "resource": "ingresses"
+    },
+    "ingressclass": {
+      "group": "networking.k8s.io",
+      "version": "v1",
+      "resource": "ingressclasses"
+    },
+    "job": {
+      "group": "batch",
+      "version": "v1",
+      "resource": "jobs"
+    },
+    "k3kcluster": {
+      "group": "k3k.io",
+      "version": "v1beta1",
+      "resource": "clusters"
+    },
+    "kontainerdriver": {
+      "group": "management.cattle.io",
+      "version": "v3",
+      "resource": "kontainerdrivers"
+    },
+    "kubeconfig": {
+      "group": "ext.cattle.io",
+      "version": "v1",
+      "resource": "kubeconfigs"
+    },
+    "limitrange": {
+      "group": "",
+      "version": "v1",
+      "resource": "limitranges"
+    },
+    "managedchart": {
+      "group": "management.cattle.io",
+      "version": "v3",
+      "resource": "managedcharts"
+    },
+    "managementcluster": {
+      "group": "management.cattle.io",
+      "version": "v3",
+      "resource": "clusters"
+    },
+    "mutatingwebhookconfiguration": {
+      "group": "admissionregistration.k8s.io",
+      "version": "v1",
+      "resource": "mutatingwebhookconfigurations"
+    },
+    "namespace": {
+      "group": "",
+      "version": "v1",
+      "resource": "namespaces"
+    },
+    "networkpolicy": {
+      "group": "networking.k8s.io",
+      "version": "v1",
+      "resource": "networkpolicies"
+    },
+    "node": {
+      "group": "",
+      "version": "v1",
+      "resource": "nodes"
+    },
+    "node.metrics.k8s.io": {
+      "group": "metrics.k8s.io",
+      "version": "v1beta1",
+      "resource": "nodes"
+    },
+    "nodedriver": {
+      "group": "management.cattle.io",
+      "version": "v3",
+      "resource": "nodedrivers"
+    },
+    "nodepool": {
+      "group": "management.cattle.io",
+      "version": "v3",
+      "resource": "nodepools"
+    },
+    "nodetemplate": {
+      "group": "management.cattle.io",
+      "version": "v3",
+      "resource": "nodetemplates"
+    },
+    "oidcclient": {
+      "group": "management.cattle.io",
+      "version": "v3",
+      "resource": "oidcclients"
+    },
+    "operation": {
+      "group": "catalog.cattle.io",
+      "version": "v1",
+      "resource": "operations"
+    },
+    "persistentvolume": {
+      "group": "",
+      "version": "v1",
+      "resource": "persistentvolumes"
+    },
+    "persistentvolumeclaim": {
+      "group": "",
+      "version": "v1",
+      "resource": "persistentvolumeclaims"
+    },
+    "pod": {
+      "group": "",
+      "version": "v1",
+      "resource": "pods"
+    },
+    "pod.metrics.k8s.io": {
+      "group": "metrics.k8s.io",
+      "version": "v1beta1",
+      "resource": "pods"
+    },
+    "poddisruptionbudget": {
+      "group": "policy",
+      "version": "v1",
+      "resource": "poddisruptionbudgets"
+    },
+    "podsecurityadmissionconfigurationtemplate": {
+      "group": "management.cattle.io",
+      "version": "v3",
+      "resource": "podsecurityadmissionconfigurationtemplates"
+    },
+    "priorityclass": {
+      "group": "scheduling.k8s.io",
+      "version": "v1",
+      "resource": "priorityclasses"
+    },
+    "prioritylevelconfiguration": {
+      "group": "flowcontrol.apiserver.k8s.io",
+      "version": "v1",
+      "resource": "prioritylevelconfigurations"
+    },
+    "project": {
+      "group": "management.cattle.io",
+      "version": "v3",
+      "resource": "projects"
+    },
+    "projectnetworkpolicy": {
+      "group": "management.cattle.io",
+      "version": "v3",
+      "resource": "projectnetworkpolicies"
+    },
+    "projectroletemplatebinding": {
+      "group": "management.cattle.io",
+      "version": "v3",
+      "resource": "projectroletemplatebindings"
+    },
+    "provisioningcluster": {
+      "group": "provisioning.cattle.io",
+      "version": "v1",
+      "resource": "clusters"
+    },
+    "proxyendpoint": {
+      "group": "management.cattle.io",
+      "version": "v3",
+      "resource": "proxyendpoints"
+    },
+    "rancherusernotification": {
+      "group": "management.cattle.io",
+      "version": "v3",
+      "resource": "rancherusernotifications"
+    },
+    "replicaset": {
+      "group": "apps",
+      "version": "v1",
+      "resource": "replicasets"
+    },
+    "resourcequota": {
+      "group": "",
+      "version": "v1",
+      "resource": "resourcequotas"
+    },
+    "role": {
+      "group": "rbac.authorization.k8s.io",
+      "version": "v1",
+      "resource": "roles"
+    },
+    "rolebinding": {
+      "group": "rbac.authorization.k8s.io",
+      "version": "v1",
+      "resource": "rolebindings"
+    },
+    "roletemplate": {
+      "group": "management.cattle.io",
+      "version": "v3",
+      "resource": "roletemplates"
+    },
+    "runtimeclass": {
+      "group": "node.k8s.io",
+      "version": "v1",
+      "resource": "runtimeclasses"
+    },
+    "secret": {
+      "group": "",
+      "version": "v1",
+      "resource": "secrets"
+    },
+    "service": {
+      "group": "",
+      "version": "v1",
+      "resource": "services"
+    },
+    "serviceaccount": {
+      "group": "",
+      "version": "v1",
+      "resource": "serviceaccounts"
+    },
+    "setting": {
+      "group": "management.cattle.io",
+      "version": "v3",
+      "resource": "settings"
+    },
+    "statefulset": {
+      "group": "apps",
+      "version": "v1",
+      "resource": "statefulsets"
+    },
+    "storageclass": {
+      "group": "storage.k8s.io",
+      "version": "v1",
+      "resource": "storageclasses"
+    },
+    "uiplugin": {
+      "group": "catalog.cattle.io",
+      "version": "v1",
+      "resource": "uiplugins"
+    },
+    "user": {
+      "group": "management.cattle.io",
+      "version": "v3",
+      "resource": "users"
+    },
+    "userattribute": {
+      "group": "management.cattle.io",
+      "version": "v3",
+      "resource": "userattributes"
+    },
+    "validatingadmissionpolicy": {
+      "group": "admissionregistration.k8s.io",
+      "version": "v1",
+      "resource": "validatingadmissionpolicies"
+    },
+    "validatingadmissionpolicybinding": {
+      "group": "admissionregistration.k8s.io",
+      "version": "v1",
+      "resource": "validatingadmissionpolicybindings"
+    },
+    "validatingwebhookconfiguration": {
+      "group": "admissionregistration.k8s.io",
+      "version": "v1",
+      "resource": "validatingwebhookconfigurations"
+    },
+    "virtualmachine": {
+      "group": "kubevirt.io",
+      "version": "v1",
+      "resource": "virtualmachines"
+    },
+    "virtualmachineclusterpreference": {
+      "group": "instancetype.kubevirt.io",
+      "version": "v1beta1",
+      "resource": "virtualmachineclusterpreferences"
+    },
+    "virtualmachineinstance": {
+      "group": "kubevirt.io",
+      "version": "v1",
+      "resource": "virtualmachineinstances"
+    },
+    "virtualmachinepreference": {
+      "group": "instancetype.kubevirt.io",
+      "version": "v1beta1",
+      "resource": "virtualmachinepreferences"
+    },
+    "volumeattachment": {
+      "group": "storage.k8s.io",
+      "version": "v1",
+      "resource": "volumeattachments"
+    },
+    "vpa": {
+      "group": "autoscaling.k8s.io",
+      "version": "v1",
+      "resource": "verticalpodautoscalers"
+    }
+  }
+}

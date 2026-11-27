@@ -774,7 +774,7 @@ create check for the manifests of the row: reads of the server before the dry-ru
 the cluster of a day-2 operation, and a comparison of the dry-run answer with the manifest
 after it (`resources.CreateCheck`, passed to `resources.NewCreate`; the package that makes
 the reads builds it, because `resources` cannot import it).
-`Key` is conformance-tested against a recorded fixture copied from rancher-ai-mcp (`testdata/mcp-kinds-050e375.json`) - the test matches on
+`Key` is conformance-tested against a recorded fixture of the kind keys of rancher-ai-mcp (`testdata/mcp-kinds.json`, compared weekly with upstream by `make mcp-kinds`) - the test matches on
 `Key`, never `Name`, so the CLI's user-facing vocabulary can evolve independently of the
 MCP identity.
 

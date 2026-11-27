@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Record mode: re-runs scripts/mcp-kinds so it writes the fixture of the
+# rancher-ai-mcp kind keys instead of comparing it. The fixture's diff is review
+# material, like the schema golden.
+MCP_KINDS_UPDATE=1 exec "$(dirname "$0")/mcp-kinds"

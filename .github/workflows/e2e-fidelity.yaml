@@ -73,6 +73,22 @@ jobs:
           persist-credentials: false
       - run: make extension-sources
 
+  # Compares the fixture of the kind keys of rancher-ai-mcp,
+  # internal/engine/kinds/testdata/mcp-kinds.json, with the map in
+  # pkg/converter/grv.go on the main branch of that repository. It needs only
+  # network access. It runs here rather than on every pull request.
+  mcp-kinds:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: make mcp-kinds
+
   # Checks that the words of every admission text in
   # internal/clierr/admission.go are written in the Kubernetes modules
   # (k8s.io/apiserver, k8s.io/kubernetes, k8s.io/pod-security-admission) at
