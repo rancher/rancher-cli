@@ -22,6 +22,7 @@ import (
 	"regexp"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -353,6 +354,10 @@ type scenario struct {
 	copyRoot string
 	// helm is set by newHelmCheckScenario and carries what the helm rows use.
 	helm *helmFixture
+	// runawayExpected is set by a case that expects the sleep stub to end the
+	// script at its cap and asserts the marker file itself. run then skips its
+	// own check of the marker file.
+	runawayExpected bool
 }
 
 type runResult struct {
@@ -461,6 +466,8 @@ func (s *scenario) environ() []string {
 		"STUB_CURL_TABLE=" + filepath.Join(s.stubDir, "curl.table"),
 		"STUB_CURL_ARGV=" + filepath.Join(s.stubDir, "curl.argv"),
 		"STUB_GO_LOG=" + filepath.Join(s.stubDir, "go.log"),
+		"STUB_SLEEP_COUNT=" + filepath.Join(s.stubDir, "sleep.count"),
+		"STUB_RUNAWAY_CALLS=" + strconv.Itoa(keepRunawayCalls),
 	}
 	env = append(env, s.helmEnviron()...)
 	if s.slot != nil {
@@ -486,10 +493,19 @@ func (s *scenario) environ() []string {
 // reach a real Docker daemon, a real server or the host's disk and clock.
 var stubbedTools = []string{"docker", "curl", "go", "sleep", "openssl", "df", "memory_pressure"}
 
+// sleepMarker is the path of the marker file the sleep stub writes when it ends
+// the script at call number keepRunawayCalls.
+func (s *scenario) sleepMarker() string {
+	return filepath.Join(s.stubDir, "sleep.count.runaway")
+}
+
 // run executes the script after checking that every stubbed tool resolves to
 // its stub, so a harness slip fails before the script can reach a real one.
-// After the run it asserts that the script removed what it made under TMPDIR
-// and that the curl stub denied no request.
+// After the run it asserts that the sleep stub did not end the script at its
+// cap (unless the case sets runawayExpected), that the script removed what it
+// made under TMPDIR and that the curl stub denied no request. The cap comes
+// first: a run the stub ended can leave its temporary files, and a read with
+// no canned row is both denied and retried until the cap.
 func (s *scenario) run() runResult {
 	s.t.Helper()
 	if s.helm != nil {
@@ -519,6 +535,10 @@ func (s *scenario) run() runResult {
 		exitErr, ok := errors.AsType[*exec.ExitError](err)
 		require.Truef(s.t, ok, "running the script: %v", err)
 		code = exitErr.ExitCode()
+	}
+	if !s.runawayExpected {
+		_, err := os.Stat(s.sleepMarker())
+		require.Truef(s.t, os.IsNotExist(err), "a wait reached the cap of %d calls to sleep without stopping, and the sleep stub ended the script; a read with no canned row is a common cause\nstdout: %s\nstderr: %s\ncurl log: %v", keepRunawayCalls, stdout.String(), stderr.String(), s.curlLog())
 	}
 	raw, err := os.ReadFile(s.logPath)
 	require.NoError(s.t, err)

@@ -734,12 +734,55 @@ print(value if isinstance(value, str) else json.dumps(value))
 ' "${STATE_FILE}" "$1"
 }
 
+# read_state reads fields of the state file with one python3 and sets the
+# variables named in its arguments. An argument NAME=FIELD sets NAME to what
+# state_value prints for FIELD. An argument NAME=string:FIELD sets NAME to
+# FIELD when it is a string, and to empty for any other value or a missing
+# field. When the file cannot be read as JSON, every NAME is empty and
+# read_state fails. python3 opens the file by its path: the file holds the
+# admin token, and its text never goes on an argument list or into the
+# environment of a child process. Each value ends with a NUL byte, which no
+# shell variable can hold.
+read_state() {
+  local read_state_arg read_state_status=0
+  {
+    for read_state_arg in "$@"; do
+      IFS= read -r -d '' "${read_state_arg%%=*}" || read_state_status=1
+    done
+  } < <(python3 -I -c '
+import json
+import sys
+
+state = json.load(open(sys.argv[1]))
+for arg in sys.argv[2:]:
+    field = arg.partition("=")[2]
+    if field.startswith("string:"):
+        value = state.get(field[len("string:"):]) if isinstance(state, dict) else None
+        text = value if isinstance(value, str) else ""
+    else:
+        value = state
+        for key in field.split("."):
+            if not isinstance(value, dict) or key not in value:
+                value = ""
+                break
+            value = value[key]
+        text = value if isinstance(value, str) else json.dumps(value)
+    # The value a command substitution of state_value gives: no NUL byte and
+    # no trailing newline. A value the output encoding cannot write is empty,
+    # as when the read of that one field fails.
+    text = text.replace("\0", "").rstrip("\n")
+    try:
+        sys.stdout.write(text + "\0")
+    except UnicodeEncodeError:
+        sys.stdout.write("\0")
+' "${STATE_FILE}" "$@")
+  return "${read_state_status}"
+}
+
 # load_helm_state reads what a kept helm pair recorded that a run which
 # skipped the steps before the lock does not compute again.
 load_helm_state() {
-  HELM_ASSETS_IMAGE="$(state_value assetsImage)"
-  LOCAL_K3S_SOURCE="$(state_value localK3sSource)"
-  CERT_MANAGER_IMAGES="$(state_value certManager.images)"
+  read_state HELM_ASSETS_IMAGE=assetsImage LOCAL_K3S_SOURCE=localK3sSource CERT_MANAGER_IMAGES=certManager.images
   [ -n "${CERT_MANAGER_IMAGES}" ] || CERT_MANAGER_IMAGES="[]"
 }
 
@@ -748,16 +791,17 @@ load_helm_state() {
 # It reads the file only when it exists and creates nothing. A kept pair skips
 # the pulls, downloads and registry reads of helm_prepare.
 read_kept_state() {
-  local recorded running
+  local recorded running boot image chart k3s_image manifest
   [ -f "${STATE_FILE}" ] || return 1
-  recorded="$(state_value containerId 2>/dev/null)" || return 1
+  read_state recorded=containerId boot=boot image=oracleImage chart=chart \
+    k3s_image=localK3sImage manifest=certManager.manifest 2>/dev/null || return 1
   running="$(docker inspect --format '{{.Id}}' "${CONTAINER}" 2>/dev/null)" || return 1
   [ -n "${recorded}" ] && [ "${recorded}" = "${running}" ] || return 1
-  [ "$(state_value boot)" = "helm" ] || return 1
-  [ "$(state_value oracleImage)" = "${ORACLE_IMAGE}" ] || return 1
-  [ "$(state_value chart)" = "${CHART_PIN}" ] || return 1
-  [ "$(state_value localK3sImage)" = "${LOCAL_K3S_PIN}" ] || return 1
-  [ "$(state_value certManager.manifest)" = "${CERT_MANAGER_MANIFEST}" ] || return 1
+  [ "${boot}" = "helm" ] || return 1
+  [ "${image}" = "${ORACLE_IMAGE}" ] || return 1
+  [ "${chart}" = "${CHART_PIN}" ] || return 1
+  [ "${k3s_image}" = "${LOCAL_K3S_PIN}" ] || return 1
+  [ "${manifest}" = "${CERT_MANAGER_MANIFEST}" ] || return 1
   load_helm_state
 }
 
@@ -1884,17 +1928,21 @@ reuse_state() {
     echo "==> no state file at ${STATE_FILE}; booting a new pair"
     return 1
   }
-  python3 -I -c 'import json,sys; json.load(open(sys.argv[1]))' "${STATE_FILE}" 2>/dev/null || {
+  # One read of the file gives every field the checks below use. It is read
+  # again here and not taken from read_kept_state, which ran before the lock.
+  local saved_image saved_boot saved_chart saved_k3s_image saved_manifest saved_assets saved_source cid saved_token
+  if ! read_state saved_image=string:oracleImage saved_boot=boot saved_chart=chart \
+      saved_k3s_image=localK3sImage saved_manifest=certManager.manifest saved_assets=assetsImage \
+      saved_source=localK3sSource cid=containerId saved_token=adminToken 2>/dev/null; then
     REUSE_FAILED_CHECK="state-file"
     REUSE_FAILED_DETAIL="the state file ${STATE_FILE} could not be read"
     return 1
-  }
+  fi
   # The kept container must have been created from the CURRENTLY pinned
   # image: reusing across an ORACLE_IMAGE bump would stamp new goldens with
   # an image that never ran, defeating provenance. Every pin is compared
   # before the container, so a changed pin creates a new pair even when the
   # kept one no longer answers.
-  saved_image="$(python3 -I -c 'import json,sys; v = json.load(open(sys.argv[1])).get("oracleImage"); print(v if isinstance(v, str) else "")' "${STATE_FILE}" 2>/dev/null)"
   [ -n "${saved_image}" ] || {
     REUSE_FAILED_CHECK="state-file"
     REUSE_FAILED_DETAIL="the state file ${STATE_FILE} has no oracleImage"
@@ -1909,7 +1957,6 @@ reuse_state() {
   # boot. The helm fields are compared only for a helm pair; the assets image
   # and the source of the k3s version only in a run that computed them,
   # otherwise the script reads them from the state file.
-  saved_boot="$(state_value boot)"
   [ -n "${saved_boot}" ] || saved_boot="container"
   [ "${saved_boot}" = "${BOOT}" ] || {
     REUSE_RECREATE="a different boot"
@@ -1917,9 +1964,9 @@ reuse_state() {
     return 1
   }
   if [ "${BOOT}" = "helm" ]; then
-    if [ "$(state_value chart)" != "${CHART_PIN}" ] ||
-      [ "$(state_value localK3sImage)" != "${LOCAL_K3S_PIN}" ] ||
-      [ "$(state_value certManager.manifest)" != "${CERT_MANAGER_MANIFEST}" ]; then
+    if [ "${saved_chart}" != "${CHART_PIN}" ] ||
+      [ "${saved_k3s_image}" != "${LOCAL_K3S_PIN}" ] ||
+      [ "${saved_manifest}" != "${CERT_MANAGER_MANIFEST}" ]; then
       REUSE_RECREATE="different chart, k3s or cert-manager pins"
       echo "==> kept pair was created from different chart, k3s or cert-manager pins; recreating"
       return 1
@@ -1929,8 +1976,8 @@ reuse_state() {
     # helm_prepare sets HELM_COMPUTED only after read_kept_state failed, and
     # reuse_state returns on the same fields before this line.
     if [ -n "${HELM_COMPUTED}" ]; then
-      if [ "$(state_value assetsImage)" != "${HELM_ASSETS_IMAGE}" ] ||
-        [ "$(state_value localK3sSource)" != "${LOCAL_K3S_SOURCE}" ]; then
+      if [ "${saved_assets}" != "${HELM_ASSETS_IMAGE}" ] ||
+        [ "${saved_source}" != "${LOCAL_K3S_SOURCE}" ]; then
         REUSE_RECREATE="a different assets image or source of the k3s version"
         echo "==> kept pair has a different assets image or a different source of its k3s version (the server image or CATTLE_K3S_VERSION); recreating"
         return 1
@@ -1939,7 +1986,6 @@ reuse_state() {
       load_helm_state
     fi
   fi
-  cid="$(state_value containerId)"
   [ -n "${cid}" ] || {
     REUSE_FAILED_CHECK="state-file"
     REUSE_FAILED_DETAIL="the state file ${STATE_FILE} has no containerId"
@@ -1975,7 +2021,7 @@ reuse_state() {
     REUSE_FAILED_DETAIL="${BASE_URL}/ping did not answer pong within 5 s; a kept server restarts itself after some feature changes and can take a few minutes to answer"
     return 1
   fi
-  ADMIN_TOKEN="$(state_value adminToken)"
+  ADMIN_TOKEN="${saved_token}"
   [ -n "${ADMIN_TOKEN}" ] || {
     REUSE_FAILED_CHECK="state-file"
     REUSE_FAILED_DETAIL="the state file ${STATE_FILE} has no adminToken"
@@ -2095,7 +2141,11 @@ reuse_downstream() {
   REUSE_FAILED_CHECK=""
   REUSE_FAILED_DETAIL=""
   REUSE_FAILED_HINT=""
-  saved_k3s_image="$(python3 -I -c 'import json,sys; v = json.load(open(sys.argv[1])).get("k3sImage"); print(v if isinstance(v, str) else "")' "${STATE_FILE}" 2>/dev/null)"
+  # One read of the file gives the three fields. A file that cannot be read
+  # leaves them empty, and the first check names the missing image.
+  local saved_k3s_image saved_k3s_cid saved_downstream
+  read_state saved_k3s_image=string:k3sImage saved_k3s_cid=string:k3sContainerId \
+    saved_downstream=string:downstream 2>/dev/null || true
   [ -n "${saved_k3s_image}" ] || {
     REUSE_FAILED_CHECK="state-file"
     REUSE_FAILED_DETAIL="the state file ${STATE_FILE} has no k3sImage"
@@ -2106,7 +2156,7 @@ reuse_downstream() {
     echo "==> kept downstream was created from a different k3s image; rebuilding it"
     return 1
   }
-  k3s_cid="$(python3 -I -c 'import json,sys; v = json.load(open(sys.argv[1])).get("k3sContainerId"); print(v if isinstance(v, str) else "")' "${STATE_FILE}" 2>/dev/null)"
+  k3s_cid="${saved_k3s_cid}"
   [ -n "${k3s_cid}" ] || {
     REUSE_FAILED_CHECK="state-file"
     REUSE_FAILED_DETAIL="the state file ${STATE_FILE} has no k3sContainerId"
@@ -2122,7 +2172,7 @@ reuse_downstream() {
     REUSE_FAILED_DETAIL="container ${K3S_CONTAINER} has id ${k3s_running}, but the state file records ${k3s_cid}"
     return 1
   }
-  DOWNSTREAM_ID="$(python3 -I -c 'import json,sys; v = json.load(open(sys.argv[1])).get("downstream"); print(v if isinstance(v, str) else "")' "${STATE_FILE}" 2>/dev/null)"
+  DOWNSTREAM_ID="${saved_downstream}"
   [ -n "${DOWNSTREAM_ID}" ] || {
     REUSE_FAILED_CHECK="state-file"
     REUSE_FAILED_DETAIL="the state file ${STATE_FILE} has no downstream"

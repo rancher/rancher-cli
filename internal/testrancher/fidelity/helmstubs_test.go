@@ -75,8 +75,42 @@ env | grep '^E2E_FIDELITY_[A-Z_]*=' | sort | awk '{print "env " $0}' >> "$STUB_G
 exit 0
 `
 
-// sleepStubScript stands in for sleep so no wait takes time.
-const sleepStubScript = "#!/bin/sh\nexit 0\n"
+// keepRunawayCalls is the cap on calls to sleep in every run of the script, and
+// on reads of the kept downstream cluster in a case that uses watchWait. At the
+// cap the sleep stub ends the script and the curl watchdog returns
+// {"state":"active"}. Two waits with a fixed number of tries run one after the
+// other. wait_for_downstream_active makes up to 100 calls to sleep and then
+// wait_for_downstream_proxy up to 60, about 160 calls in all. Two waits on the
+// real clock add a few more calls. In the cases that chain the waits, the wait
+// for the kept downstream cluster runs first and finds the cluster active after
+// one call to sleep. The wait for the fleet agent runs last and stops at a limit
+// of 1 s where the fleet agent is never ready. The cap is about 90 calls more
+// than those 160. It counts calls and not seconds: a slow machine does not reach
+// it and a wait with no limit does.
+const keepRunawayCalls = 250
+
+// sleepStubScript stands in for sleep. It returns at once: no wait in a test
+// takes real time.
+// It counts its calls in the file STUB_SLEEP_COUNT, and at STUB_RUNAWAY_CALLS
+// calls it writes the marker file STUB_SLEEP_COUNT.runaway and sends a
+// termination signal to the shell that called it. A wait that ignores its limit
+// then fails the case and never hangs. The signal reaches the parent of the
+// stub only: for a sleep in the main shell of the script that is the script,
+// and for a sleep inside a command substitution or a pipeline it is that
+// subshell, which ends with the loop in it while the script may go on. The
+// marker file fails the case in both. The count is read with the builtin read,
+// so a call starts no other process.
+const sleepStubScript = `#!/bin/sh
+n=0
+[ -f "$STUB_SLEEP_COUNT" ] && read -r n < "$STUB_SLEEP_COUNT"
+n=$((n + 1))
+echo "$n" > "$STUB_SLEEP_COUNT"
+if [ "$n" -ge "$STUB_RUNAWAY_CALLS" ]; then
+  echo runaway > "$STUB_SLEEP_COUNT.runaway"
+  kill -TERM "$PPID"
+fi
+exit 0
+`
 
 // opensslStubScript stands in for openssl; nothing a run reaches reads its
 // output.

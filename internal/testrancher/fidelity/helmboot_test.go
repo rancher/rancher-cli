@@ -769,7 +769,7 @@ func stateProgram(t *testing.T, body string) (stateFile string, stdout string) {
 	program := "set -euo pipefail\n" +
 		"STATE_FILE=" + stateFile + " CONTAINER=pair K3S_CONTAINER=pair-k3s ORACLE_IMAGE=oracle K3S_IMAGE=k3s ADMIN_TOKEN=token DOWNSTREAM_ID=c-1 PAIR_INSTALL_UUID=" + testPairInstallUUID + "\n" +
 		"CHART_PIN=chart LOCAL_K3S_PIN=node-k3s CERT_MANAGER_MANIFEST=manifest\n" +
-		shellFunction(t, "state_value") + shellFunction(t, "load_helm_state") + shellFunction(t, "write_state") + body + "\n"
+		shellFunction(t, "read_state") + shellFunction(t, "load_helm_state") + shellFunction(t, "write_state") + body + "\n"
 	cmd := exec.CommandContext(t.Context(), "bash", "-c", program)
 	cmd.Env = []string{"PATH=" + dir + string(os.PathListSeparator) + os.Getenv("PATH"), "STUB_LOG=" + filepath.Join(dir, "log"), "STUB_DIR=" + dir}
 	out, err := cmd.CombinedOutput()
@@ -917,7 +917,7 @@ func reuseProgram(t *testing.T, state map[string]any, computed bool) string {
 	} else {
 		program += "HELM_COMPUTED='' HELM_ASSETS_IMAGE='' LOCAL_K3S_SOURCE=''\n"
 	}
-	program += shellFunction(t, "state_value") + shellFunction(t, "load_helm_state") + shellFunction(t, "reuse_state") +
+	program += shellFunction(t, "read_state") + shellFunction(t, "load_helm_state") + shellFunction(t, "reuse_state") +
 		"reuse_state\necho \"status=$? assets=${HELM_ASSETS_IMAGE} source=${LOCAL_K3S_SOURCE} recreate=${REUSE_RECREATE:-} failed=${REUSE_FAILED_CHECK:-}\"\n"
 	cmd := exec.CommandContext(t.Context(), "bash", "-c", program)
 	cmd.Env = []string{"PATH=" + dir + string(os.PathListSeparator) + os.Getenv("PATH"), "STUB_LOG=" + filepath.Join(dir, "log"), "STUB_DIR=" + dir}
