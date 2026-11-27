@@ -9,6 +9,10 @@
 # A fault is a SIGSEGV, SIGBUS or SIGFPE line in a strace log whose si_code is
 # not one of the codes of a signal a process sent. The program of a fault is
 # the base name of the last successful execve of the process that took it.
+# On every exit after the directory is known it prints each <name>.retry file
+# scripts/fault-trace wrote for a traced run it repeated after an strace error
+# (after the table and the messages), and the same lines as GitHub Actions
+# warnings when GITHUB_ACTIONS is set; they do not change the exit status.
 # Tools: bash and the common tools awk, dirname, cat, rm and mktemp, which
 # macOS and Linux both have, because the tests run it on both.
 set -u
@@ -21,6 +25,24 @@ if [ -z "$dir" ] || [ ! -d "$dir" ]; then
   echo "scripts/fault-check: FAULT_LOG_DIR must name an existing directory" >&2
   exit 1
 fi
+
+# retrynotes prints the notes of repeated runs. The exit trap calls it: every
+# exit after this point shows them.
+retrynotes() {
+  local note line
+  for note in "$dir"/*.retry; do
+    [ -e "$note" ] || continue
+    while IFS= read -r line || [ -n "$line" ]; do
+      printf '%s\n' "$line"
+      if [ -n "${GITHUB_ACTIONS:-}" ]; then
+        printf '::warning::%s\n' "$line"
+      fi
+    done <"$note"
+  done
+}
+tmp=
+trap 'retrynotes; [ -z "$tmp" ] || rm -rf "$tmp"' EXIT
+
 if [ ! -f "$allowlist" ]; then
   echo "scripts/fault-check: no allowlist file $allowlist" >&2
   exit 1
@@ -141,7 +163,6 @@ END {
 '
 
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/fault-check.XXXXXX") || exit 1
-trap 'rm -rf "$tmp"' EXIT
 
 status=0
 logs=0

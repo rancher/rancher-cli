@@ -125,11 +125,15 @@ Gotchas:
   catches) can corrupt memory on some hosts. The Linux job `fault-check`
   runs the Windows jobs' commands without `-race` under strace and fails on a
   fault with no row in `.github/fault-allowlist`; a change to a Windows job's
-  tests is made in `fault-check` too. Locally on Linux: `FAULT_LOG_DIR=$(mktemp -d)
-  GOFLAGS=-exec=$PWD/scripts/fault-trace go test -count=1 <package>`, then
-  `FAULT_LOG_DIR=<that dir> scripts/fault-check`; on macOS `dlv trace --exec
-  <test binary> '^runtime\.sigpanic$' -- -test.count=1`. It cannot see
-  `_windows.go` files or tests that skip on Linux.
+  tests is made in `fault-check` too. A run that strace stops with an error
+  on a failed ptrace request (the kernel then kills the traced program) is
+  repeated once when its log holds no fault; `scripts/fault-check` prints a
+  note for each repeat, as a GitHub Actions warning too. Locally on Linux:
+  `FAULT_LOG_DIR=$(mktemp -d) GOFLAGS=-exec=$PWD/scripts/fault-trace go test
+  -count=1 <package>`, then `FAULT_LOG_DIR=<that dir> scripts/fault-check`;
+  on macOS `dlv trace --exec <test binary> '^runtime\.sigpanic$' --
+  -test.count=1`. It cannot see `_windows.go` files or tests that skip on
+  Linux.
 
 ## Invariants - do not break these
 

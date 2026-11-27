@@ -7,9 +7,32 @@
 #   FAULT_LOG_DIR=<existing directory> GOFLAGS=-exec=$PWD/scripts/fault-trace \
 #     go test -count=1 <package>
 #
-# Each traced run writes <name>.log (the strace output) and <name>.pkg (the
-# package: go test runs the binary in the package's directory) into
-# FAULT_LOG_DIR. The program's exit status is the script's.
+# Each traced run writes into FAULT_LOG_DIR <name>.log (the strace output),
+# <name>.pkg (the package: go test runs the binary in the package's
+# directory), <name>.err (what strace itself printed on stderr, printed again
+# when strace ends; the program's stderr is not in it) and <name>.status (the
+# program's exit status, written when the program ends).
+#
+# strace stops with an error of its own, and the kernel kills every program
+# it traces, when a ptrace request fails (for example PTRACE_LISTEN with
+# EIO). Such a run is repeated once under strace when all of these hold:
+# strace exited non-zero, <name>.err holds a line that starts
+# "strace: ptrace(", <name>.status does not exist (the program did not end
+# on its own) and <name>.log holds no SIGSEGV, SIGBUS or SIGFPE text. The
+# repeat replaces <name>.log, <name>.err and <name>.status, and the script
+# writes a note to stderr and to <name>.retry, which scripts/fault-check
+# prints. A second strace error is not repeated.
+#
+# The exit status is strace's, which is the program's when strace itself did
+# not fail. A program that ends on a signal gives 128 plus the signal number,
+# which go test reports as "exit status 139", not as "signal: segmentation
+# fault". strace ignores INT, TERM, QUIT and HUP: on any of them the script
+# kills strace with SIGKILL, which ends every program it traces, and exits
+# with 128 plus the signal number. A SIGKILL of the script itself leaves
+# strace and its programs running. bash prints no job message ("Segmentation
+# fault", "Killed") for a program or for strace that ends on a signal while
+# the script waits for it; an strace that ends on a signal before that wait
+# can still get one.
 set -u
 
 if [ "$(uname -s)" != Linux ]; then
@@ -67,4 +90,85 @@ printf '%s\n' "$pkg" >"$base.pkg" || {
   echo "scripts/fault-trace: cannot write $base.pkg" >&2
   exit 2
 }
-exec strace --seccomp-bpf -f -Y -q -e trace=execve,clone,clone3,fork,vfork -e signal=SIGSEGV,SIGBUS,SIGFPE -o "$base.log" -- "$@"
+
+# The program's stderr goes to fd 3, a copy of the script's stderr; strace's
+# own stderr goes to <name>.err.
+exec 3>&2
+# The wrapper runs the program and writes its exit status when it ends: it
+# must not exec the program. fault-check names a fault by the last program
+# the faulting process started with execve, which is the program, not the
+# wrapper. The program gets no fd 3. The wrapper's own stderr goes to
+# /dev/null, which keeps the job message bash prints when the program ends
+# on a signal out of <name>.err; it also drops the wrapper shell's own
+# messages (a failed fork, for example), which neither the repeat conditions
+# above nor fault-check reads. The program's stderr and the message of a
+# program that cannot start go to fd 3.
+# shellcheck disable=SC2016 # the wrapper's script: nothing in it is for this shell
+wrapper='f=$1; shift
+exec 2>/dev/null
+"$@" 2>&3 3>&-
+s=$?
+printf "%s\n" "$s" 2>&3 >"$f"
+exit "$s"'
+
+signal=0
+pid=
+# shellcheck disable=SC2329 # the traps below call it
+stop() {
+  signal=$1
+  if [ -n "$pid" ]; then
+    kill -KILL "$pid" 2>/dev/null
+  fi
+}
+trap 'stop 1' HUP
+trap 'stop 2' INT
+trap 'stop 3' QUIT
+trap 'stop 15' TERM
+
+# trace runs the program under strace and sets code to strace's exit status.
+# strace runs in the background, which lets the traps run while the script
+# waits. bash gives a background command /dev/null as stdin: <&0 gives the
+# program the script's stdin. bash 5.3 also ignores INT and QUIT in a
+# background ( exec cmd ) and the program inherits that: trap - INT QUIT
+# gives it their default actions. bash 5.2 leaves both at their default
+# there, and the line changes nothing on it.
+trace() {
+  [ "$signal" -eq 0 ] || exit $((128 + signal))
+  (
+    trap - INT QUIT
+    exec strace --seccomp-bpf -f -Y -q -e trace=execve,clone,clone3,fork,vfork -e signal=SIGSEGV,SIGBUS,SIGFPE -o "$base.log" -- "$BASH" -c "$wrapper" fault-trace-run "$base.status" "$@" 2>"$base.err"
+  ) <&0 &
+  pid=$!
+  [ "$signal" -eq 0 ] || kill -KILL "$pid" 2>/dev/null
+  wait "$pid" 2>/dev/null
+  code=$?
+  if [ "$signal" -ne 0 ]; then
+    wait "$pid" 2>/dev/null
+    pid=
+    cat -- "$base.err" >&2
+    exit $((128 + signal))
+  fi
+  pid=
+  cat -- "$base.err" >&2
+}
+
+trace "$@"
+if [ "$code" -ne 0 ] && [ ! -e "$base.status" ] &&
+  straceerr=$(awk '/^strace: ptrace\(/ { print; exit }' "$base.err") && [ -n "$straceerr" ] &&
+  awk '/SIG(SEGV|BUS|FPE)/ { found = 1; exit } END { exit found }' "$base.log"; then
+  note="scripts/fault-trace: strace stopped with an error while tracing the tests of $pkg; the run is repeated once. strace said: $straceerr"
+  rm -f -- "$base.log" "$base.status" "$base.err" || {
+    echo "scripts/fault-trace: cannot remove the files of the first traced run" >&2
+    exit "$code"
+  }
+  printf '%s\n' "$note" >>"$base.retry" || {
+    echo "scripts/fault-trace: cannot write $base.retry" >&2
+    exit "$code"
+  }
+  printf '%s\n' "$note" >&2
+  if [ -n "${GITHUB_ACTIONS:-}" ]; then
+    printf '::warning::%s\n' "$note" >&2
+  fi
+  trace "$@"
+fi
+exit "$code"
